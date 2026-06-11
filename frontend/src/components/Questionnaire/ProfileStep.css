@@ -1,0 +1,23 @@
+/* ProfileStep — 业务画像填写，复用 Questionnaire.css 的卡片/字段/按钮样式 */
+
+.profile-error {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border: 1px solid var(--signal-red, #c0392b);
+  border-radius: var(--radius);
+  background: rgba(192, 57, 43, 0.06);
+  color: var(--signal-red, #c0392b);
+  font-size: 0.9rem;
+}
+
+.profile-action {
+  display: flex;
+  justify-content: center;
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+
+.profile-generate {
+  min-width: 240px;
+}

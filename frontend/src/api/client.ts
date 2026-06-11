@@ -3,6 +3,8 @@ import type {
   ModuleResult,
   DiagnosisSummary,
   DiagnosisDetail,
+  BusinessProfile,
+  GeneratedModule,
 } from "../types";
 import { getToken } from "../auth/authStore";
 
@@ -81,4 +83,17 @@ export async function fetchRecord(id: string): Promise<DiagnosisDetail> {
   const resp = await fetch(`${BASE}/history/${id}`, { headers: { ...authHeaders() } });
   if (!resp.ok) throw new Error(`获取记录失败: ${resp.status}`);
   return (await resp.json()) as DiagnosisDetail;
+}
+
+export async function generateQuestionnaire(
+  profile: BusinessProfile
+): Promise<GeneratedModule[]> {
+  const resp = await fetch(`${BASE}/questionnaire/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ profile }),
+  });
+  if (!resp.ok) throw new Error(`生成失败: ${resp.status}`);
+  const body = await resp.json();
+  return body.modules as GeneratedModule[];
 }

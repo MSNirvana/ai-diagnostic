@@ -35,3 +35,30 @@ export interface DiagnosisDetail {
   results: ModuleResult[];
   profile: Record<string, string> | null;
 }
+
+export interface BusinessProfile {
+  company_name: string;
+  industry: string;
+  main_business: string;
+  business_model: string;
+  scale: string;
+  stage: string;
+}
+export interface GeneratedField {
+  key: string;
+  label: string;
+  placeholder: string;
+  hint?: string;
+  accept_file: boolean;
+}
+export interface GeneratedModule {
+  key: string;
+  label: string;
+  subtitle: string;
+  fields: GeneratedField[];
+  pains: string[];
+  free_text_label: string;
+}
+export interface GeneratedQuestionnaire {
+  modules: GeneratedModule[];
+}

@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
-import { MODULES } from "./modules";
-import type { ModuleAnswer } from "../../types";
+import { MODULES_AS_GENERATED } from "./modules";
+import type { ModuleAnswer, BusinessProfile, GeneratedModule } from "../../types";
+import { generateQuestionnaire } from "../../api/client";
 import { StepIndicator } from "./StepIndicator";
+import { ProfileStep } from "./ProfileStep";
 import "./Questionnaire.css";
 
 interface QuestionnaireProps {
@@ -11,15 +13,18 @@ interface QuestionnaireProps {
   ) => void;
 }
 
+type Mode = "profile" | "generating" | "ready";
+
 export function Questionnaire({ onSubmit }: QuestionnaireProps) {
+  const [mode, setMode] = useState<Mode>("profile");
+  const [activeModules, setActiveModules] = useState<GeneratedModule[]>([]);
+  const [genError, setGenError] = useState<string | null>(null);
+
   const [current, setCurrent] = useState(0);
   const [facts, setFacts] = useState<Record<string, Record<string, string>>>({});
   const [pains, setPains] = useState<Record<string, string[]>>({});
   const [freeText, setFreeText] = useState<Record<string, string>>({});
   const [files, setFiles] = useState<{ moduleKey: string; file: File }[]>([]);
-
-  const module = MODULES[current];
-  const isLast = current === MODULES.length - 1;
 
   const moduleFilled = (key: string): boolean => {
     const f = facts[key] ?? {};
@@ -30,11 +35,27 @@ export function Questionnaire({ onSubmit }: QuestionnaireProps) {
   };
 
   const filled = useMemo(
-    () => MODULES.map((m) => moduleFilled(m.key)),
-    [facts, pains, freeText]
+    () => activeModules.map((m) => moduleFilled(m.key)),
+    [facts, pains, freeText, activeModules]
   );
 
   const anyFilled = filled.some(Boolean);
+
+  const handleGenerate = async (profile: BusinessProfile) => {
+    setMode("generating");
+    setGenError(null);
+    try {
+      const modules = await generateQuestionnaire(profile);
+      setActiveModules(modules);
+      setMode("ready");
+      setCurrent(0);
+    } catch {
+      // 降级：使用通用固定问卷
+      setActiveModules(MODULES_AS_GENERATED);
+      setMode("ready");
+      setCurrent(0);
+    }
+  };
 
   const setFact = (modKey: string, fieldKey: string, value: string) => {
     setFacts((prev) => ({
@@ -65,12 +86,9 @@ export function Questionnaire({ onSubmit }: QuestionnaireProps) {
     setFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const goNext = () => setCurrent((c) => Math.min(c + 1, MODULES.length - 1));
-  const goPrev = () => setCurrent((c) => Math.max(c - 1, 0));
-
   const handleSubmit = () => {
     const answers: ModuleAnswer[] = [];
-    for (const m of MODULES) {
+    for (const m of activeModules) {
       if (!moduleFilled(m.key)) continue;
       const rawFacts = facts[m.key] ?? {};
       const cleanFacts: Record<string, string> = {};
@@ -88,6 +106,24 @@ export function Questionnaire({ onSubmit }: QuestionnaireProps) {
     onSubmit(answers, files);
   };
 
+  if (mode === "profile" || mode === "generating") {
+    return (
+      <ProfileStep
+        onGenerate={handleGenerate}
+        generating={mode === "generating"}
+        error={genError}
+      />
+    );
+  }
+
+  const module = activeModules[current];
+  const isLast = current === activeModules.length - 1;
+  const showFiles = module.fields.some((f) => f.accept_file);
+
+  const goNext = () =>
+    setCurrent((c) => Math.min(c + 1, activeModules.length - 1));
+  const goPrev = () => setCurrent((c) => Math.max(c - 1, 0));
+
   const moduleFiles = files
     .map((entry, index) => ({ ...entry, index }))
     .filter((entry) => entry.moduleKey === module.key);
@@ -95,7 +131,7 @@ export function Questionnaire({ onSubmit }: QuestionnaireProps) {
   return (
     <div className="questionnaire">
       <StepIndicator
-        steps={MODULES.map((m) => ({ label: m.label }))}
+        steps={activeModules.map((m) => ({ label: m.label }))}
         current={current}
         filled={filled}
       />
@@ -147,7 +183,7 @@ export function Questionnaire({ onSubmit }: QuestionnaireProps) {
 
         <div className="free-section">
           <label className="section-title" htmlFor={`${module.key}-free`}>
-            {module.freeTextLabel}
+            {module.free_text_label}
           </label>
           <textarea
             id={`${module.key}-free`}
@@ -159,7 +195,7 @@ export function Questionnaire({ onSubmit }: QuestionnaireProps) {
           />
         </div>
 
-        {module.acceptFiles && (
+        {showFiles && (
           <div className="file-section">
             <label className="file-drop" htmlFor={`${module.key}-files`}>
               <span className="file-drop__title">上传相关数据文件</span>

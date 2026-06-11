@@ -110,3 +110,20 @@ export const MODULES: ModuleDef[] = [
     pains: ["现金流紧张", "不盈利", "应收账款高", "融资困难"],
   },
 ];
+
+import type { GeneratedModule } from "../../types";
+
+export const MODULES_AS_GENERATED: GeneratedModule[] = MODULES.map((m) => ({
+  key: m.key,
+  label: m.label,
+  subtitle: m.subtitle,
+  fields: m.fields.map((f) => ({
+    key: f.key,
+    label: f.label,
+    placeholder: f.placeholder,
+    hint: f.hint,
+    accept_file: m.acceptFiles,
+  })),
+  pains: m.pains,
+  free_text_label: m.freeTextLabel,
+}));
