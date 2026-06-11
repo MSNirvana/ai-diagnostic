@@ -1,0 +1,18 @@
+.drilldown {
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  margin-top: 12px;
+}
+.drilldown__heading {
+  font-family: var(--font-serif);
+  font-size: 0.95rem;
+  color: var(--ink);
+  margin: 10px 0 6px;
+}
+.drilldown__list {
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  line-height: 1.6;
+  padding-left: 18px;
+  margin: 0;
+}

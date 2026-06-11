@@ -1,0 +1,87 @@
+.module-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: cardIn 0.35s ease both;
+}
+
+.signal {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.signal__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.signal--red .signal__dot { background: var(--signal-red); }
+.signal--yellow .signal__dot { background: var(--signal-amber); }
+.signal--green .signal__dot { background: var(--signal-green); }
+
+.signal__label {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.signal--red .signal__label { color: var(--signal-red); }
+.signal--yellow .signal__label { color: var(--signal-amber); }
+.signal--green .signal__label { color: var(--signal-green); }
+
+.module-card__name {
+  margin-left: auto;
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+}
+
+.module-card__conclusion {
+  font-family: var(--font-serif);
+  font-size: 1.1rem;
+  line-height: 1.5;
+  margin: 0;
+  color: var(--ink);
+}
+
+.module-card__evidence {
+  color: var(--ink-soft);
+  font-size: 0.92rem;
+  line-height: 1.6;
+  padding-left: 18px;
+  margin: 0;
+}
+
+.module-card__actions-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.module-card__actions ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  color: var(--ink);
+  font-size: 0.92rem;
+  line-height: 1.6;
+}
+
+.more-btn {
+  align-self: flex-start;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--accent);
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.more-btn:hover { border-color: var(--accent); }
+
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
