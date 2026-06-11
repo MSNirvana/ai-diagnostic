@@ -1,4 +1,5 @@
 import json
+import pytest
 from fastapi.testclient import TestClient
 from app.main import app
 from app.config import get_llm_client
@@ -20,11 +21,16 @@ class FakeLLM:
         })
 
 
-app.dependency_overrides[get_llm_client] = lambda: FakeLLM()
-client = TestClient(app)
+@pytest.fixture
+def client():
+    # 每个测试单独设 override 并在结束后清理，避免测试间相互污染
+    FakeLLM.last_prompt = ""
+    app.dependency_overrides[get_llm_client] = lambda: FakeLLM()
+    yield TestClient(app)
+    app.dependency_overrides.clear()
 
 
-def test_upload_merges_file_into_facts():
+def test_upload_merges_file_into_facts(client):
     answers = {"answers": [{"module": "market", "facts": {"客单价": "420"}, "pains": ["打不过竞品"]}]}
     csv_bytes = b"month,sales\n2026-01,100\n2026-02,150\n"
     resp = client.post(
@@ -40,7 +46,7 @@ def test_upload_merges_file_into_facts():
     assert "row_count" in FakeLLM.last_prompt
 
 
-def test_upload_without_files_still_works():
+def test_upload_without_files_still_works(client):
     answers = {"answers": [{"module": "market", "facts": {}, "pains": ["客户在流失"]}]}
     resp = client.post(
         "/diagnose/upload",
@@ -50,7 +56,7 @@ def test_upload_without_files_still_works():
     assert resp.json()["results"][0]["module"] == "market"
 
 
-def test_upload_unsupported_file_type_does_not_crash():
+def test_upload_unsupported_file_type_does_not_crash(client):
     answers = {"answers": [{"module": "market", "facts": {}, "pains": ["市场在萎缩"]}]}
     resp = client.post(
         "/diagnose/upload",

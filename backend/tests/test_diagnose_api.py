@@ -1,4 +1,5 @@
 import json
+import pytest
 from fastapi.testclient import TestClient
 from app.main import app
 from app.config import get_llm_client
@@ -15,11 +16,15 @@ class FakeLLM:
         })
 
 
-app.dependency_overrides[get_llm_client] = lambda: FakeLLM()
-client = TestClient(app)
+@pytest.fixture
+def client():
+    # 每个测试单独设 override 并在结束后清理，避免测试间相互污染
+    app.dependency_overrides[get_llm_client] = lambda: FakeLLM()
+    yield TestClient(app)
+    app.dependency_overrides.clear()
 
 
-def test_diagnose_returns_results():
+def test_diagnose_returns_results(client):
     resp = client.post("/diagnose", json={
         "answers": [{"module": "market", "facts": {}, "pains": ["竞品强"]}]
     })
@@ -29,7 +34,7 @@ def test_diagnose_returns_results():
     assert body["results"][0]["signal"] == "red"
 
 
-def test_diagnose_empty_answers_returns_empty():
+def test_diagnose_empty_answers_returns_empty(client):
     resp = client.post("/diagnose", json={"answers": []})
     assert resp.status_code == 200
     assert resp.json()["results"] == []
