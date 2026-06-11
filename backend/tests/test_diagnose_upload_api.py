@@ -1,0 +1,61 @@
+import json
+from fastapi.testclient import TestClient
+from app.main import app
+from app.config import get_llm_client
+
+
+class FakeLLM:
+    """回显收到的 facts，便于断言文件数据是否合并进了 prompt。"""
+
+    last_prompt: str = ""
+
+    async def complete(self, system: str, prompt: str) -> str:
+        FakeLLM.last_prompt = prompt
+        return json.dumps({
+            "signal": "green",
+            "conclusion": "数据已接收",
+            "evidence": [{"text": "已解析上传文件", "source": "上传表格"}],
+            "actions": ["继续补充数据"],
+            "drilldown": {"data_points": [], "comparisons": []},
+        })
+
+
+app.dependency_overrides[get_llm_client] = lambda: FakeLLM()
+client = TestClient(app)
+
+
+def test_upload_merges_file_into_facts():
+    answers = {"answers": [{"module": "market", "facts": {"客单价": "420"}, "pains": ["打不过竞品"]}]}
+    csv_bytes = b"month,sales\n2026-01,100\n2026-02,150\n"
+    resp = client.post(
+        "/diagnose/upload",
+        data={"answers_json": json.dumps(answers)},
+        files=[("files", ("market_sales.csv", csv_bytes, "text/csv"))],
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["results"][0]["module"] == "market"
+    # 文件解析后的数据进入了 LLM prompt（合并到了 facts）
+    assert "file_market_sales.csv" in FakeLLM.last_prompt
+    assert "row_count" in FakeLLM.last_prompt
+
+
+def test_upload_without_files_still_works():
+    answers = {"answers": [{"module": "market", "facts": {}, "pains": ["客户在流失"]}]}
+    resp = client.post(
+        "/diagnose/upload",
+        data={"answers_json": json.dumps(answers)},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["results"][0]["module"] == "market"
+
+
+def test_upload_unsupported_file_type_does_not_crash():
+    answers = {"answers": [{"module": "market", "facts": {}, "pains": ["市场在萎缩"]}]}
+    resp = client.post(
+        "/diagnose/upload",
+        data={"answers_json": json.dumps(answers)},
+        files=[("files", ("market_notes.txt", b"some text", "text/plain"))],
+    )
+    assert resp.status_code == 200
+    assert resp.json()["results"][0]["module"] == "market"
