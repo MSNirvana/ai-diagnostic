@@ -27,3 +27,18 @@ class DiagnosisRecord(SQLModel, table=True):
     answers_json: str
     results_json: str
     profile_json: str | None = None
+
+
+class QuestionnairePreference(SQLModel, table=True):
+    """问卷 A/B 偏好样本：一条 = 用户在两份候选问卷中的一次选择。
+
+    用于后期分析"用户偏好什么样的问卷"，迭代生成 prompt。
+    """
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    created_at: datetime = Field(default_factory=_now)
+    user_id: str | None = Field(default=None, index=True)  # 未登录用户为 None
+    industry: str = Field(index=True)   # 画像行业，便于按行业聚合
+    profile_json: str
+    option_a_json: str
+    option_b_json: str
+    chosen: str                          # "a" 或 "b"
