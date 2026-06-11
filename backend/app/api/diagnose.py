@@ -1,11 +1,18 @@
+import json
+
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.config import get_llm_client
 from app.llm.base import LLMClient
 from app.models.questionnaire import Questionnaire
 from app.models.result import ModuleResult
 from app.orchestrator.dispatcher import diagnose_all
 from app.data.uploads import parse_table
+from app.auth.jwt import get_optional_user
+from app.db.database import get_session
+from app.db.models import User, DiagnosisRecord
 
 router = APIRouter()
 
@@ -14,12 +21,35 @@ class DiagnoseResponse(BaseModel):
     results: list[ModuleResult]
 
 
+async def _save_history(
+    session: AsyncSession,
+    user: User | None,
+    questionnaire: Questionnaire,
+    results: list[ModuleResult],
+    profile_json: str | None = None,
+) -> None:
+    """已登录用户的诊断写入历史记录；匿名用户跳过。"""
+    if user is None:
+        return
+    record = DiagnosisRecord(
+        user_id=user.id,
+        answers_json=questionnaire.model_dump_json(),
+        results_json=json.dumps([r.model_dump() for r in results], ensure_ascii=False),
+        profile_json=profile_json,
+    )
+    session.add(record)
+    await session.commit()
+
+
 @router.post("/diagnose", response_model=DiagnoseResponse)
 async def diagnose(
     questionnaire: Questionnaire,
     llm: LLMClient = Depends(get_llm_client),
+    user: User | None = Depends(get_optional_user),
+    session: AsyncSession = Depends(get_session),
 ) -> DiagnoseResponse:
     results = await diagnose_all(questionnaire, llm)
+    await _save_history(session, user, questionnaire, results)
     return DiagnoseResponse(results=results)
 
 
@@ -28,6 +58,8 @@ async def diagnose_with_upload(
     answers_json: str = Form(...),
     files: list[UploadFile] = File(default=[]),
     llm: LLMClient = Depends(get_llm_client),
+    user: User | None = Depends(get_optional_user),
+    session: AsyncSession = Depends(get_session),
 ) -> DiagnoseResponse:
     """支持文件上传的诊断端点。
 
@@ -55,4 +87,5 @@ async def diagnose_with_upload(
         answer.uploaded_files.append(upload.filename)
 
     results = await diagnose_all(questionnaire, llm)
+    await _save_history(session, user, questionnaire, results)
     return DiagnoseResponse(results=results)
