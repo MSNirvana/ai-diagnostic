@@ -1,8 +1,9 @@
 import json
 from app.skills.base import Skill
+from app.skills.parsing import parse_json_object, to_evidence, to_drilldown
 from app.llm.base import LLMClient
 from app.models.questionnaire import ModuleAnswer
-from app.models.result import ModuleResult, Evidence, DrillDown
+from app.models.result import ModuleResult
 from app.data.external import fetch_industry_benchmark
 
 _SYSTEM = """你是顶级管理咨询的市场与客户诊断专家。
@@ -28,15 +29,15 @@ class MarketSkill(Skill):
             "benchmark": benchmark,
         }, ensure_ascii=False)
         raw = await llm.complete(system=_SYSTEM, prompt=prompt)
-        data = json.loads(raw)
+        data = parse_json_object(raw)
+        signal = data.get("signal", "yellow")
+        if signal not in ("red", "yellow", "green"):
+            signal = "yellow"
         return ModuleResult(
             module=self.module,
-            signal=data["signal"],
-            conclusion=data["conclusion"],
-            evidence=[Evidence(**e) for e in data["evidence"][:3]],
-            actions=data["actions"],
-            drilldown=DrillDown(
-                data_points=[Evidence(**e) for e in data["drilldown"]["data_points"]],
-                comparisons=data["drilldown"]["comparisons"],
-            ),
+            signal=signal,
+            conclusion=data.get("conclusion", "（模型未给出结论）"),
+            evidence=[to_evidence(e) for e in (data.get("evidence") or [])[:3]],
+            actions=data.get("actions") or ["（模型未给出建议）"],
+            drilldown=to_drilldown(data.get("drilldown")),
         )

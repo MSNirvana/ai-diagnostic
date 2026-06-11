@@ -3,8 +3,9 @@ from app.llm.base import LLMClient
 
 
 class OpenAIClient(LLMClient):
-    def __init__(self, api_key: str, model: str):
-        self._client = AsyncOpenAI(api_key=api_key)
+    def __init__(self, api_key: str, model: str, base_url: str | None = None):
+        # base_url 为空时走 OpenAI 官方地址；传入则走自定义网关
+        self._client = AsyncOpenAI(api_key=api_key, base_url=base_url or None)
         self._model = model
 
     async def complete(self, system: str, prompt: str) -> str:
