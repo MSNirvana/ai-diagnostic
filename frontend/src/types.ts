@@ -62,3 +62,7 @@ export interface GeneratedModule {
 export interface GeneratedQuestionnaire {
   modules: GeneratedModule[];
 }
+export interface ABQuestionnaire {
+  option_a: GeneratedQuestionnaire;
+  option_b: GeneratedQuestionnaire;
+}

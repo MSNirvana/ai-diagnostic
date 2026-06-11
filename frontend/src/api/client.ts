@@ -5,6 +5,8 @@ import type {
   DiagnosisDetail,
   BusinessProfile,
   GeneratedModule,
+  GeneratedQuestionnaire,
+  ABQuestionnaire,
 } from "../types";
 import { getToken } from "../auth/authStore";
 
@@ -99,4 +101,34 @@ export async function generateQuestionnaire(
   if (!resp.ok) throw new Error(`生成失败: ${resp.status}`);
   const body = await resp.json();
   return body.modules as GeneratedModule[];
+}
+
+export async function generateABQuestionnaire(
+  profile: BusinessProfile
+): Promise<ABQuestionnaire> {
+  const resp = await fetch(`${BASE}/questionnaire/generate-ab`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ profile }),
+  });
+  if (!resp.ok) throw new Error(`生成失败: ${resp.status}`);
+  return (await resp.json()) as ABQuestionnaire;
+}
+
+export async function recordPreference(
+  profile: BusinessProfile,
+  optionA: GeneratedQuestionnaire,
+  optionB: GeneratedQuestionnaire,
+  chosen: "a" | "b"
+): Promise<void> {
+  await fetch(`${BASE}/questionnaire/preference`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({
+      profile,
+      option_a: optionA,
+      option_b: optionB,
+      chosen,
+    }),
+  });
 }
