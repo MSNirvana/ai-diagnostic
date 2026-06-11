@@ -18,7 +18,7 @@ function DiagnoseView() {
 
   const handleSubmit = async (
     answers: ModuleAnswer[],
-    files: { moduleKey: string; file: File }[]
+    files: { moduleKey: string; fieldKey: string; file: File }[]
   ) => {
     setLoading(true);
     setError(null);

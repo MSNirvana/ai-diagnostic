@@ -28,12 +28,15 @@ export async function runDiagnose(answers: ModuleAnswer[]): Promise<ModuleResult
 
 export async function runDiagnoseWithFiles(
   answers: ModuleAnswer[],
-  files: { moduleKey: string; file: File }[]
+  files: { moduleKey: string; fieldKey: string; file: File }[]
 ): Promise<ModuleResult[]> {
   const form = new FormData();
   form.append("answers_json", JSON.stringify({ answers }));
-  for (const { moduleKey, file } of files) {
-    const renamed = new File([file], `${moduleKey}_${file.name}`, { type: file.type });
+  for (const { moduleKey, fieldKey, file } of files) {
+    // 三段命名 {moduleKey}_{fieldKey}_{原名}，后端据此把文件挂到对应字段
+    const renamed = new File([file], `${moduleKey}_${fieldKey}_${file.name}`, {
+      type: file.type,
+    });
     form.append("files", renamed);
   }
   // FormData 请求不要手动设 Content-Type，浏览器会自动带 boundary

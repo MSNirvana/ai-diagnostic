@@ -413,3 +413,55 @@
     top: 0;
   }
 }
+
+/* ---------- Field-level file upload ---------- */
+.field__file {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.field__file-label {
+  font-size: 0.8rem;
+  color: var(--gold);
+  cursor: pointer;
+  border: 1px dashed var(--gold);
+  border-radius: 6px;
+  padding: 4px 10px;
+  transition: background 0.15s;
+}
+
+.field__file-label:hover {
+  background: var(--gold-light);
+}
+
+.field__file .file-input {
+  display: none;
+}
+
+.field__file-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  background: var(--surface-subtle);
+  border-radius: 6px;
+  padding: 3px 8px;
+}
+
+.field__file-remove {
+  background: none;
+  border: none;
+  color: var(--ink-soft);
+  cursor: pointer;
+  font-size: 0.8rem;
+  line-height: 1;
+  padding: 0;
+}
+
+.field__file-remove:hover {
+  color: var(--signal-red);
+}

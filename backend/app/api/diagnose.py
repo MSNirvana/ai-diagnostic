@@ -73,7 +73,15 @@ async def diagnose_with_upload(
         if not upload.filename:
             continue
         content = await upload.read()
-        module_key = upload.filename.split("_", 1)[0]
+        # 文件名格式：三段 {moduleKey}_{fieldKey}_{原名}（字段级上传），
+        # 或两段 {moduleKey}_{原名}（旧的模块级，向后兼容）
+        parts = upload.filename.split("_", 2)
+        module_key = parts[0]
+        if len(parts) == 3:
+            field_key, original = parts[1], parts[2]
+            facts_key = f"{field_key}_file_{original}"
+        else:
+            facts_key = f"file_{upload.filename}"
         answer = answers_by_module.get(module_key)
         if answer is None:
             continue
@@ -81,9 +89,9 @@ async def diagnose_with_upload(
             parsed = parse_table(upload.filename, content)
         except ValueError:
             # 不支持的文件类型：记录文件名，跳过解析，不让整次诊断失败
-            answer.facts[f"file_{upload.filename}"] = "（无法解析的文件类型）"
+            answer.facts[facts_key] = "（无法解析的文件类型）"
             continue
-        answer.facts[f"file_{upload.filename}"] = str(parsed)
+        answer.facts[facts_key] = str(parsed)
         answer.uploaded_files.append(upload.filename)
 
     results = await diagnose_all(questionnaire, llm)

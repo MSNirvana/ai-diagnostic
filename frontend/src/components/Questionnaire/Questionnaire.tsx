@@ -9,7 +9,7 @@ import "./Questionnaire.css";
 interface QuestionnaireProps {
   onSubmit: (
     answers: ModuleAnswer[],
-    files: { moduleKey: string; file: File }[]
+    files: { moduleKey: string; fieldKey: string; file: File }[]
   ) => void;
 }
 
@@ -24,7 +24,9 @@ export function Questionnaire({ onSubmit }: QuestionnaireProps) {
   const [facts, setFacts] = useState<Record<string, Record<string, string>>>({});
   const [pains, setPains] = useState<Record<string, string[]>>({});
   const [freeText, setFreeText] = useState<Record<string, string>>({});
-  const [files, setFiles] = useState<{ moduleKey: string; file: File }[]>([]);
+  const [files, setFiles] = useState<
+    { moduleKey: string; fieldKey: string; file: File }[]
+  >([]);
 
   const moduleFilled = (key: string): boolean => {
     const f = facts[key] ?? {};
@@ -76,9 +78,13 @@ export function Questionnaire({ onSubmit }: QuestionnaireProps) {
     });
   };
 
-  const addFiles = (modKey: string, list: FileList | null) => {
+  const addFiles = (modKey: string, fieldKey: string, list: FileList | null) => {
     if (!list) return;
-    const added = Array.from(list).map((file) => ({ moduleKey: modKey, file }));
+    const added = Array.from(list).map((file) => ({
+      moduleKey: modKey,
+      fieldKey,
+      file,
+    }));
     setFiles((prev) => [...prev, ...added]);
   };
 
@@ -118,15 +124,15 @@ export function Questionnaire({ onSubmit }: QuestionnaireProps) {
 
   const module = activeModules[current];
   const isLast = current === activeModules.length - 1;
-  const showFiles = module.fields.some((f) => f.accept_file);
 
   const goNext = () =>
     setCurrent((c) => Math.min(c + 1, activeModules.length - 1));
   const goPrev = () => setCurrent((c) => Math.max(c - 1, 0));
 
-  const moduleFiles = files
-    .map((entry, index) => ({ ...entry, index }))
-    .filter((entry) => entry.moduleKey === module.key);
+  const fieldFiles = (modKey: string, fieldKey: string) =>
+    files
+      .map((entry, index) => ({ ...entry, index }))
+      .filter((e) => e.moduleKey === modKey && e.fieldKey === fieldKey);
 
   return (
     <div className="questionnaire">
@@ -157,6 +163,40 @@ export function Questionnaire({ onSubmit }: QuestionnaireProps) {
                 onChange={(e) => setFact(module.key, field.key, e.target.value)}
               />
               {field.hint && <span className="field__hint">{field.hint}</span>}
+              {field.accept_file && (
+                <div className="field__file">
+                  <label
+                    className="field__file-label"
+                    htmlFor={`${module.key}-${field.key}-file`}
+                  >
+                    + 附数据文件（CSV/Excel）
+                  </label>
+                  <input
+                    id={`${module.key}-${field.key}-file`}
+                    className="file-input"
+                    type="file"
+                    accept=".csv,.xlsx,.xls"
+                    multiple
+                    onChange={(e) => {
+                      addFiles(module.key, field.key, e.target.files);
+                      e.target.value = "";
+                    }}
+                  />
+                  {fieldFiles(module.key, field.key).map((entry) => (
+                    <span className="field__file-item" key={entry.index}>
+                      {entry.file.name}
+                      <button
+                        type="button"
+                        className="field__file-remove"
+                        aria-label={`删除 ${entry.file.name}`}
+                        onClick={() => removeFile(entry.index)}
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -194,45 +234,6 @@ export function Questionnaire({ onSubmit }: QuestionnaireProps) {
             }
           />
         </div>
-
-        {showFiles && (
-          <div className="file-section">
-            <label className="file-drop" htmlFor={`${module.key}-files`}>
-              <span className="file-drop__title">上传相关数据文件</span>
-              <span className="file-drop__hint">
-                支持 CSV / Excel（.csv .xlsx .xls），可多选
-              </span>
-              <input
-                id={`${module.key}-files`}
-                className="file-input"
-                type="file"
-                accept=".csv,.xlsx,.xls"
-                multiple
-                onChange={(e) => {
-                  addFiles(module.key, e.target.files);
-                  e.target.value = "";
-                }}
-              />
-            </label>
-            {moduleFiles.length > 0 && (
-              <ul className="file-list">
-                {moduleFiles.map((entry) => (
-                  <li className="file-item" key={entry.index}>
-                    <span className="file-item__name">{entry.file.name}</span>
-                    <button
-                      type="button"
-                      className="file-item__remove"
-                      aria-label={`删除 ${entry.file.name}`}
-                      onClick={() => removeFile(entry.index)}
-                    >
-                      ✕
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
 
         <nav className="wizard-nav">
           <div className="wizard-nav__left">
