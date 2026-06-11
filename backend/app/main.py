@@ -1,8 +1,18 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.diagnose import router as diagnose_router
+from app.db.database import init_db
 
-app = FastAPI(title="AI Diagnostic")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await init_db()
+    yield
+
+
+app = FastAPI(title="AI Diagnostic", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
