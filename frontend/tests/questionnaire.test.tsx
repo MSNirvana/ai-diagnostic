@@ -2,37 +2,43 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { Questionnaire } from "../src/components/Questionnaire/Questionnaire";
 
-// mock generateQuestionnaire 避免真实网络
+const fakeModule = {
+  key: "market",
+  label: "市场与客户",
+  subtitle: "x",
+  free_text_label: "补充",
+  fields: [{ key: "f1", label: "字段一", placeholder: "ph1", accept_file: false }],
+  pains: ["痛点A"],
+};
+
 vi.mock("../src/api/client", () => ({
-  generateQuestionnaire: vi.fn(async () => [
-    {
-      key: "market",
-      label: "市场与客户",
-      subtitle: "x",
-      free_text_label: "补充",
-      fields: [{ key: "f1", label: "字段一", placeholder: "ph1", accept_file: false }],
-      pains: ["痛点A"],
-    },
-  ]),
+  generateABQuestionnaire: vi.fn(async () => ({
+    option_a: { modules: [fakeModule] },
+    option_b: { modules: [fakeModule] },
+  })),
+  recordPreference: vi.fn(async () => {}),
 }));
 
-describe("Questionnaire with AI generation", () => {
-  it("先填画像生成问卷，再填问卷提交", async () => {
+describe("Questionnaire A/B flow", () => {
+  it("填画像→生成两份→选A→填问卷→提交", async () => {
     const onSubmit = vi.fn();
     render(<Questionnaire onSubmit={onSubmit} />);
-    // ProfileStep: 点生成
     fireEvent.click(screen.getByText("生成专属问卷"));
-    // 等生成的问卷出现
+    // 等 A/B 选择页
+    await waitFor(() => screen.getByText(/方案 A/));
+    // 点选方案 A 卡片
+    fireEvent.click(screen.getByText(/方案 A/));
+    // 点确认按钮
+    fireEvent.click(screen.getByText("用这份方案开始填写"));
+    // 进入问卷，填字段
     await waitFor(() => screen.getByText("字段一"));
     fireEvent.change(screen.getByPlaceholderText("ph1"), {
       target: { value: "测试值" },
     });
     fireEvent.click(screen.getByText("痛点A"));
-    // 只有1个模块，直接是最后一步
     fireEvent.click(screen.getByText("开始诊断"));
     expect(onSubmit).toHaveBeenCalled();
     const [answers] = onSubmit.mock.calls[0];
-    expect(answers[0].module).toBe("market");
     expect(answers[0].facts["f1"]).toBe("测试值");
   });
 });

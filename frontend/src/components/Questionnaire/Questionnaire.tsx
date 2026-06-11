@@ -1,9 +1,15 @@
 import { useMemo, useState } from "react";
 import { MODULES_AS_GENERATED } from "./modules";
-import type { ModuleAnswer, BusinessProfile, GeneratedModule } from "../../types";
-import { generateQuestionnaire } from "../../api/client";
+import type {
+  ModuleAnswer,
+  BusinessProfile,
+  GeneratedModule,
+  ABQuestionnaire,
+} from "../../types";
+import { generateABQuestionnaire, recordPreference } from "../../api/client";
 import { StepIndicator } from "./StepIndicator";
 import { ProfileStep } from "./ProfileStep";
+import { ABChoicePage } from "./ABChoicePage";
 import "./Questionnaire.css";
 
 interface QuestionnaireProps {
@@ -13,12 +19,14 @@ interface QuestionnaireProps {
   ) => void;
 }
 
-type Mode = "profile" | "generating" | "ready";
+type Mode = "profile" | "generating" | "ab_choice" | "ready";
 
 export function Questionnaire({ onSubmit }: QuestionnaireProps) {
   const [mode, setMode] = useState<Mode>("profile");
   const [activeModules, setActiveModules] = useState<GeneratedModule[]>([]);
   const [genError, setGenError] = useState<string | null>(null);
+  const [abOptions, setAbOptions] = useState<ABQuestionnaire | null>(null);
+  const [storedProfile, setStoredProfile] = useState<BusinessProfile | null>(null);
 
   const [current, setCurrent] = useState(0);
   const [facts, setFacts] = useState<Record<string, Record<string, string>>>({});
@@ -47,15 +55,29 @@ export function Questionnaire({ onSubmit }: QuestionnaireProps) {
     setMode("generating");
     setGenError(null);
     try {
-      const modules = await generateQuestionnaire(profile);
-      setActiveModules(modules);
-      setMode("ready");
-      setCurrent(0);
+      const ab = await generateABQuestionnaire(profile);
+      setAbOptions(ab);
+      setStoredProfile(profile);
+      setMode("ab_choice");
     } catch {
       // 降级：使用通用固定问卷
       setActiveModules(MODULES_AS_GENERATED);
       setMode("ready");
       setCurrent(0);
+    }
+  };
+
+  const handleChoose = (chosen: "a" | "b", modules: GeneratedModule[]) => {
+    setActiveModules(modules);
+    setMode("ready");
+    setCurrent(0);
+    if (abOptions && storedProfile) {
+      recordPreference(
+        storedProfile,
+        abOptions.option_a,
+        abOptions.option_b,
+        chosen
+      ).catch(() => {});
     }
   };
 
@@ -118,6 +140,16 @@ export function Questionnaire({ onSubmit }: QuestionnaireProps) {
         onGenerate={handleGenerate}
         generating={mode === "generating"}
         error={genError}
+      />
+    );
+  }
+
+  if (mode === "ab_choice" && abOptions) {
+    return (
+      <ABChoicePage
+        optionA={abOptions.option_a}
+        optionB={abOptions.option_b}
+        onChoose={handleChoose}
       />
     );
   }

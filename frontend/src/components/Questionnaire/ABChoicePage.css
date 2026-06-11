@@ -1,0 +1,167 @@
+/* ABChoicePage — 问卷 A/B 选择，高端咨询风 */
+
+.ab-choice {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 48px 24px 64px;
+}
+
+.ab-choice__head {
+  text-align: center;
+  margin-bottom: 44px;
+}
+
+.ab-choice__title {
+  margin: 0 0 14px;
+  font-family: var(--font-serif);
+  font-size: 2.1rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.ab-choice__subtitle {
+  margin: 0 auto;
+  max-width: 560px;
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--ink-soft);
+}
+
+.ab-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 28px;
+  align-items: start;
+}
+
+.ab-card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  padding: 28px 26px;
+  background: var(--surface);
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease,
+    transform 0.18s ease, background 0.18s ease;
+}
+
+.ab-card:hover {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-lg);
+}
+
+.ab-card--selected {
+  border-color: var(--accent);
+  border-width: 1.5px;
+  box-shadow: var(--shadow-lg);
+  background: var(--surface-subtle);
+  transform: translateY(-2px);
+}
+
+.ab-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 22px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.ab-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: #fff;
+}
+
+.ab-badge--a {
+  background: var(--accent);
+}
+
+.ab-badge--b {
+  background: var(--gold);
+}
+
+.ab-card__count {
+  font-family: var(--font-sans);
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.ab-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.ab-module__title {
+  margin: 0 0 10px;
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.ab-module__fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ab-field-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 11px;
+  border-radius: 6px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--line);
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
+.ab-card--selected .ab-field-tag {
+  background: var(--surface);
+}
+
+.ab-field-tag--more {
+  background: var(--gold-light);
+  border-color: transparent;
+  color: var(--gold);
+  font-weight: 600;
+}
+
+.ab-choice__action {
+  display: flex;
+  justify-content: center;
+  margin-top: 44px;
+}
+
+.ab-confirm {
+  min-width: 260px;
+}
+
+@media (max-width: 760px) {
+  .ab-choice {
+    padding: 32px 16px 48px;
+  }
+  .ab-choice__title {
+    font-size: 1.7rem;
+  }
+  .ab-grid {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+}
