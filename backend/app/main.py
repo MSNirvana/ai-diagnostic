@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.diagnose import router as diagnose_router
 from app.api.auth import router as auth_router
 from app.api.history import router as history_router
+from app.api.questionnaire import router as questionnaire_router
 from app.db.database import init_db
 
 
@@ -31,6 +32,7 @@ app.add_middleware(
 app.include_router(diagnose_router)
 app.include_router(auth_router)
 app.include_router(history_router)
+app.include_router(questionnaire_router)
 
 
 @app.get("/health")
