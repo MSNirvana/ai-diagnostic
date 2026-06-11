@@ -4,6 +4,7 @@ import { Questionnaire } from "./components/Questionnaire/Questionnaire";
 import { Dashboard } from "./components/Dashboard/Dashboard";
 import { LoginPage } from "./components/Auth/LoginPage";
 import { ProtectedRoute } from "./components/Auth/ProtectedRoute";
+import { HistoryPage } from "./components/History/HistoryPage";
 import { useAuth } from "./auth/useAuth";
 import { runDiagnose, runDiagnoseWithFiles } from "./api/client";
 import type { ModuleResult, ModuleAnswer } from "./types";
@@ -122,6 +123,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <DiagnoseView />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/history"
+        element={
+          <ProtectedRoute>
+            <HistoryPage />
           </ProtectedRoute>
         }
       />

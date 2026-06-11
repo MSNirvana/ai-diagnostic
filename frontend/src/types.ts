@@ -21,3 +21,17 @@ export interface ModuleAnswer {
   pains: string[];
   uploaded_files?: string[];
 }
+
+export interface DiagnosisSummary {
+  id: string;
+  created_at: string;
+  module_count: number;
+}
+
+export interface DiagnosisDetail {
+  id: string;
+  created_at: string;
+  answers: { answers: ModuleAnswer[] };
+  results: ModuleResult[];
+  profile: Record<string, string> | null;
+}

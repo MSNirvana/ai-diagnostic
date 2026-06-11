@@ -1,4 +1,9 @@
-import type { ModuleAnswer, ModuleResult } from "../types";
+import type {
+  ModuleAnswer,
+  ModuleResult,
+  DiagnosisSummary,
+  DiagnosisDetail,
+} from "../types";
 import { getToken } from "../auth/authStore";
 
 const BASE = import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8000";
@@ -64,4 +69,16 @@ export async function login(email: string, password: string): Promise<string> {
     throw new Error(detail.detail || `登录失败: ${resp.status}`);
   }
   return (await resp.json()).access_token as string;
+}
+
+export async function fetchHistory(): Promise<DiagnosisSummary[]> {
+  const resp = await fetch(`${BASE}/history/`, { headers: { ...authHeaders() } });
+  if (!resp.ok) throw new Error(`获取历史失败: ${resp.status}`);
+  return (await resp.json()) as DiagnosisSummary[];
+}
+
+export async function fetchRecord(id: string): Promise<DiagnosisDetail> {
+  const resp = await fetch(`${BASE}/history/${id}`, { headers: { ...authHeaders() } });
+  if (!resp.ok) throw new Error(`获取记录失败: ${resp.status}`);
+  return (await resp.json()) as DiagnosisDetail;
 }
