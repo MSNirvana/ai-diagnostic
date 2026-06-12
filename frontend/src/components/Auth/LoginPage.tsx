@@ -34,7 +34,7 @@ export function LoginPage() {
           ? await apiLogin(email, password)
           : await apiRegister(email, password);
       login(token);
-      navigate("/");
+      navigate("/projects");
     } catch (err) {
       setError(err instanceof Error ? err.message : "操作失败");
     } finally {

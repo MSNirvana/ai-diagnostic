@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { Questionnaire } from "../src/components/Questionnaire/Questionnaire";
 
 const fakeModule = {
@@ -61,7 +62,11 @@ vi.mock("../src/utils/draft", () => ({
 describe("Questionnaire conversation flow", () => {
   it("对话→确认问题地图→生成→选A→填问卷→提交", async () => {
     const onSubmit = vi.fn();
-    render(<Questionnaire onSubmit={onSubmit} />);
+    render(
+      <MemoryRouter>
+        <Questionnaire onSubmit={onSubmit} />
+      </MemoryRouter>
+    );
     // 等 startSession 完成（sessionId 就绪）后再交互
     const input = screen.getByPlaceholderText(/描述|问题|输入|补充/);
     fireEvent.change(input, { target: { value: "获客成本越来越高" } });

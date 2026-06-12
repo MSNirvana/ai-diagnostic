@@ -13,6 +13,8 @@ import type {
   ProblemSummary,
   SessionSummary,
   SessionDetail,
+  ProjectSummary,
+  ProjectDetail,
 } from "../types";
 import { getToken } from "../auth/authStore";
 
@@ -25,12 +27,13 @@ function authHeaders(): Record<string, string> {
 
 export async function runDiagnose(
   answers: ModuleAnswer[],
-  sessionId?: string
+  sessionId?: string,
+  projectId?: string
 ): Promise<DiagnoseResult> {
   const resp = await fetch(`${BASE}/diagnose`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify({ answers, session_id: sessionId }),
+    body: JSON.stringify({ answers, session_id: sessionId, project_id: projectId }),
   });
   if (!resp.ok) throw new Error(`diagnose failed: ${resp.status}`);
   const body = await resp.json();
@@ -40,10 +43,14 @@ export async function runDiagnose(
 export async function runDiagnoseWithFiles(
   answers: ModuleAnswer[],
   files: { moduleKey: string; fieldKey: string; file: File }[],
-  sessionId?: string
+  sessionId?: string,
+  projectId?: string
 ): Promise<DiagnoseResult> {
   const form = new FormData();
-  form.append("answers_json", JSON.stringify({ answers, session_id: sessionId }));
+  form.append(
+    "answers_json",
+    JSON.stringify({ answers, session_id: sessionId, project_id: projectId })
+  );
   for (const { moduleKey, fieldKey, file } of files) {
     // 三段命名 {moduleKey}_{fieldKey}_{原名}，后端据此把文件挂到对应字段
     const renamed = new File([file], `${moduleKey}_${fieldKey}_${file.name}`, {
@@ -188,10 +195,11 @@ export async function recordPreference(
   });
 }
 
-export async function startSession(): Promise<string> {
+export async function startSession(projectId?: string): Promise<string> {
   const resp = await fetch(`${BASE}/session/start`, {
     method: "POST",
-    headers: { ...authHeaders() },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ project_id: projectId ?? null }),
   });
   if (!resp.ok) throw new Error(`创建会话失败: ${resp.status}`);
   return (await resp.json()).session_id as string;
@@ -220,4 +228,39 @@ export async function getSessionDetail(id: string): Promise<SessionDetail> {
   const resp = await fetch(`${BASE}/session/${id}`, { headers: { ...authHeaders() } });
   if (!resp.ok) throw new Error(`获取会话失败: ${resp.status}`);
   return (await resp.json()) as SessionDetail;
+}
+
+export async function createProject(name: string): Promise<ProjectSummary> {
+  const resp = await fetch(`${BASE}/project/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ name }),
+  });
+  if (!resp.ok) throw new Error(`创建项目失败: ${resp.status}`);
+  return (await resp.json()) as ProjectSummary;
+}
+
+export async function listProjects(): Promise<ProjectSummary[]> {
+  const resp = await fetch(`${BASE}/project/`, { headers: { ...authHeaders() } });
+  if (!resp.ok) throw new Error(`获取项目列表失败: ${resp.status}`);
+  return (await resp.json()) as ProjectSummary[];
+}
+
+export async function getProject(id: string): Promise<ProjectDetail> {
+  const resp = await fetch(`${BASE}/project/${id}`, { headers: { ...authHeaders() } });
+  if (!resp.ok) throw new Error(`获取项目失败: ${resp.status}`);
+  return (await resp.json()) as ProjectDetail;
+}
+
+export async function patchProject(
+  id: string,
+  body: { name?: string; status?: string }
+): Promise<ProjectSummary> {
+  const resp = await fetch(`${BASE}/project/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) throw new Error(`更新项目失败: ${resp.status}`);
+  return (await resp.json()) as ProjectSummary;
 }

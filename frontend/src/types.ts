@@ -138,3 +138,36 @@ export interface SessionDetail {
   problem_map: ProblemMap | null;
   diagnosis_record_id: string | null;
 }
+
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
+  status: string;
+  memory_summary: string;
+}
+
+export interface ProjectSessionBrief {
+  id: string;
+  title: string;
+  status: string;
+  updated_at: string;
+}
+
+export interface ProjectRecordBrief {
+  id: string;
+  created_at: string;
+  module_count: number;
+}
+
+export interface ProjectDetail {
+  id: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
+  status: string;
+  memory_summary: string;
+  sessions: ProjectSessionBrief[];
+  records: ProjectRecordBrief[];
+}

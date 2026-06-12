@@ -1,16 +1,22 @@
 import { useState } from "react";
-import { Routes, Route, Link, useNavigate } from "react-router-dom";
+import { Routes, Route, Link, useNavigate, useLocation } from "react-router-dom";
 import { Questionnaire } from "./components/Questionnaire/Questionnaire";
 import { Dashboard } from "./components/Dashboard/Dashboard";
 import { LoginPage } from "./components/Auth/LoginPage";
 import { ProtectedRoute } from "./components/Auth/ProtectedRoute";
 import { HistoryPage } from "./components/History/HistoryPage";
+import { ProjectListPage } from "./components/Project/ProjectListPage";
+import { ProjectDetailPage } from "./components/Project/ProjectDetailPage";
 import { useAuth } from "./auth/useAuth";
 import { runDiagnose, runDiagnoseWithFiles } from "./api/client";
 import type { DiagnoseResult, ModuleAnswer } from "./types";
 
 function DiagnoseView() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const navState = (location.state as { projectId?: string; resumeSessionId?: string }) ?? {};
+  const projectId = navState.projectId;
+  const resumeSessionId = navState.resumeSessionId;
   const { logout } = useAuth();
   const [diagnoseResult, setDiagnoseResult] = useState<DiagnoseResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -19,15 +25,16 @@ function DiagnoseView() {
   const handleSubmit = async (
     answers: ModuleAnswer[],
     files: { moduleKey: string; fieldKey: string; file: File }[],
-    sessionId?: string
+    sessionId?: string,
+    pid?: string
   ) => {
     setLoading(true);
     setError(null);
     try {
       // 有文件走 multipart 上传端点，无文件走更轻的 JSON 端点
       const data = files.length
-        ? await runDiagnoseWithFiles(answers, files, sessionId)
-        : await runDiagnose(answers, sessionId);
+        ? await runDiagnoseWithFiles(answers, files, sessionId, pid)
+        : await runDiagnose(answers, sessionId, pid);
       setDiagnoseResult(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : "诊断失败");
@@ -113,7 +120,13 @@ function DiagnoseView() {
           />
         </>
       ) : (
-        !loading && <Questionnaire onSubmit={handleSubmit} />
+        !loading && (
+          <Questionnaire
+            onSubmit={handleSubmit}
+            projectId={projectId}
+            resumeSessionId={resumeSessionId}
+          />
+        )
       )}
     </div>
   );
@@ -123,6 +136,22 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route
+        path="/projects"
+        element={
+          <ProtectedRoute>
+            <ProjectListPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/projects/:id"
+        element={
+          <ProtectedRoute>
+            <ProjectDetailPage />
+          </ProtectedRoute>
+        }
+      />
       <Route
         path="/"
         element={

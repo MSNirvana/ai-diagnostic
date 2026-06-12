@@ -1,0 +1,73 @@
+.proj-logout-btn {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
+  padding: 8px 16px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.proj-create-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.proj-create-input {
+  flex: 1;
+  max-width: 360px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-size: 0.95rem;
+}
+.proj-create-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.proj-cancel-btn {
+  background: transparent;
+  border: none;
+  color: var(--ink-soft);
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.proj-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+.proj-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 20px;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.proj-card:hover {
+  border-color: var(--accent);
+  box-shadow: var(--shadow);
+}
+.proj-card__name {
+  font-family: var(--font-serif);
+  font-size: 1.15rem;
+  color: var(--ink);
+}
+.proj-card__meta {
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+.proj-card__memory {
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  margin-top: 4px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+  line-height: 1.5;
+}

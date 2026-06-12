@@ -21,13 +21,16 @@ interface QuestionnaireProps {
   onSubmit: (
     answers: ModuleAnswer[],
     files: { moduleKey: string; fieldKey: string; file: File }[],
-    sessionId?: string
+    sessionId?: string,
+    projectId?: string
   ) => void;
+  projectId?: string;          // 当前所属项目（从项目页进入）
+  resumeSessionId?: string;    // 续聊：要恢复的会话 id（从项目/历史页进入）
 }
 
 type Mode = "chatting" | "generating" | "ab_choice" | "ready";
 
-export function Questionnaire({ onSubmit }: QuestionnaireProps) {
+export function Questionnaire({ onSubmit, projectId, resumeSessionId: resumeFromNav }: QuestionnaireProps) {
   const { token } = useAuth();
   const userId = token ? token.slice(0, 16) : "anon";
 
@@ -50,44 +53,32 @@ export function Questionnaire({ onSubmit }: QuestionnaireProps) {
   const [pendingDraft, setPendingDraft] = useState<DraftState | null>(null);
   const [resumeSessionId, setResumeSessionId] = useState<string | null>(null);
   const [resumeMessages, setResumeMessages] = useState<ChatMessage[] | null>(null);
+  // 续聊数据是否就绪：续聊场景下，加载完会话详情前不渲染 ChatStep（避免误建新会话）
+  const [resumeReady, setResumeReady] = useState<boolean>(!resumeFromNav);
 
-  // 进入页面时一次性读取“继续这个对话”的 session id（来自历史页）
-  const resumeIdRef = useRef<string | null>(null);
-  if (resumeIdRef.current === null) {
-    try {
-      resumeIdRef.current = localStorage.getItem("resume_session_id") ?? "";
-    } catch {
-      resumeIdRef.current = "";
-    }
-  }
-
-  // 从历史页“继续这个对话”跳转过来：读取 session 并恢复对话
+  // 续聊：从项目/历史页带 resumeSessionId 进来，加载会话详情后再渲染对话
   useEffect(() => {
-    const sid = resumeIdRef.current;
-    if (!sid) return;
-    try {
-      localStorage.removeItem("resume_session_id");
-    } catch {
-      // 忽略
-    }
+    if (!resumeFromNav) return;
     setPendingDraft(null);
-    getSessionDetail(sid)
+    getSessionDetail(resumeFromNav)
       .then((detail) => {
         setResumeSessionId(detail.id);
         setResumeMessages(detail.messages);
         setStoredSessionId(detail.id);
         setChatMessages(detail.messages);
         setMode("chatting");
+        setResumeReady(true);
       })
       .catch(() => {
-        // 拉取失败则按普通新会话处理
+        // 拉取失败则按新会话处理
+        setResumeReady(true);
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 挂载时读草稿（不自动恢复，让用户选）
+  // 挂载时读草稿（续聊场景不弹草稿）
   useEffect(() => {
-    if (resumeIdRef.current) return; // 续聊优先，不弹草稿
+    if (resumeFromNav) return;
     const draft = loadDraft(userId);
     if (draft && (draft.messages.length > 0 || draft.activeModules.length > 0)) {
       setPendingDraft(draft);
@@ -263,7 +254,7 @@ export function Questionnaire({ onSubmit }: QuestionnaireProps) {
     }
     // 提交即视为完成，清掉草稿
     clearDraft(userId);
-    onSubmit(answers, files, storedSessionId ?? undefined);
+    onSubmit(answers, files, storedSessionId ?? undefined, projectId);
   };
 
   const resumeBanner = pendingDraft && (
@@ -290,18 +281,28 @@ export function Questionnaire({ onSubmit }: QuestionnaireProps) {
   );
 
   if (mode === "chatting") {
+    // 续聊场景：会话详情未加载完前，不渲染 ChatStep（避免它误建新会话）
+    if (!resumeReady) {
+      return (
+        <div className="questionnaire">
+          <div className="wizard-card">
+            <p style={{ color: "var(--ink-soft)" }}>正在载入对话…</p>
+          </div>
+        </div>
+      );
+    }
+    const sid = resumeSessionId ?? storedSessionId ?? undefined;
+    const msgs =
+      resumeMessages ?? (chatMessages.length > 0 ? chatMessages : undefined);
     return (
       <>
         {resumeBanner}
         <ChatStep
+          key={sid ?? "new"}
           onComplete={handleChatComplete}
-          resumeSessionId={
-            resumeSessionId ?? storedSessionId ?? undefined
-          }
-          resumeMessages={
-            resumeMessages ??
-            (chatMessages.length > 0 ? chatMessages : undefined)
-          }
+          resumeSessionId={sid}
+          resumeMessages={msgs}
+          projectId={projectId}
         />
       </>
     );

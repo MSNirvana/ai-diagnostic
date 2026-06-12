@@ -56,8 +56,7 @@ export function HistoryPage() {
   };
 
   const continueSession = (id: string) => {
-    localStorage.setItem("resume_session_id", id);
-    navigate("/");
+    navigate("/", { state: { resumeSessionId: id } });
   };
 
   const fmt = (iso: string) => new Date(iso).toLocaleString("zh-CN");

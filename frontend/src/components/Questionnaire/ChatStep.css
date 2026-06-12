@@ -238,3 +238,34 @@
   align-self: stretch;
   min-width: 88px;
 }
+
+/* 左右两栏布局：左问题地图，右对话 */
+.chat-step--split {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.chat-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.confirm-banner {
+  background: var(--gold-light);
+  border: 1px solid var(--gold);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  margin-top: 12px;
+}
+.confirm-banner__hint {
+  margin: 0 0 12px;
+  font-size: 0.9rem;
+  color: var(--ink);
+  line-height: 1.6;
+}
+@media (max-width: 860px) {
+  .chat-step--split { flex-direction: column; }
+}
