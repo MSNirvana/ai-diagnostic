@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_llm_client
 from app.llm.base import LLMClient
 from app.models.profile import BusinessProfile, GeneratedQuestionnaire
+from app.models.conversation import ProblemSummary
 from app.skills.parsing import parse_json_object
 from app.auth.jwt import get_optional_user
 from app.db.database import get_session
@@ -51,7 +52,21 @@ _SYSTEM = """你是顶级管理咨询的企业诊断问卷设计专家。
 
 
 class GenerateRequest(BaseModel):
-    profile: BusinessProfile
+    # profile（静态画像）和 summary（对话摘要）二选一，summary 优先
+    profile: BusinessProfile | None = None
+    summary: ProblemSummary | None = None
+
+
+def _build_input(body: "GenerateRequest") -> str:
+    """把 profile 或 summary 转成喂给生成 prompt 的 JSON 文本。
+
+    summary 信息更丰富（含核心问题/背景/猜测原因），优先使用。
+    """
+    if body.summary is not None:
+        return json.dumps(body.summary.model_dump(), ensure_ascii=False)
+    if body.profile is not None:
+        return json.dumps(body.profile.model_dump(), ensure_ascii=False)
+    return ""
 
 
 # A/B 两种生成偏置：在基础 prompt 上追加不同侧重，让两份候选有明显差异
@@ -76,7 +91,7 @@ async def generate_questionnaire(
     body: GenerateRequest,
     llm: LLMClient = Depends(get_llm_client),
 ) -> GeneratedQuestionnaire:
-    prompt = json.dumps(body.profile.model_dump(), ensure_ascii=False)
+    prompt = _build_input(body)
     raw = await llm.complete(system=_SYSTEM, prompt=prompt)
     try:
         data = parse_json_object(raw)
@@ -100,7 +115,7 @@ async def generate_ab(
 
     任一份解析失败时，用成功的那份兜底两侧；两份都失败返回 422。
     """
-    prompt = json.dumps(body.profile.model_dump(), ensure_ascii=False)
+    prompt = _build_input(body)
     raw_a, raw_b = await asyncio.gather(
         llm.complete(system=_SYSTEM_A, prompt=prompt),
         llm.complete(system=_SYSTEM_B, prompt=prompt),
