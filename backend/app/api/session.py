@@ -17,7 +17,7 @@ from app.api.conversation import run_chat_turn
 from app.auth.jwt import get_current_user, get_optional_user
 from app.config import get_llm_client
 from app.db.database import get_session
-from app.db.models import User, DiagnosisSession
+from app.db.models import User, DiagnosisSession, Project
 from app.llm.base import LLMClient
 from app.models.conversation import ChatMessage, ChatResponse
 
@@ -25,6 +25,10 @@ router = APIRouter(prefix="/session")
 
 
 # ── 请求/响应模型 ───────────────────────────────────────────
+
+class StartRequest(BaseModel):
+    project_id: str | None = None
+
 
 class StartResponse(BaseModel):
     session_id: str
@@ -58,10 +62,15 @@ class SessionSummary(BaseModel):
 
 @router.post("/start", response_model=StartResponse, status_code=201)
 async def start_session(
+    body: StartRequest | None = None,
     user: User | None = Depends(get_optional_user),
     session: AsyncSession = Depends(get_session),
 ) -> StartResponse:
-    s = DiagnosisSession(user_id=user.id if user else None)
+    project_id = body.project_id if body else None
+    s = DiagnosisSession(
+        user_id=user.id if user else None,
+        project_id=project_id,
+    )
     session.add(s)
     await session.commit()
     await session.refresh(s)
@@ -80,11 +89,18 @@ async def session_chat(
     if s is None:
         raise HTTPException(status_code=404, detail="会话不存在")
 
+    # 读所属项目的长期记忆，作为对话背景注入
+    project_memory = ""
+    if s.project_id:
+        proj = await session.get(Project, s.project_id)
+        if proj:
+            project_memory = proj.memory_summary
+
     # 读历史，追加用户这轮发言
     history = [ChatMessage.model_validate(m) for m in json.loads(s.messages_json)]
     history.append(ChatMessage(role="user", content=body.message))
 
-    resp = await run_chat_turn(history, llm, session)
+    resp = await run_chat_turn(history, llm, session, project_memory=project_memory)
 
     # AI 回复入历史
     history.append(ChatMessage(role="assistant", content=resp.message))
@@ -96,14 +112,37 @@ async def session_chat(
         s.problem_map_json = resp.problem_map.model_dump_json()
         if resp.problem_map.core_problem:
             s.title = resp.problem_map.core_problem[:60]
-    if resp.phase == "confirm":
-        s.status = "confirmed"
-    elif resp.phase == "done":
+    if resp.phase in ("confirm", "done"):
         s.status = "confirmed"
     session.add(s)
-    await session.commit()
 
+    # 对话确认后，把核心问题并入所属项目的长期记忆
+    if resp.phase == "done" and resp.problem_map and s.project_id:
+        await _append_project_memory(session, s.project_id, resp.problem_map)
+
+    await session.commit()
     return resp
+
+
+async def _append_project_memory(
+    session: AsyncSession, project_id: str, problem_map
+) -> None:
+    """把这次诊断的核心问题追加进项目长期记忆（保留最近若干条）。"""
+    proj = await session.get(Project, project_id)
+    if proj is None:
+        return
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    entry = f"[{stamp}] 核心问题：{problem_map.core_problem}"
+    if problem_map.goal:
+        entry += f"；目标：{problem_map.goal}"
+    lines = [ln for ln in proj.memory_summary.split("\n") if ln.strip()]
+    lines.append(entry)
+    # 只保留最近 10 条，避免记忆无限膨胀（AI 压缩留待后续）
+    proj.memory_summary = "\n".join(lines[-10:])
+    proj.updated_at = datetime.now(timezone.utc)
+    if problem_map.core_problem:
+        proj.profile_json = problem_map.model_dump_json()
+    session.add(proj)
 
 
 @router.get("/", response_model=list[SessionSummary])

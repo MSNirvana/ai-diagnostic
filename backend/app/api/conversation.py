@@ -37,13 +37,23 @@ async def run_chat_turn(
     messages: list,
     llm: LLMClient,
     session: AsyncSession | None,
+    project_memory: str = "",
 ) -> ChatResponse:
     """跑一轮对话：读 prompt（DB 优先）→ 调 LLM → 解析 phase/problem_map。
 
     供无状态 /conversation/chat 和有状态 /session/{id}/chat 共用。
+    project_memory：所属项目的长期记忆，作为背景注入，让持续诊断能延续历史。
     """
     ver = await get_active_skill_version(session, "conversation_intake")
     system = ver.system_prompt if ver else CONVERSATION_INTAKE
+
+    # 注入项目长期记忆，让"再次诊断"能基于这家企业的历史，而非从零开始
+    if project_memory.strip():
+        system = (
+            system
+            + "\n\n【这家企业的历史诊断记忆（供参考，延续上下文）】\n"
+            + project_memory
+        )
 
     prompt = _format_history(ChatRequest(messages=messages))
 

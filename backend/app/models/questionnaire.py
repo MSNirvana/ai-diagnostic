@@ -12,3 +12,5 @@ class Questionnaire(BaseModel):
     answers: list[ModuleAnswer]
     # 关联的诊断会话（记忆文件），可选——前端从对话流程带过来
     session_id: str | None = None
+    # 所属项目，可选
+    project_id: str | None = None

@@ -47,6 +47,7 @@ async def _save_history(
         results_json=json.dumps([r.model_dump() for r in results], ensure_ascii=False),
         profile_json=profile_json,
         session_id=sid,
+        project_id=questionnaire.project_id,
     )
     session.add(record)
     await session.commit()

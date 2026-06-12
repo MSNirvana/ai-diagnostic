@@ -19,6 +19,22 @@ class User(SQLModel, table=True):
     created_at: datetime = Field(default_factory=_now)
 
 
+class Project(SQLModel, table=True):
+    """一个持续诊断项目 = 一家企业的诊断档案。
+
+    一个用户可有多个项目。项目下沉淀多次诊断会话、诊断记录，
+    随时间持续更新——这是从"一次性诊断"走向"持续诊断"的核心。
+    """
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    user_id: str = Field(foreign_key="user.id", index=True)
+    created_at: datetime = Field(default_factory=_now)
+    updated_at: datetime = Field(default_factory=_now)
+    name: str                              # 项目名（企业名/业务线名）
+    profile_json: str | None = None        # 最新画像/问题地图
+    memory_summary: str = ""               # 项目长期记忆（重点摘要，供后续对话注入）
+    status: str = "active"                 # active | archived
+
+
 class DiagnosisRecord(SQLModel, table=True):
     id: str = Field(default_factory=_uuid, primary_key=True)
     user_id: str = Field(foreign_key="user.id", index=True)
@@ -29,6 +45,8 @@ class DiagnosisRecord(SQLModel, table=True):
     profile_json: str | None = None
     # 关联的诊断会话（记忆文件），可空（旧记录无此关联）
     session_id: str | None = Field(default=None, index=True)
+    # 所属项目，可空（兼容旧数据）
+    project_id: str | None = Field(default=None, index=True)
 
 
 class DiagnosisSession(SQLModel, table=True):
@@ -38,6 +56,7 @@ class DiagnosisSession(SQLModel, table=True):
     """
     id: str = Field(default_factory=_uuid, primary_key=True)
     user_id: str | None = Field(default=None, index=True)  # 匿名为 None
+    project_id: str | None = Field(default=None, index=True)  # 所属项目
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)
     # 完整对话历史（ChatMessage 列表的 JSON）
