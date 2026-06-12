@@ -11,26 +11,48 @@ const fakeModule = {
   pains: ["痛点A"],
 };
 
+const fakeSummary = {
+  core_problem: "获客成本翻倍",
+  context: "近半年",
+  suspected_cause: "渠道红利消失",
+  tried: "换代理",
+  company_name: "",
+  industry: "直播电商",
+  main_business: "带货",
+  business_model: "撮合",
+  scale: "85人",
+  stage: "成长期",
+};
+
 vi.mock("../src/api/client", () => ({
-  generateABQuestionnaire: vi.fn(async () => ({
+  sendChatMessage: vi.fn(async () => ({
+    message: "好的，我已了解",
+    done: true,
+    summary: fakeSummary,
+  })),
+  generateABFromSummary: vi.fn(async () => ({
     option_a: { modules: [fakeModule] },
     option_b: { modules: [fakeModule] },
   })),
   recordPreference: vi.fn(async () => {}),
 }));
 
-describe("Questionnaire A/B flow", () => {
-  it("填画像→生成两份→选A→填问卷→提交", async () => {
+describe("Questionnaire conversation flow", () => {
+  it("对话→生成→选A→填问卷→提交", async () => {
     const onSubmit = vi.fn();
     render(<Questionnaire onSubmit={onSubmit} />);
-    fireEvent.click(screen.getByText("生成专属问卷"));
-    // 等 A/B 选择页
+    // ChatStep：输入一句话发送
+    const input = screen.getByPlaceholderText(/描述|问题|输入/);
+    fireEvent.change(input, { target: { value: "获客成本越来越高" } });
+    fireEvent.click(screen.getByText("发送"));
+    // done=true 后出现生成方案按钮
+    await waitFor(() => screen.getByText(/生成诊断方案/));
+    fireEvent.click(screen.getByText(/生成诊断方案/));
+    // 进入 ab_choice
     await waitFor(() => screen.getByText(/方案 A/));
-    // 点选方案 A 卡片
     fireEvent.click(screen.getByText(/方案 A/));
-    // 点确认按钮
     fireEvent.click(screen.getByText("用这份方案开始填写"));
-    // 进入问卷，填字段
+    // 进入问卷
     await waitFor(() => screen.getByText("字段一"));
     fireEvent.change(screen.getByPlaceholderText("ph1"), {
       target: { value: "测试值" },

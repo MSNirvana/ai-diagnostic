@@ -7,6 +7,9 @@ import type {
   GeneratedModule,
   GeneratedQuestionnaire,
   ABQuestionnaire,
+  ChatMessage,
+  ChatResponse,
+  ProblemSummary,
 } from "../types";
 import { getToken } from "../auth/authStore";
 
@@ -131,6 +134,30 @@ export async function generateABQuestionnaire(
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ profile }),
+  });
+  if (!resp.ok) throw new Error(`生成失败: ${resp.status}`);
+  return (await resp.json()) as ABQuestionnaire;
+}
+
+export async function sendChatMessage(
+  messages: ChatMessage[]
+): Promise<ChatResponse> {
+  const resp = await fetch(`${BASE}/conversation/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ messages }),
+  });
+  if (!resp.ok) throw new Error(`对话失败: ${resp.status}`);
+  return (await resp.json()) as ChatResponse;
+}
+
+export async function generateABFromSummary(
+  summary: ProblemSummary
+): Promise<ABQuestionnaire> {
+  const resp = await fetch(`${BASE}/questionnaire/generate-ab`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ summary }),
   });
   if (!resp.ok) throw new Error(`生成失败: ${resp.status}`);
   return (await resp.json()) as ABQuestionnaire;

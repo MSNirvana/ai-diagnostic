@@ -71,3 +71,25 @@ export interface ABQuestionnaire {
   option_a: GeneratedQuestionnaire;
   option_b: GeneratedQuestionnaire;
 }
+
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+export interface ProblemSummary {
+  core_problem: string;
+  context: string;
+  suspected_cause: string;
+  tried: string;
+  company_name: string;
+  industry: string;
+  main_business: string;
+  business_model: string;
+  scale: string;
+  stage: string;
+}
+export interface ChatResponse {
+  message: string;
+  done: boolean;
+  summary: ProblemSummary | null;
+}

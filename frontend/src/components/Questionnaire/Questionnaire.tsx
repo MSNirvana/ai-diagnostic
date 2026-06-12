@@ -2,13 +2,13 @@ import { useMemo, useState } from "react";
 import { MODULES_AS_GENERATED } from "./modules";
 import type {
   ModuleAnswer,
-  BusinessProfile,
   GeneratedModule,
   ABQuestionnaire,
+  ProblemSummary,
 } from "../../types";
-import { generateABQuestionnaire, recordPreference } from "../../api/client";
+import { generateABFromSummary, recordPreference } from "../../api/client";
 import { StepIndicator } from "./StepIndicator";
-import { ProfileStep } from "./ProfileStep";
+import { ChatStep } from "./ChatStep";
 import { ABChoicePage } from "./ABChoicePage";
 import "./Questionnaire.css";
 
@@ -19,14 +19,13 @@ interface QuestionnaireProps {
   ) => void;
 }
 
-type Mode = "profile" | "generating" | "ab_choice" | "ready";
+type Mode = "chatting" | "generating" | "ab_choice" | "ready";
 
 export function Questionnaire({ onSubmit }: QuestionnaireProps) {
-  const [mode, setMode] = useState<Mode>("profile");
+  const [mode, setMode] = useState<Mode>("chatting");
   const [activeModules, setActiveModules] = useState<GeneratedModule[]>([]);
-  const [genError, setGenError] = useState<string | null>(null);
   const [abOptions, setAbOptions] = useState<ABQuestionnaire | null>(null);
-  const [storedProfile, setStoredProfile] = useState<BusinessProfile | null>(null);
+  const [storedSummary, setStoredSummary] = useState<ProblemSummary | null>(null);
 
   const [current, setCurrent] = useState(0);
   const [facts, setFacts] = useState<Record<string, Record<string, string>>>({});
@@ -51,13 +50,12 @@ export function Questionnaire({ onSubmit }: QuestionnaireProps) {
 
   const anyFilled = filled.some(Boolean);
 
-  const handleGenerate = async (profile: BusinessProfile) => {
+  const handleChatComplete = async (summary: ProblemSummary) => {
     setMode("generating");
-    setGenError(null);
+    setStoredSummary(summary);
     try {
-      const ab = await generateABQuestionnaire(profile);
+      const ab = await generateABFromSummary(summary);
       setAbOptions(ab);
-      setStoredProfile(profile);
       setMode("ab_choice");
     } catch {
       // 降级：使用通用固定问卷
@@ -71,9 +69,17 @@ export function Questionnaire({ onSubmit }: QuestionnaireProps) {
     setActiveModules(modules);
     setMode("ready");
     setCurrent(0);
-    if (abOptions && storedProfile) {
+    if (abOptions && storedSummary) {
+      const profileLike = {
+        company_name: storedSummary.company_name,
+        industry: storedSummary.industry,
+        main_business: storedSummary.main_business,
+        business_model: storedSummary.business_model,
+        scale: storedSummary.scale,
+        stage: storedSummary.stage,
+      };
       recordPreference(
-        storedProfile,
+        profileLike,
         abOptions.option_a,
         abOptions.option_b,
         chosen
@@ -134,13 +140,19 @@ export function Questionnaire({ onSubmit }: QuestionnaireProps) {
     onSubmit(answers, files);
   };
 
-  if (mode === "profile" || mode === "generating") {
+  if (mode === "chatting") {
+    return <ChatStep onComplete={handleChatComplete} />;
+  }
+
+  if (mode === "generating") {
     return (
-      <ProfileStep
-        onGenerate={handleGenerate}
-        generating={mode === "generating"}
-        error={genError}
-      />
+      <div className="questionnaire">
+        <div className="wizard-card">
+          <p style={{ color: "var(--ink-soft)" }}>
+            正在基于你的问题定制诊断方案…
+          </p>
+        </div>
+      </div>
     );
   }
 
