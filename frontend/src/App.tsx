@@ -7,12 +7,12 @@ import { ProtectedRoute } from "./components/Auth/ProtectedRoute";
 import { HistoryPage } from "./components/History/HistoryPage";
 import { useAuth } from "./auth/useAuth";
 import { runDiagnose, runDiagnoseWithFiles } from "./api/client";
-import type { ModuleResult, ModuleAnswer } from "./types";
+import type { DiagnoseResult, ModuleAnswer } from "./types";
 
 function DiagnoseView() {
   const navigate = useNavigate();
   const { logout } = useAuth();
-  const [results, setResults] = useState<ModuleResult[] | null>(null);
+  const [diagnoseResult, setDiagnoseResult] = useState<DiagnoseResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,7 +27,7 @@ function DiagnoseView() {
       const data = files.length
         ? await runDiagnoseWithFiles(answers, files)
         : await runDiagnose(answers);
-      setResults(data);
+      setDiagnoseResult(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : "诊断失败");
     } finally {
@@ -36,7 +36,7 @@ function DiagnoseView() {
   };
 
   const restart = () => {
-    setResults(null);
+    setDiagnoseResult(null);
     setError(null);
   };
 
@@ -86,7 +86,7 @@ function DiagnoseView() {
       {loading && <p style={{ color: "var(--ink-soft)" }}>诊断进行中，正在调取数据与分析…</p>}
       {error && <p style={{ color: "var(--signal-red)" }}>{error}</p>}
 
-      {results ? (
+      {diagnoseResult ? (
         <>
           <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
             <button
@@ -105,7 +105,11 @@ function DiagnoseView() {
               重新诊断
             </button>
           </div>
-          <Dashboard results={results} />
+          <Dashboard
+            results={diagnoseResult.results}
+            recordId={diagnoseResult.record_id}
+            skillVersionIds={diagnoseResult.skill_version_ids}
+          />
         </>
       ) : (
         !loading && <Questionnaire onSubmit={handleSubmit} />

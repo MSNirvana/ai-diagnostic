@@ -15,6 +15,11 @@ export interface ModuleResult {
   actions: string[];
   drilldown: DrillDown | null;
 }
+export interface DiagnoseResult {
+  results: ModuleResult[];
+  record_id: string | null;
+  skill_version_ids: Record<string, string>;
+}
 export interface ModuleAnswer {
   module: string;
   facts: Record<string, string>;

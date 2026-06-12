@@ -1,6 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ModuleCard } from "../src/components/ModuleCard/ModuleCard";
+
+vi.mock("../src/api/client", () => ({ submitFeedback: vi.fn(async () => {}) }));
 
 const result = {
   module: "market", signal: "red" as const,
@@ -17,5 +19,18 @@ describe("ModuleCard", () => {
     expect(screen.queryByText(/客单价¥420/)).toBeNull();
     fireEvent.click(screen.getByText("查看更多"));
     expect(screen.getByText(/客单价¥420/)).toBeTruthy();
+  });
+
+  it("hides feedback area for anonymous (no recordId)", () => {
+    render(<ModuleCard result={result} />);
+    expect(screen.queryByText("这个诊断对你有帮助吗？")).toBeNull();
+  });
+
+  it("shows feedback and submit button after thumbup when recordId+skillVersionId present", () => {
+    render(<ModuleCard result={result} recordId="rec-1" skillVersionId="sv-1" />);
+    expect(screen.getByText("这个诊断对你有帮助吗？")).toBeTruthy();
+    expect(screen.queryByText("提交")).toBeNull();
+    fireEvent.click(screen.getByText("👍 有帮助"));
+    expect(screen.getByText("提交")).toBeTruthy();
   });
 });

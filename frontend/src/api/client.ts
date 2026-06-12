@@ -1,6 +1,6 @@
 import type {
   ModuleAnswer,
-  ModuleResult,
+  DiagnoseResult,
   DiagnosisSummary,
   DiagnosisDetail,
   BusinessProfile,
@@ -17,7 +17,7 @@ function authHeaders(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-export async function runDiagnose(answers: ModuleAnswer[]): Promise<ModuleResult[]> {
+export async function runDiagnose(answers: ModuleAnswer[]): Promise<DiagnoseResult> {
   const resp = await fetch(`${BASE}/diagnose`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
@@ -25,13 +25,13 @@ export async function runDiagnose(answers: ModuleAnswer[]): Promise<ModuleResult
   });
   if (!resp.ok) throw new Error(`diagnose failed: ${resp.status}`);
   const body = await resp.json();
-  return body.results as ModuleResult[];
+  return body as DiagnoseResult;
 }
 
 export async function runDiagnoseWithFiles(
   answers: ModuleAnswer[],
   files: { moduleKey: string; fieldKey: string; file: File }[]
-): Promise<ModuleResult[]> {
+): Promise<DiagnoseResult> {
   const form = new FormData();
   form.append("answers_json", JSON.stringify({ answers }));
   for (const { moduleKey, fieldKey, file } of files) {
@@ -49,7 +49,28 @@ export async function runDiagnoseWithFiles(
   });
   if (!resp.ok) throw new Error(`diagnose failed: ${resp.status}`);
   const body = await resp.json();
-  return body.results as ModuleResult[];
+  return body as DiagnoseResult;
+}
+
+export async function submitFeedback(
+  recordId: string,
+  module: string,
+  skillVersionId: string,
+  rating: number,
+  isUseful: boolean,
+  comment?: string
+): Promise<void> {
+  await fetch(`${BASE}/diagnose/${recordId}/feedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({
+      module,
+      skill_version_id: skillVersionId,
+      rating,
+      is_useful: isUseful,
+      comment,
+    }),
+  });
 }
 
 export async function register(email: string, password: string): Promise<string> {
