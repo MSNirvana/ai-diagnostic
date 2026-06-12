@@ -1,6 +1,6 @@
 import json
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,13 +12,15 @@ from app.orchestrator.dispatcher import diagnose_all
 from app.data.uploads import parse_table
 from app.auth.jwt import get_optional_user
 from app.db.database import get_session
-from app.db.models import User, DiagnosisRecord
+from app.db.models import User, DiagnosisRecord, DiagnosisFeedback
 
 router = APIRouter()
 
 
 class DiagnoseResponse(BaseModel):
     results: list[ModuleResult]
+    record_id: str | None = None
+    skill_version_ids: dict[str, str] = {}
 
 
 async def _save_history(
@@ -27,10 +29,10 @@ async def _save_history(
     questionnaire: Questionnaire,
     results: list[ModuleResult],
     profile_json: str | None = None,
-) -> None:
-    """已登录用户的诊断写入历史记录；匿名用户跳过。"""
+) -> str | None:
+    """已登录用户的诊断写入历史记录，返回 record_id；匿名用户返回 None。"""
     if user is None:
-        return
+        return None
     record = DiagnosisRecord(
         user_id=user.id,
         answers_json=questionnaire.model_dump_json(),
@@ -39,6 +41,7 @@ async def _save_history(
     )
     session.add(record)
     await session.commit()
+    return record.id
 
 
 @router.post("/diagnose", response_model=DiagnoseResponse)
@@ -48,9 +51,13 @@ async def diagnose(
     user: User | None = Depends(get_optional_user),
     session: AsyncSession = Depends(get_session),
 ) -> DiagnoseResponse:
-    results = await diagnose_all(questionnaire, llm)
-    await _save_history(session, user, questionnaire, results)
-    return DiagnoseResponse(results=results)
+    outcome = await diagnose_all(questionnaire, llm, session)
+    record_id = await _save_history(session, user, questionnaire, outcome.results)
+    return DiagnoseResponse(
+        results=outcome.results,
+        record_id=record_id,
+        skill_version_ids=outcome.skill_version_ids,
+    )
 
 
 @router.post("/diagnose/upload", response_model=DiagnoseResponse)
@@ -94,6 +101,44 @@ async def diagnose_with_upload(
         answer.facts[facts_key] = str(parsed)
         answer.uploaded_files.append(upload.filename)
 
-    results = await diagnose_all(questionnaire, llm)
-    await _save_history(session, user, questionnaire, results)
-    return DiagnoseResponse(results=results)
+    outcome = await diagnose_all(questionnaire, llm, session)
+    record_id = await _save_history(session, user, questionnaire, outcome.results)
+    return DiagnoseResponse(
+        results=outcome.results,
+        record_id=record_id,
+        skill_version_ids=outcome.skill_version_ids,
+    )
+
+
+class FeedbackRequest(BaseModel):
+    module: str
+    skill_version_id: str
+    rating: int
+    is_useful: bool | None = None
+    comment: str | None = None
+
+
+@router.post("/diagnose/{record_id}/feedback", status_code=201)
+async def submit_feedback(
+    record_id: str,
+    body: FeedbackRequest,
+    user: User | None = Depends(get_optional_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, bool]:
+    if not (1 <= body.rating <= 5):
+        raise HTTPException(status_code=422, detail="rating 必须在 1-5")
+    record = await session.get(DiagnosisRecord, record_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="诊断记录不存在")
+    feedback = DiagnosisFeedback(
+        record_id=record_id,
+        module=body.module,
+        skill_version_id=body.skill_version_id,
+        user_id=user.id if user else None,
+        rating=body.rating,
+        is_useful=body.is_useful,
+        comment=body.comment,
+    )
+    session.add(feedback)
+    await session.commit()
+    return {"ok": True}

@@ -17,11 +17,11 @@ class FakeLLM:
 
 
 @pytest.fixture
-def client():
-    # 每个测试单独设 override 并在结束后清理，避免测试间相互污染
+def client(db_session):
+    # db_session 注入内存库覆盖 get_session；这里再设 llm override
     app.dependency_overrides[get_llm_client] = lambda: FakeLLM()
     yield TestClient(app)
-    app.dependency_overrides.clear()
+    app.dependency_overrides.pop(get_llm_client, None)
 
 
 def test_diagnose_returns_results(client):

@@ -1,0 +1,53 @@
+"""Skill 版本化：DB 有激活版本时诊断用 DB 的 prompt，无则回退 fallback。"""
+import json
+
+from app.skills.market import MarketSkill
+from app.models.questionnaire import ModuleAnswer
+from app.db.models import SkillVersion
+
+
+class SpyLLM:
+    """记录收到的 system prompt，用于断言用了哪份。"""
+    seen_system = ""
+
+    async def complete(self, system: str, prompt: str) -> str:
+        SpyLLM.seen_system = system
+        return json.dumps({
+            "signal": "green",
+            "conclusion": "ok",
+            "evidence": [{"text": "x", "source": "y"}],
+            "actions": ["a"],
+            "drilldown": {"data_points": [], "comparisons": []},
+        })
+
+
+async def test_skill_uses_db_version_when_active(db_session):
+    # 往内存库塞一个激活的 market 版本
+    async with db_session() as session:
+        ver = SkillVersion(
+            module="market", version=1, system_prompt="DB专属市场prompt",
+            method="hypothesis", is_active=True,
+        )
+        session.add(ver)
+        await session.commit()
+        ver_id = ver.id
+
+    async with db_session() as session:
+        skill = MarketSkill()
+        result, version_id = await skill.diagnose(
+            ModuleAnswer(module="market", pains=["x"]), llm=SpyLLM(), session=session
+        )
+    assert SpyLLM.seen_system == "DB专属市场prompt"   # 用了 DB 的 prompt
+    assert version_id == ver_id                        # 返回 DB 版本 id
+    assert result.module == "market"
+
+
+async def test_skill_falls_back_without_active_version(db_session):
+    # 空库（无激活版本）→ 回退代码 fallback
+    async with db_session() as session:
+        skill = MarketSkill()
+        _, version_id = await skill.diagnose(
+            ModuleAnswer(module="market", pains=["x"]), llm=SpyLLM(), session=session
+        )
+    assert version_id == "fallback"
+    assert "市场与客户诊断专家" in SpyLLM.seen_system   # 用了代码兜底

@@ -16,13 +16,16 @@ class FakeLLM:
 
 async def test_dispatcher_runs_registered_module():
     q = Questionnaire(answers=[ModuleAnswer(module="market", pains=["竞品强"])])
-    results = await diagnose_all(q, llm=FakeLLM())
-    assert len(results) == 1
-    assert results[0].module == "market"
-    assert "假设" not in results[0].conclusion
+    outcome = await diagnose_all(q, llm=FakeLLM())
+    assert len(outcome.results) == 1
+    assert outcome.results[0].module == "market"
+    assert "假设" not in outcome.results[0].conclusion
+    # 无 session 时走 fallback
+    assert outcome.skill_version_ids["market"] == "fallback"
 
 
 async def test_dispatcher_skips_unregistered_module():
     q = Questionnaire(answers=[ModuleAnswer(module="unknown")])
-    results = await diagnose_all(q, llm=FakeLLM())
-    assert results == []
+    outcome = await diagnose_all(q, llm=FakeLLM())
+    assert outcome.results == []
+    assert outcome.skill_version_ids == {}

@@ -1,0 +1,94 @@
+"""反馈端点 + admin skill 版本管理端点测试。"""
+import json
+
+from fastapi.testclient import TestClient
+from sqlalchemy import select
+
+from app.main import app
+from app.config import get_llm_client
+from app.db.models import DiagnosisFeedback
+
+client = TestClient(app)
+
+
+class FakeLLM:
+    async def complete(self, system: str, prompt: str) -> str:
+        return json.dumps({
+            "signal": "green", "conclusion": "ok",
+            "evidence": [{"text": "x", "source": "y"}],
+            "actions": ["a"],
+            "drilldown": {"data_points": [], "comparisons": []},
+        })
+
+
+def _register(email: str) -> str:
+    return client.post(
+        "/auth/register", json={"email": email, "password": "secret123"}
+    ).json()["access_token"]
+
+
+def test_feedback_persists(db_session):
+    app.dependency_overrides[get_llm_client] = lambda: FakeLLM()
+    token = _register("fb@b.com")
+    # 先诊断拿 record_id + skill_version_ids
+    diag = client.post(
+        "/diagnose",
+        json={"answers": [{"module": "market", "facts": {}, "pains": ["x"]}]},
+        headers={"Authorization": f"Bearer {token}"},
+    ).json()
+    record_id = diag["record_id"]
+    version_id = diag["skill_version_ids"]["market"]
+
+    resp = client.post(
+        f"/diagnose/{record_id}/feedback",
+        json={"module": "market", "skill_version_id": version_id,
+              "rating": 5, "is_useful": True, "comment": "很准"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    app.dependency_overrides.pop(get_llm_client, None)
+    assert resp.status_code == 201
+
+    import asyncio
+
+    async def fetch():
+        async with db_session() as s:
+            return (await s.scalars(select(DiagnosisFeedback))).all()
+
+    rows = asyncio.get_event_loop().run_until_complete(fetch())
+    assert len(rows) == 1
+    assert rows[0].rating == 5
+    assert rows[0].comment == "很准"
+
+
+def test_feedback_invalid_rating(db_session):
+    app.dependency_overrides[get_llm_client] = lambda: FakeLLM()
+    token = _register("fb2@b.com")
+    diag = client.post(
+        "/diagnose",
+        json={"answers": [{"module": "market", "facts": {}, "pains": ["x"]}]},
+        headers={"Authorization": f"Bearer {token}"},
+    ).json()
+    resp = client.post(
+        f"/diagnose/{diag['record_id']}/feedback",
+        json={"module": "market", "skill_version_id": "fallback", "rating": 9},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    app.dependency_overrides.pop(get_llm_client, None)
+    assert resp.status_code == 422
+
+
+def test_admin_add_and_activate_version(db_session):
+    # 新增一个 market 版本并激活
+    resp = client.post(
+        "/admin/skills/market/versions",
+        json={"system_prompt": "新版市场prompt", "change_reason": "测试改进",
+              "change_category": "coverage", "activate": True},
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["version"] == 1
+    assert body["is_active"] is True
+
+    # 查激活列表能看到它
+    active = client.get("/admin/skills/").json()
+    assert any(v["module"] == "market" and v["is_active"] for v in active)

@@ -42,3 +42,36 @@ class QuestionnairePreference(SQLModel, table=True):
     option_a_json: str
     option_b_json: str
     chosen: str                          # "a" 或 "b"
+
+
+class SkillVersion(SQLModel, table=True):
+    """诊断 skill 的一个版本。当前生效版本 = 同 module 下 is_active=True 的那条。
+
+    把 skill 的 system prompt 从代码搬到这里，让它可版本化、可回滚、可审核——
+    这是"会进化的 skill 系统"的地基。
+    """
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    module: str = Field(index=True)        # market/product/sales/ops/org/finance
+    version: int                           # 同 module 下自增 1,2,3...
+    system_prompt: str                     # 完整 system prompt
+    method: str = "hypothesis"             # 自声明方法类型
+    is_active: bool = Field(default=False, index=True)  # 同 module 只一条 True
+    created_at: datetime = Field(default_factory=_now)
+    # 改动治理元数据
+    change_reason: str | None = None       # 为什么改
+    change_category: str | None = None     # 分类：coverage/tone/prompt_quality...
+    reviewed_by: str | None = None         # 审核人邮箱
+    reviewed_at: datetime | None = None
+
+
+class DiagnosisFeedback(SQLModel, table=True):
+    """用户对一次诊断的反馈——skill 进化的燃料。"""
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    record_id: str = Field(foreign_key="diagnosisrecord.id", index=True)
+    module: str = Field(index=True)        # 反馈针对哪个模块
+    skill_version_id: str = Field(index=True)  # 当时用的哪版 skill
+    created_at: datetime = Field(default_factory=_now)
+    user_id: str | None = None
+    rating: int                            # 1-5
+    is_useful: bool | None = None          # 有用/没用（👍👎）
+    comment: str | None = None             # 用户文字意见

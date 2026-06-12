@@ -26,9 +26,11 @@ async def test_market_skill_declares_metadata():
 async def test_market_skill_returns_valid_result():
     skill = MarketSkill()
     answer = ModuleAnswer(module="market", facts={"客单价": "420"}, pains=["打不过竞品"])
-    result = await skill.diagnose(answer, llm=FakeLLM())
+    result, version_id = await skill.diagnose(answer, llm=FakeLLM())
     assert result.module == "market"
     assert result.signal == "red"
     assert len(result.evidence) <= 3
     assert len(result.actions) >= 1
     assert result.drilldown is not None
+    # 无 session 时用代码兜底
+    assert version_id == "fallback"
