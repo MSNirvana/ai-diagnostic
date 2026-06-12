@@ -56,3 +56,29 @@ def to_drilldown(data: object) -> DrillDown:
         data_points=[to_evidence(p) for p in points],
         comparisons=[str(c) for c in comparisons],
     )
+
+
+def to_action(item: object) -> str:
+    """把一条行动建议规整成字符串。
+
+    约定是纯字符串；模型有时返回 {priority, action} 或 {step, detail} 等对象。
+    优先取常见的"动作"字段，取不到就把键值拼成一句话。
+    """
+    if isinstance(item, str):
+        return item
+    if isinstance(item, dict):
+        for key in ("action", "text", "建议", "step", "content", "description"):
+            val = item.get(key)
+            if val:
+                return str(val)
+        # 字段名漂移：拼接非空值（跳过 priority 这类纯序号）
+        parts = [str(v) for k, v in item.items() if k not in ("priority", "序号", "order") and v]
+        return "，".join(parts) if parts else "（无内容）"
+    return str(item)
+
+
+def to_actions(items: object) -> list[str]:
+    """把 actions 列表规整成 list[str]，空时给占位，保证 min_length=1。"""
+    if not isinstance(items, list) or not items:
+        return ["（模型未给出建议）"]
+    return [to_action(a) for a in items]

@@ -1,7 +1,7 @@
 import json
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.skills.base import Skill
-from app.skills.parsing import parse_json_object, to_evidence, to_drilldown
+from app.skills.parsing import parse_json_object, to_evidence, to_drilldown, to_actions
 from app.skills.store import get_active_skill_version
 from app.llm.base import LLMClient
 from app.models.questionnaire import ModuleAnswer
@@ -51,7 +51,7 @@ class MarketSkill(Skill):
             signal=signal,
             conclusion=data.get("conclusion", "（模型未给出结论）"),
             evidence=[to_evidence(e) for e in (data.get("evidence") or [])[:3]],
-            actions=data.get("actions") or ["（模型未给出建议）"],
+            actions=to_actions(data.get("actions")),
             drilldown=to_drilldown(data.get("drilldown")),
         )
         return result, version_id
