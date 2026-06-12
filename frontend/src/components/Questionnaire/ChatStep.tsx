@@ -8,18 +8,28 @@ const OPENING =
 
 interface ChatStepProps {
   onComplete: (summary: ProblemSummary) => void;
+  initialMessages?: ChatMessage[];
+  onMessagesChange?: (messages: ChatMessage[]) => void;
 }
 
-export function ChatStep({ onComplete }: ChatStepProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    { role: "assistant", content: OPENING },
-  ]);
+export function ChatStep({ onComplete, initialMessages, onMessagesChange }: ChatStepProps) {
+  const [messages, setMessages] = useState<ChatMessage[]>(
+    initialMessages && initialMessages.length > 0
+      ? initialMessages
+      : [{ role: "assistant", content: OPENING }]
+  );
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<ProblemSummary | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // 消息变化同步给父组件（用于草稿持久化）
+  useEffect(() => {
+    onMessagesChange?.(messages);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages]);
 
   useEffect(() => {
     const el = scrollRef.current;

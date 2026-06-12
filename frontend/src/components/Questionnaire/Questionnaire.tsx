@@ -1,12 +1,16 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { MODULES_AS_GENERATED } from "./modules";
 import type {
   ModuleAnswer,
   GeneratedModule,
   ABQuestionnaire,
   ProblemSummary,
+  ChatMessage,
 } from "../../types";
 import { generateABFromSummary, recordPreference } from "../../api/client";
+import { useAuth } from "../../auth/useAuth";
+import { saveDraft, loadDraft, clearDraft } from "../../utils/draft";
+import type { DraftState } from "../../utils/draft";
 import { StepIndicator } from "./StepIndicator";
 import { ChatStep } from "./ChatStep";
 import { ABChoicePage } from "./ABChoicePage";
@@ -22,18 +26,82 @@ interface QuestionnaireProps {
 type Mode = "chatting" | "generating" | "ab_choice" | "ready";
 
 export function Questionnaire({ onSubmit }: QuestionnaireProps) {
+  const { token } = useAuth();
+  const userId = token ? token.slice(0, 16) : "anon";
+
   const [mode, setMode] = useState<Mode>("chatting");
   const [activeModules, setActiveModules] = useState<GeneratedModule[]>([]);
   const [abOptions, setAbOptions] = useState<ABQuestionnaire | null>(null);
   const [storedSummary, setStoredSummary] = useState<ProblemSummary | null>(null);
 
   const [current, setCurrent] = useState(0);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [facts, setFacts] = useState<Record<string, Record<string, string>>>({});
   const [pains, setPains] = useState<Record<string, string[]>>({});
   const [freeText, setFreeText] = useState<Record<string, string>>({});
   const [files, setFiles] = useState<
     { moduleKey: string; fieldKey: string; file: File }[]
   >([]);
+  const [restoredFileNames, setRestoredFileNames] = useState<Record<string, string[]>>({});
+
+  const [pendingDraft, setPendingDraft] = useState<DraftState | null>(null);
+
+  // 挂载时读草稿（不自动恢复，让用户选）
+  useEffect(() => {
+    const draft = loadDraft(userId);
+    if (draft && (draft.messages.length > 0 || draft.activeModules.length > 0)) {
+      setPendingDraft(draft);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 防抖保存草稿（仅 chatting/ready 阶段）
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (mode !== "chatting" && mode !== "ready") return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      const fileNames: Record<string, string[]> = {};
+      for (const f of files) {
+        const k = `${f.moduleKey}__${f.fieldKey}`;
+        (fileNames[k] ??= []).push(f.file.name);
+      }
+      saveDraft(userId, {
+        mode,
+        messages: chatMessages,
+        chatSummary: storedSummary,
+        activeModules,
+        current,
+        facts,
+        pains,
+        freeText,
+        fileNames,
+      });
+    }, 500);
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
+  }, [mode, chatMessages, storedSummary, activeModules, current, facts, pains, freeText, files, userId]);
+
+  const resumeDraft = () => {
+    const d = pendingDraft;
+    if (!d) return;
+    setMode(d.mode);
+    setChatMessages(d.messages);
+    setStoredSummary(d.chatSummary);
+    setActiveModules(d.activeModules);
+    setCurrent(d.current);
+    setFacts(d.facts);
+    setPains(d.pains);
+    setFreeText(d.freeText);
+    setRestoredFileNames(d.fileNames ?? {});
+    setPendingDraft(null);
+  };
+
+  const discardDraft = () => {
+    clearDraft(userId);
+    setPendingDraft(null);
+  };
 
   const moduleFilled = (key: string): boolean => {
     const f = facts[key] ?? {};
@@ -137,11 +205,45 @@ export function Questionnaire({ onSubmit }: QuestionnaireProps) {
         pains: pains[m.key] ?? [],
       });
     }
+    // 提交即视为完成，清掉草稿
+    clearDraft(userId);
     onSubmit(answers, files);
   };
 
+  const resumeBanner = pendingDraft && (
+    <div className="resume-banner">
+      <span className="resume-banner__text">
+        📋 检测到上次未完成的填写（保存于{" "}
+        {new Date(pendingDraft.savedAt).toLocaleString("zh-CN", {
+          month: "long",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        })}
+        ）
+      </span>
+      <span className="resume-banner__actions">
+        <button type="button" className="btn-primary resume-banner__btn" onClick={resumeDraft}>
+          继续填写
+        </button>
+        <button type="button" className="btn-text" onClick={discardDraft}>
+          重新开始
+        </button>
+      </span>
+    </div>
+  );
+
   if (mode === "chatting") {
-    return <ChatStep onComplete={handleChatComplete} />;
+    return (
+      <>
+        {resumeBanner}
+        <ChatStep
+          onComplete={handleChatComplete}
+          initialMessages={chatMessages.length > 0 ? chatMessages : undefined}
+          onMessagesChange={setChatMessages}
+        />
+      </>
+    );
   }
 
   if (mode === "generating") {
@@ -239,6 +341,18 @@ export function Questionnaire({ onSubmit }: QuestionnaireProps) {
                       </button>
                     </span>
                   ))}
+                  {(restoredFileNames[`${module.key}__${field.key}`] ?? [])
+                    .filter(
+                      (name) =>
+                        !fieldFiles(module.key, field.key).some(
+                          (e) => e.file.name === name
+                        )
+                    )
+                    .map((name) => (
+                      <span className="field__file-warning" key={`r-${name}`}>
+                        ⚠ 需重新上传：{name}
+                      </span>
+                    ))}
                 </div>
               )}
             </div>

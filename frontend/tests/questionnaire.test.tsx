@@ -37,6 +37,17 @@ vi.mock("../src/api/client", () => ({
   recordPreference: vi.fn(async () => {}),
 }));
 
+// Questionnaire 现在用 useAuth 和草稿持久化，mock 掉
+vi.mock("../src/auth/useAuth", () => ({
+  useAuth: () => ({ token: null, isAuthenticated: false, login: vi.fn(), logout: vi.fn() }),
+}));
+
+vi.mock("../src/utils/draft", () => ({
+  loadDraft: vi.fn(() => null),
+  saveDraft: vi.fn(),
+  clearDraft: vi.fn(),
+}));
+
 describe("Questionnaire conversation flow", () => {
   it("对话→生成→选A→填问卷→提交", async () => {
     const onSubmit = vi.fn();
