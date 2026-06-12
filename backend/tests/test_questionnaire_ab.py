@@ -51,7 +51,7 @@ class HalfBrokenLLM:
         return "彻底坏掉的输出"
 
 
-def test_generate_ab_returns_two_options():
+def test_generate_ab_returns_two_options(db_session):
     app.dependency_overrides[get_llm_client] = lambda: ValidLLM()
     resp = client.post("/questionnaire/generate-ab", json={"profile": _PROFILE})
     app.dependency_overrides.pop(get_llm_client, None)
@@ -61,7 +61,7 @@ def test_generate_ab_returns_two_options():
     assert body["option_b"]["modules"][0]["key"] == "market"
 
 
-def test_generate_ab_falls_back_when_one_broken():
+def test_generate_ab_falls_back_when_one_broken(db_session):
     HalfBrokenLLM.calls = 0
     app.dependency_overrides[get_llm_client] = lambda: HalfBrokenLLM()
     resp = client.post("/questionnaire/generate-ab", json={"profile": _PROFILE})

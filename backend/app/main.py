@@ -8,6 +8,7 @@ from app.api.history import router as history_router
 from app.api.questionnaire import router as questionnaire_router
 from app.api.admin import router as admin_router
 from app.api.conversation import router as conversation_router
+from app.api.session import router as session_router
 from app.db.database import init_db
 
 
@@ -37,6 +38,7 @@ app.include_router(history_router)
 app.include_router(questionnaire_router)
 app.include_router(admin_router)
 app.include_router(conversation_router)
+app.include_router(session_router)
 
 
 @app.get("/health")

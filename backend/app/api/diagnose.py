@@ -12,7 +12,7 @@ from app.orchestrator.dispatcher import diagnose_all
 from app.data.uploads import parse_table
 from app.auth.jwt import get_optional_user
 from app.db.database import get_session
-from app.db.models import User, DiagnosisRecord, DiagnosisFeedback
+from app.db.models import User, DiagnosisRecord, DiagnosisFeedback, DiagnosisSession
 
 router = APIRouter()
 
@@ -30,18 +30,43 @@ async def _save_history(
     results: list[ModuleResult],
     profile_json: str | None = None,
 ) -> str | None:
-    """已登录用户的诊断写入历史记录，返回 record_id；匿名用户返回 None。"""
+    """已登录用户的诊断写入历史记录，返回 record_id；匿名用户返回 None。
+
+    若 questionnaire 带了 session_id，则把诊断记录回关到对应的诊断会话
+    （记忆文件），让"对话→诊断结果"形成完整闭环。
+    """
+    sid = questionnaire.session_id
     if user is None:
+        # 匿名也回填 session 状态（如果有），但不建历史记录
+        if sid:
+            await _link_session(session, sid, None)
         return None
     record = DiagnosisRecord(
         user_id=user.id,
         answers_json=questionnaire.model_dump_json(),
         results_json=json.dumps([r.model_dump() for r in results], ensure_ascii=False),
         profile_json=profile_json,
+        session_id=sid,
     )
     session.add(record)
     await session.commit()
+    if sid:
+        await _link_session(session, sid, record.id)
     return record.id
+
+
+async def _link_session(
+    session: AsyncSession, session_id: str, record_id: str | None
+) -> None:
+    """把诊断记录关联回诊断会话，并标记会话已完成诊断。"""
+    s = await session.get(DiagnosisSession, session_id)
+    if s is None:
+        return
+    if record_id:
+        s.diagnosis_record_id = record_id
+    s.status = "diagnosed"
+    session.add(s)
+    await session.commit()
 
 
 @router.post("/diagnose", response_model=DiagnoseResponse)

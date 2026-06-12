@@ -1,53 +1,26 @@
-"""对话式追问入口：像顾问一样一次一问，锁定企业核心问题。
+"""对话式追问入口：注入 brainstorming 拆解精髓的深度 intake。
 
-无状态——前端每次传完整 messages 历史。AI 判断信息充分后返回 done=true + summary，
-前端据此进入问卷生成（summary 替代静态画像）。
+无状态——前端每次传完整 messages 历史。AI 按 phase 工作：
+- intake：还在追问（一次一问，五条纪律）
+- confirm：信息问扎实，给问题地图请用户确认
+- done：用户确认满意，可进问卷生成
+
+prompt 优先从数据库 SkillVersion 表（module='conversation_intake'）读，
+DB 空时回退代码 fallback。
 """
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import ValidationError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_llm_client
 from app.llm.base import LLMClient
-from app.models.conversation import ChatRequest, ChatResponse, ProblemSummary
+from app.models.conversation import ChatRequest, ChatResponse, ProblemMap
 from app.skills.parsing import parse_json_object
+from app.skills.store import get_active_skill_version
+from app.skills.prompts import CONVERSATION_INTAKE
+from app.db.database import get_session
 
 router = APIRouter(prefix="/conversation")
-
-_SYSTEM = """你是一位顶级管理咨询顾问，正在和一位企业老板做初次接触谈话（intake）。
-你的目标：用最多 3-5 个问题，从对方模糊的描述里，精准锁定这家企业当前最核心的一个问题。
-
-铁律：
-1. 一次只问一个问题，绝不一次问两个或抛清单
-2. 先让对方用自己的话描述，不要替他预设问题或下结论
-3. 追问优先级：问题具体是什么 > 持续多久/多严重 > 你认为的原因 > 已经试过什么 > 不解决会怎样
-4. 不要直接问"你是什么行业、几个人、年营收多少"这类填表式问题——这些从对话内容里自然推断
-5. 语气专业、简洁、有同理心，像真顾问而非问卷机器
-
-当你已经能清晰说出"这家企业最核心的一个问题、相关背景、对方猜测的原因"时，结束追问。
-
-严格只输出 JSON，不要任何额外文字：
-{
-  "done": false,            // 还需继续追问时 false
-  "message": "你的下一个问题（仅一个问题）",
-  "summary": null
-}
-或信息充分时：
-{
-  "done": true,
-  "message": "一句收尾话，告诉对方你已了解，将据此定制诊断",
-  "summary": {
-    "core_problem": "核心问题一句话",
-    "context": "追问得到的背景信息",
-    "suspected_cause": "对方猜测的原因",
-    "tried": "已经尝试过的措施",
-    "company_name": "如对话提及，否则留空",
-    "industry": "从对话推断的行业，否则留空",
-    "main_business": "主营业务，从对话推断",
-    "business_model": "商业模式，从对话推断",
-    "scale": "规模，从对话推断，否则留空",
-    "stage": "发展阶段，从对话推断，否则留空"
-  }
-}"""
 
 
 def _format_history(req: ChatRequest) -> str:
@@ -60,25 +33,54 @@ def _format_history(req: ChatRequest) -> str:
     return "\n".join(lines)
 
 
-@router.post("/chat", response_model=ChatResponse)
-async def chat(
-    req: ChatRequest,
-    llm: LLMClient = Depends(get_llm_client),
+async def run_chat_turn(
+    messages: list,
+    llm: LLMClient,
+    session: AsyncSession | None,
 ) -> ChatResponse:
-    prompt = _format_history(req)
-    raw = await llm.complete(system=_SYSTEM, prompt=prompt)
+    """跑一轮对话：读 prompt（DB 优先）→ 调 LLM → 解析 phase/problem_map。
+
+    供无状态 /conversation/chat 和有状态 /session/{id}/chat 共用。
+    """
+    ver = await get_active_skill_version(session, "conversation_intake")
+    system = ver.system_prompt if ver else CONVERSATION_INTAKE
+
+    prompt = _format_history(ChatRequest(messages=messages))
+    raw = await llm.complete(system=system, prompt=prompt)
     try:
         data = parse_json_object(raw)
     except (ValueError, ValidationError):
         raise HTTPException(status_code=502, detail="对话生成失败")
 
-    done = bool(data.get("done", False))
+    phase = data.get("phase")
+    legacy_done = bool(data.get("done", False))
+    if phase not in ("intake", "confirm", "done"):
+        phase = "done" if legacy_done else "intake"
+
     message = data.get("message", "能再具体说说吗？")
-    summary = None
-    if done:
-        raw_summary = data.get("summary") or {}
+
+    problem_map: ProblemMap | None = None
+    raw_map = data.get("problem_map") or data.get("summary")
+    if raw_map:
         try:
-            summary = ProblemSummary.model_validate(raw_summary)
+            problem_map = ProblemMap.model_validate(raw_map)
         except ValidationError:
-            summary = ProblemSummary(core_problem=message)
-    return ChatResponse(message=message, done=done, summary=summary)
+            problem_map = None
+
+    done = phase == "done"
+    return ChatResponse(
+        message=message,
+        done=done,
+        phase=phase,
+        problem_map=problem_map,
+        summary=problem_map.to_summary() if (done and problem_map) else None,
+    )
+
+
+@router.post("/chat", response_model=ChatResponse)
+async def chat(
+    req: ChatRequest,
+    llm: LLMClient = Depends(get_llm_client),
+    session: AsyncSession = Depends(get_session),
+) -> ChatResponse:
+    return await run_chat_turn(req.messages, llm, session)

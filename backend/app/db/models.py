@@ -27,6 +27,28 @@ class DiagnosisRecord(SQLModel, table=True):
     answers_json: str
     results_json: str
     profile_json: str | None = None
+    # 关联的诊断会话（记忆文件），可空（旧记录无此关联）
+    session_id: str | None = Field(default=None, index=True)
+
+
+class DiagnosisSession(SQLModel, table=True):
+    """一次完整的诊断会话——从对话到诊断结果的全程记忆文件。
+
+    用户可回看当时怎么聊出问题的，也能基于历史继续聊。
+    """
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    user_id: str | None = Field(default=None, index=True)  # 匿名为 None
+    created_at: datetime = Field(default_factory=_now)
+    updated_at: datetime = Field(default_factory=_now)
+    # 完整对话历史（ChatMessage 列表的 JSON）
+    messages_json: str = "[]"
+    # 结构化问题地图（对话确认后填入）
+    problem_map_json: str | None = None
+    # 关联的诊断记录（诊断完成后填入）
+    diagnosis_record_id: str | None = Field(default=None, index=True)
+    # 会话标题（取自核心问题，便于列表展示）
+    title: str = ""
+    status: str = "chatting"   # chatting | confirmed | diagnosed
 
 
 class QuestionnairePreference(SQLModel, table=True):
@@ -51,7 +73,8 @@ class SkillVersion(SQLModel, table=True):
     这是"会进化的 skill 系统"的地基。
     """
     id: str = Field(default_factory=_uuid, primary_key=True)
-    module: str = Field(index=True)        # market/product/sales/ops/org/finance
+    module: str = Field(index=True)        # skill key：market/product/.../conversation_intake/questionnaire_ab_a
+    skill_type: str = Field(default="diagnosis", index=True)  # diagnosis/conversation/questionnaire
     version: int                           # 同 module 下自增 1,2,3...
     system_prompt: str                     # 完整 system prompt
     method: str = "hypothesis"             # 自声明方法类型

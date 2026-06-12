@@ -45,7 +45,7 @@ class GarbageLLM:
         return "这不是 JSON，模型抽风了"
 
 
-def test_generate_returns_valid_questionnaire():
+def test_generate_returns_valid_questionnaire(db_session):
     app.dependency_overrides[get_llm_client] = lambda: ValidLLM()
     resp = client.post("/questionnaire/generate", json=_PROFILE)
     app.dependency_overrides.pop(get_llm_client, None)
@@ -55,7 +55,7 @@ def test_generate_returns_valid_questionnaire():
     assert body["modules"][0]["fields"][0]["accept_file"] is True
 
 
-def test_generate_malformed_output_returns_422():
+def test_generate_malformed_output_returns_422(db_session):
     app.dependency_overrides[get_llm_client] = lambda: GarbageLLM()
     resp = client.post("/questionnaire/generate", json=_PROFILE)
     app.dependency_overrides.pop(get_llm_client, None)
