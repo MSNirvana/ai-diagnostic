@@ -46,8 +46,8 @@ describe("Questionnaire conversation flow", () => {
     fireEvent.change(input, { target: { value: "获客成本越来越高" } });
     fireEvent.click(screen.getByText("发送"));
     // done=true 后出现生成方案按钮
-    await waitFor(() => screen.getByText(/生成诊断方案/));
-    fireEvent.click(screen.getByText(/生成诊断方案/));
+    await waitFor(() => screen.getByText("基于这个问题，生成诊断方案"));
+    fireEvent.click(screen.getByText("基于这个问题，生成诊断方案"));
     // 进入 ab_choice
     await waitFor(() => screen.getByText(/方案 A/));
     fireEvent.click(screen.getByText(/方案 A/));
