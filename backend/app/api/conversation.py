@@ -46,11 +46,27 @@ async def run_chat_turn(
     system = ver.system_prompt if ver else CONVERSATION_INTAKE
 
     prompt = _format_history(ChatRequest(messages=messages))
-    raw = await llm.complete(system=system, prompt=prompt)
-    try:
-        data = parse_json_object(raw)
-    except (ValueError, ValidationError):
-        raise HTTPException(status_code=502, detail="对话生成失败")
+
+    # LLM 网关偶尔抖动（超时/返回非 JSON），重试一次；仍失败则降级追问，
+    # 不让单次抖动中断整个对话。
+    data: dict | None = None
+    for _ in range(2):
+        try:
+            raw = await llm.complete(system=system, prompt=prompt)
+            data = parse_json_object(raw)
+            break
+        except Exception:
+            data = None
+            continue
+
+    if data is None:
+        # 降级：返回一句通用追问，让用户能继续聊（而不是卡死）
+        return ChatResponse(
+            message="抱歉，刚才没接住你的话。能再说一下你当前最头疼的问题，或补充点细节吗？",
+            done=False,
+            phase="intake",
+            problem_map=None,
+        )
 
     phase = data.get("phase")
     legacy_done = bool(data.get("done", False))
