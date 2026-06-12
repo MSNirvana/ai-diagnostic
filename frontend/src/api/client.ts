@@ -9,7 +9,10 @@ import type {
   ABQuestionnaire,
   ChatMessage,
   ChatResponse,
+  ChatTurnResponse,
   ProblemSummary,
+  SessionSummary,
+  SessionDetail,
 } from "../types";
 import { getToken } from "../auth/authStore";
 
@@ -20,11 +23,14 @@ function authHeaders(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-export async function runDiagnose(answers: ModuleAnswer[]): Promise<DiagnoseResult> {
+export async function runDiagnose(
+  answers: ModuleAnswer[],
+  sessionId?: string
+): Promise<DiagnoseResult> {
   const resp = await fetch(`${BASE}/diagnose`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify({ answers }),
+    body: JSON.stringify({ answers, session_id: sessionId }),
   });
   if (!resp.ok) throw new Error(`diagnose failed: ${resp.status}`);
   const body = await resp.json();
@@ -33,10 +39,11 @@ export async function runDiagnose(answers: ModuleAnswer[]): Promise<DiagnoseResu
 
 export async function runDiagnoseWithFiles(
   answers: ModuleAnswer[],
-  files: { moduleKey: string; fieldKey: string; file: File }[]
+  files: { moduleKey: string; fieldKey: string; file: File }[],
+  sessionId?: string
 ): Promise<DiagnoseResult> {
   const form = new FormData();
-  form.append("answers_json", JSON.stringify({ answers }));
+  form.append("answers_json", JSON.stringify({ answers, session_id: sessionId }));
   for (const { moduleKey, fieldKey, file } of files) {
     // 三段命名 {moduleKey}_{fieldKey}_{原名}，后端据此把文件挂到对应字段
     const renamed = new File([file], `${moduleKey}_${fieldKey}_${file.name}`, {
@@ -179,4 +186,38 @@ export async function recordPreference(
       chosen,
     }),
   });
+}
+
+export async function startSession(): Promise<string> {
+  const resp = await fetch(`${BASE}/session/start`, {
+    method: "POST",
+    headers: { ...authHeaders() },
+  });
+  if (!resp.ok) throw new Error(`创建会话失败: ${resp.status}`);
+  return (await resp.json()).session_id as string;
+}
+
+export async function sessionChat(
+  sessionId: string,
+  message: string
+): Promise<ChatTurnResponse> {
+  const resp = await fetch(`${BASE}/session/${sessionId}/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ message }),
+  });
+  if (!resp.ok) throw new Error(`对话失败: ${resp.status}`);
+  return (await resp.json()) as ChatTurnResponse;
+}
+
+export async function listSessions(): Promise<SessionSummary[]> {
+  const resp = await fetch(`${BASE}/session/`, { headers: { ...authHeaders() } });
+  if (!resp.ok) throw new Error(`获取会话列表失败: ${resp.status}`);
+  return (await resp.json()) as SessionSummary[];
+}
+
+export async function getSessionDetail(id: string): Promise<SessionDetail> {
+  const resp = await fetch(`${BASE}/session/${id}`, { headers: { ...authHeaders() } });
+  if (!resp.ok) throw new Error(`获取会话失败: ${resp.status}`);
+  return (await resp.json()) as SessionDetail;
 }

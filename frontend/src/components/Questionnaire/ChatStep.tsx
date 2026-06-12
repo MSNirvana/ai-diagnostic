@@ -1,58 +1,89 @@
 import { useEffect, useRef, useState } from "react";
-import type { ChatMessage, ProblemSummary } from "../../types";
-import { sendChatMessage } from "../../api/client";
+import type { ChatMessage, ProblemMap } from "../../types";
+import { startSession, sessionChat } from "../../api/client";
 import "./ChatStep.css";
 
 const OPENING =
   "你好，我是你的诊断顾问。先告诉我，当前最让你头疼的一个问题是什么？";
 
+const FOCUS_LABELS: Record<string, string> = {
+  market: "市场与客户",
+  sales: "营销与销售",
+  product: "产品与服务",
+  ops: "运营与供应链",
+  org: "组织与人才",
+  finance: "财务与资本",
+};
+
+const focusLabel = (key: string): string => FOCUS_LABELS[key] ?? key;
+
+type Phase = "intake" | "confirm" | "done";
+
 interface ChatStepProps {
-  onComplete: (summary: ProblemSummary) => void;
-  initialMessages?: ChatMessage[];
-  onMessagesChange?: (messages: ChatMessage[]) => void;
+  onComplete: (problemMap: ProblemMap, sessionId: string) => void;
+  resumeSessionId?: string;
+  resumeMessages?: ChatMessage[];
 }
 
-export function ChatStep({ onComplete, initialMessages, onMessagesChange }: ChatStepProps) {
+export function ChatStep({
+  onComplete,
+  resumeSessionId,
+  resumeMessages,
+}: ChatStepProps) {
+  const [sessionId, setSessionId] = useState<string | null>(
+    resumeSessionId ?? null
+  );
   const [messages, setMessages] = useState<ChatMessage[]>(
-    initialMessages && initialMessages.length > 0
-      ? initialMessages
+    resumeMessages && resumeMessages.length > 0
+      ? resumeMessages
       : [{ role: "assistant", content: OPENING }]
   );
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [summary, setSummary] = useState<ProblemSummary | null>(null);
+  const [phase, setPhase] = useState<Phase>("intake");
+  const [problemMap, setProblemMap] = useState<ProblemMap | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const startedRef = useRef(false);
 
-  // 消息变化同步给父组件（用于草稿持久化）
+  // 挂载时：续聊用已有 session，否则创建新 session
   useEffect(() => {
-    onMessagesChange?.(messages);
+    if (startedRef.current) return;
+    startedRef.current = true;
+    if (resumeSessionId) {
+      setSessionId(resumeSessionId);
+      return;
+    }
+    startSession()
+      .then((id) => setSessionId(id))
+      .catch(() => setError("无法开始会话，请刷新重试。"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages]);
+  }, []);
 
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, loading, summary]);
+  }, [messages, loading, phase, problemMap]);
 
   const send = async () => {
     const text = draft.trim();
-    if (!text || loading || summary) return;
+    if (!text || loading || !sessionId) return;
     const next: ChatMessage[] = [...messages, { role: "user", content: text }];
     setMessages(next);
     setDraft("");
     setError(null);
     setLoading(true);
     try {
-      const resp = await sendChatMessage(next);
+      const resp = await sessionChat(sessionId, text);
       setMessages([...next, { role: "assistant", content: resp.message }]);
-      if (resp.done && resp.summary) {
-        setSummary(resp.summary);
+      setPhase(resp.phase);
+      if (resp.problem_map) setProblemMap(resp.problem_map);
+      if (resp.phase === "done" && resp.problem_map) {
+        onComplete(resp.problem_map, sessionId);
       }
     } catch {
       setError("对话出了点问题，请重试。");
-      // 回退用户输入，便于重试
       setMessages(messages);
       setDraft(text);
     } finally {
@@ -66,6 +97,11 @@ export function ChatStep({ onComplete, initialMessages, onMessagesChange }: Chat
       void send();
     }
   };
+
+  const inputPlaceholder =
+    phase === "confirm"
+      ? "还有要补充或纠正的吗？直接说…"
+      : "描述一下你遇到的问题…（Enter 发送，Shift+Enter 换行）";
 
   return (
     <div className="chat-step">
@@ -104,36 +140,58 @@ export function ChatStep({ onComplete, initialMessages, onMessagesChange }: Chat
           </div>
         )}
 
-        {summary && (
+        {phase === "confirm" && problemMap && (
           <div className="summary-card">
-            <span className="summary-card__tag">已锁定核心问题</span>
-            <h2 className="summary-card__problem">{summary.core_problem}</h2>
+            <span className="summary-card__tag">请确认我对你问题的理解</span>
+            <h2 className="summary-card__problem">{problemMap.core_problem}</h2>
+
+            {problemMap.sub_problems.length > 0 && (
+              <div className="summary-card__item">
+                <dt className="summary-card__subhead">相关联的问题</dt>
+                <ul className="summary-card__sublist">
+                  {problemMap.sub_problems.map((sp, i) => (
+                    <li key={i}>{sp}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             <dl className="summary-card__list">
-              {summary.context && (
+              {problemMap.goal && (
                 <div className="summary-card__item">
-                  <dt>背景</dt>
-                  <dd>{summary.context}</dd>
+                  <dt>目的</dt>
+                  <dd>{problemMap.goal}</dd>
                 </div>
               )}
-              {summary.suspected_cause && (
+              {problemMap.constraints && (
                 <div className="summary-card__item">
-                  <dt>你怀疑的原因</dt>
-                  <dd>{summary.suspected_cause}</dd>
+                  <dt>约束</dt>
+                  <dd>{problemMap.constraints}</dd>
                 </div>
               )}
-              {summary.tried && (
+              {problemMap.success_criteria && (
                 <div className="summary-card__item">
-                  <dt>已尝试</dt>
-                  <dd>{summary.tried}</dd>
+                  <dt>成功标准</dt>
+                  <dd>{problemMap.success_criteria}</dd>
+                </div>
+              )}
+              {problemMap.diagnosis_focus && (
+                <div className="summary-card__item">
+                  <dt>建议优先诊断</dt>
+                  <dd>{focusLabel(problemMap.diagnosis_focus)}</dd>
                 </div>
               )}
             </dl>
+
+            <p className="summary-card__confirm-hint">
+              以上理解对吗？不对可以直接在下方继续补充。
+            </p>
             <button
               type="button"
               className="btn-primary btn-primary--final summary-card__cta"
-              onClick={() => onComplete(summary)}
+              onClick={() => onComplete(problemMap, sessionId!)}
             >
-              基于这个问题，生成诊断方案
+              确认无误，开始诊断
             </button>
           </div>
         )}
@@ -141,27 +199,25 @@ export function ChatStep({ onComplete, initialMessages, onMessagesChange }: Chat
 
       {error && <p className="chat-error">{error}</p>}
 
-      {!summary && (
-        <div className="chat-input-bar">
-          <textarea
-            className="chat-input"
-            rows={2}
-            placeholder="描述一下你遇到的问题…（Enter 发送，Shift+Enter 换行）"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={onKeyDown}
-            disabled={loading}
-          />
-          <button
-            type="button"
-            className="btn-primary chat-send"
-            onClick={() => void send()}
-            disabled={loading || draft.trim() === ""}
-          >
-            发送
-          </button>
-        </div>
-      )}
+      <div className="chat-input-bar">
+        <textarea
+          className="chat-input"
+          rows={2}
+          placeholder={inputPlaceholder}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={onKeyDown}
+          disabled={loading || !sessionId}
+        />
+        <button
+          type="button"
+          className="btn-primary chat-send"
+          onClick={() => void send()}
+          disabled={loading || !sessionId || draft.trim() === ""}
+        >
+          发送
+        </button>
+      </div>
     </div>
   );
 }

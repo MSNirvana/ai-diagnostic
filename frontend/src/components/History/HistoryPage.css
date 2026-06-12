@@ -53,3 +53,49 @@
 .history-back-btn:hover {
   border-color: var(--accent);
 }
+
+/* 会话对话回看 */
+.history-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 16px 0;
+}
+.history-chat__user {
+  align-self: flex-end;
+  max-width: 75%;
+  background: var(--accent);
+  color: #fff;
+  padding: 10px 14px;
+  border-radius: 12px 12px 2px 12px;
+}
+.history-chat__ai {
+  align-self: flex-start;
+  max-width: 75%;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 10px 14px;
+  border-radius: 12px 12px 12px 2px;
+}
+.history-map {
+  background: var(--gold-light);
+  border: 1px solid var(--gold);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  margin-top: 16px;
+}
+.history-map h3 { font-family: var(--font-serif); margin: 0 0 10px; }
+.history-map p { margin: 4px 0; font-size: 0.92rem; }
+
+.history-item--session { display: flex; align-items: center; gap: 0; padding: 0; overflow: hidden; }
+.history-item__main {
+  flex: 1; display: flex; flex-direction: column; gap: 4px;
+  background: transparent; border: none; cursor: pointer; text-align: left;
+  padding: 16px 20px; color: var(--ink);
+}
+.history-item__continue {
+  background: transparent; border: none; border-left: 1px solid var(--line);
+  color: var(--accent); cursor: pointer; padding: 16px 18px; font-size: 0.9rem;
+  align-self: stretch;
+}
+.history-item__continue:hover { background: var(--gold-light); }

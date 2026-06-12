@@ -5,9 +5,10 @@ import type {
   GeneratedModule,
   ABQuestionnaire,
   ProblemSummary,
+  ProblemMap,
   ChatMessage,
 } from "../../types";
-import { generateABFromSummary, recordPreference } from "../../api/client";
+import { generateABFromSummary, recordPreference, getSessionDetail } from "../../api/client";
 import { useAuth } from "../../auth/useAuth";
 import { saveDraft, loadDraft, clearDraft } from "../../utils/draft";
 import type { DraftState } from "../../utils/draft";
@@ -19,7 +20,8 @@ import "./Questionnaire.css";
 interface QuestionnaireProps {
   onSubmit: (
     answers: ModuleAnswer[],
-    files: { moduleKey: string; fieldKey: string; file: File }[]
+    files: { moduleKey: string; fieldKey: string; file: File }[],
+    sessionId?: string
   ) => void;
 }
 
@@ -33,6 +35,7 @@ export function Questionnaire({ onSubmit }: QuestionnaireProps) {
   const [activeModules, setActiveModules] = useState<GeneratedModule[]>([]);
   const [abOptions, setAbOptions] = useState<ABQuestionnaire | null>(null);
   const [storedSummary, setStoredSummary] = useState<ProblemSummary | null>(null);
+  const [storedSessionId, setStoredSessionId] = useState<string | null>(null);
 
   const [current, setCurrent] = useState(0);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -45,9 +48,46 @@ export function Questionnaire({ onSubmit }: QuestionnaireProps) {
   const [restoredFileNames, setRestoredFileNames] = useState<Record<string, string[]>>({});
 
   const [pendingDraft, setPendingDraft] = useState<DraftState | null>(null);
+  const [resumeSessionId, setResumeSessionId] = useState<string | null>(null);
+  const [resumeMessages, setResumeMessages] = useState<ChatMessage[] | null>(null);
+
+  // 进入页面时一次性读取“继续这个对话”的 session id（来自历史页）
+  const resumeIdRef = useRef<string | null>(null);
+  if (resumeIdRef.current === null) {
+    try {
+      resumeIdRef.current = localStorage.getItem("resume_session_id") ?? "";
+    } catch {
+      resumeIdRef.current = "";
+    }
+  }
+
+  // 从历史页“继续这个对话”跳转过来：读取 session 并恢复对话
+  useEffect(() => {
+    const sid = resumeIdRef.current;
+    if (!sid) return;
+    try {
+      localStorage.removeItem("resume_session_id");
+    } catch {
+      // 忽略
+    }
+    setPendingDraft(null);
+    getSessionDetail(sid)
+      .then((detail) => {
+        setResumeSessionId(detail.id);
+        setResumeMessages(detail.messages);
+        setStoredSessionId(detail.id);
+        setChatMessages(detail.messages);
+        setMode("chatting");
+      })
+      .catch(() => {
+        // 拉取失败则按普通新会话处理
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 挂载时读草稿（不自动恢复，让用户选）
   useEffect(() => {
+    if (resumeIdRef.current) return; // 续聊优先，不弹草稿
     const draft = loadDraft(userId);
     if (draft && (draft.messages.length > 0 || draft.activeModules.length > 0)) {
       setPendingDraft(draft);
@@ -70,6 +110,7 @@ export function Questionnaire({ onSubmit }: QuestionnaireProps) {
         mode,
         messages: chatMessages,
         chatSummary: storedSummary,
+        sessionId: storedSessionId,
         activeModules,
         current,
         facts,
@@ -81,7 +122,7 @@ export function Questionnaire({ onSubmit }: QuestionnaireProps) {
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
-  }, [mode, chatMessages, storedSummary, activeModules, current, facts, pains, freeText, files, userId]);
+  }, [mode, chatMessages, storedSummary, storedSessionId, activeModules, current, facts, pains, freeText, files, userId]);
 
   const resumeDraft = () => {
     const d = pendingDraft;
@@ -89,6 +130,7 @@ export function Questionnaire({ onSubmit }: QuestionnaireProps) {
     setMode(d.mode);
     setChatMessages(d.messages);
     setStoredSummary(d.chatSummary);
+    setStoredSessionId(d.sessionId ?? null);
     setActiveModules(d.activeModules);
     setCurrent(d.current);
     setFacts(d.facts);
@@ -118,8 +160,22 @@ export function Questionnaire({ onSubmit }: QuestionnaireProps) {
 
   const anyFilled = filled.some(Boolean);
 
-  const handleChatComplete = async (summary: ProblemSummary) => {
+  const handleChatComplete = async (problemMap: ProblemMap, sessionId: string) => {
     setMode("generating");
+    setStoredSessionId(sessionId);
+    // ProblemMap 投影成 ProblemSummary（后端忽略多余字段）
+    const summary: ProblemSummary = {
+      core_problem: problemMap.core_problem,
+      context: problemMap.context,
+      suspected_cause: problemMap.suspected_cause,
+      tried: problemMap.tried,
+      company_name: problemMap.company_name,
+      industry: problemMap.industry,
+      main_business: problemMap.main_business,
+      business_model: problemMap.business_model,
+      scale: problemMap.scale,
+      stage: problemMap.stage,
+    };
     setStoredSummary(summary);
     try {
       const ab = await generateABFromSummary(summary);
@@ -207,7 +263,7 @@ export function Questionnaire({ onSubmit }: QuestionnaireProps) {
     }
     // 提交即视为完成，清掉草稿
     clearDraft(userId);
-    onSubmit(answers, files);
+    onSubmit(answers, files, storedSessionId ?? undefined);
   };
 
   const resumeBanner = pendingDraft && (
@@ -239,8 +295,13 @@ export function Questionnaire({ onSubmit }: QuestionnaireProps) {
         {resumeBanner}
         <ChatStep
           onComplete={handleChatComplete}
-          initialMessages={chatMessages.length > 0 ? chatMessages : undefined}
-          onMessagesChange={setChatMessages}
+          resumeSessionId={
+            resumeSessionId ?? storedSessionId ?? undefined
+          }
+          resumeMessages={
+            resumeMessages ??
+            (chatMessages.length > 0 ? chatMessages : undefined)
+          }
         />
       </>
     );

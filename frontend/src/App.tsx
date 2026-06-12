@@ -18,15 +18,16 @@ function DiagnoseView() {
 
   const handleSubmit = async (
     answers: ModuleAnswer[],
-    files: { moduleKey: string; fieldKey: string; file: File }[]
+    files: { moduleKey: string; fieldKey: string; file: File }[],
+    sessionId?: string
   ) => {
     setLoading(true);
     setError(null);
     try {
       // 有文件走 multipart 上传端点，无文件走更轻的 JSON 端点
       const data = files.length
-        ? await runDiagnoseWithFiles(answers, files)
-        : await runDiagnose(answers);
+        ? await runDiagnoseWithFiles(answers, files, sessionId)
+        : await runDiagnose(answers, sessionId);
       setDiagnoseResult(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : "诊断失败");

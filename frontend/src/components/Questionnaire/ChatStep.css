@@ -169,6 +169,37 @@
   width: 100%;
 }
 
+.summary-card__subhead {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--ink-soft);
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+}
+
+.summary-card__sublist {
+  margin: 0 0 16px;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.summary-card__sublist li {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  color: var(--ink);
+  line-height: 1.5;
+}
+
+.summary-card__confirm-hint {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  color: var(--ink-soft);
+  line-height: 1.6;
+  margin: 0 0 16px;
+}
+
 .chat-error {
   font-family: var(--font-sans);
   font-size: 14px;

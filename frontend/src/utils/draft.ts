@@ -4,7 +4,7 @@ import type {
   GeneratedModule,
 } from "../types";
 
-const VERSION = 1;
+const VERSION = 2;
 const keyFor = (userId: string) => `ai_diagnostic_draft_${userId}`;
 
 export interface DraftState {
@@ -14,6 +14,7 @@ export interface DraftState {
   mode: "chatting" | "ready";
   messages: ChatMessage[];
   chatSummary: ProblemSummary | null;
+  sessionId?: string | null;
   activeModules: GeneratedModule[];
   current: number;
   facts: Record<string, Record<string, string>>;

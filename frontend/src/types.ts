@@ -93,3 +93,48 @@ export interface ChatResponse {
   done: boolean;
   summary: ProblemSummary | null;
 }
+
+export interface ProblemMap {
+  company_name: string;
+  industry: string;
+  main_business: string;
+  business_model: string;
+  scale: string;
+  stage: string;
+  core_problem: string;
+  sub_problems: string[];
+  goal: string;
+  constraints: string;
+  success_criteria: string;
+  context: string;
+  suspected_cause: string;
+  tried: string;
+  diagnosis_focus: string;
+}
+
+export interface ChatTurnResponse {
+  message: string;
+  done: boolean;
+  phase: "intake" | "confirm" | "done";
+  problem_map: ProblemMap | null;
+  summary: ProblemSummary | null;
+}
+
+export interface SessionSummary {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  title: string;
+  status: string;
+}
+
+export interface SessionDetail {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  title: string;
+  status: string;
+  messages: ChatMessage[];
+  problem_map: ProblemMap | null;
+  diagnosis_record_id: string | null;
+}

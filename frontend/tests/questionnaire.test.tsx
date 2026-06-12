@@ -11,30 +11,40 @@ const fakeModule = {
   pains: ["痛点A"],
 };
 
-const fakeSummary = {
-  core_problem: "获客成本翻倍",
-  context: "近半年",
-  suspected_cause: "渠道红利消失",
-  tried: "换代理",
+const fakeProblemMap = {
   company_name: "",
   industry: "直播电商",
   main_business: "带货",
   business_model: "撮合",
   scale: "85人",
   stage: "成长期",
+  core_problem: "获客成本翻倍",
+  sub_problems: [],
+  goal: "ROI回正",
+  constraints: "预算不加",
+  success_criteria: "ROI>1.2",
+  context: "近半年",
+  suspected_cause: "渠道红利消失",
+  tried: "换代理",
+  diagnosis_focus: "sales",
 };
 
 vi.mock("../src/api/client", () => ({
-  sendChatMessage: vi.fn(async () => ({
-    message: "好的，我已了解",
-    done: true,
-    summary: fakeSummary,
+  startSession: vi.fn(async () => "sess-1"),
+  sessionChat: vi.fn(async () => ({
+    message: "我这样理解你的情况……这样对吗？",
+    done: false,
+    phase: "confirm",
+    problem_map: fakeProblemMap,
+    summary: null,
   })),
+  getSessionDetail: vi.fn(),
   generateABFromSummary: vi.fn(async () => ({
     option_a: { modules: [fakeModule] },
     option_b: { modules: [fakeModule] },
   })),
   recordPreference: vi.fn(async () => {}),
+  runDiagnose: vi.fn(),
 }));
 
 // Questionnaire 现在用 useAuth 和草稿持久化，mock 掉
@@ -49,16 +59,21 @@ vi.mock("../src/utils/draft", () => ({
 }));
 
 describe("Questionnaire conversation flow", () => {
-  it("对话→生成→选A→填问卷→提交", async () => {
+  it("对话→确认问题地图→生成→选A→填问卷→提交", async () => {
     const onSubmit = vi.fn();
     render(<Questionnaire onSubmit={onSubmit} />);
-    // ChatStep：输入一句话发送
-    const input = screen.getByPlaceholderText(/描述|问题|输入/);
+    // 等 startSession 完成（sessionId 就绪）后再交互
+    const input = screen.getByPlaceholderText(/描述|问题|输入|补充/);
     fireEvent.change(input, { target: { value: "获客成本越来越高" } });
-    fireEvent.click(screen.getByText("发送"));
-    // done=true 后出现生成方案按钮
-    await waitFor(() => screen.getByText("基于这个问题，生成诊断方案"));
-    fireEvent.click(screen.getByText("基于这个问题，生成诊断方案"));
+    // sessionId 异步就绪，反复点发送直到 confirm 卡片出现
+    await waitFor(
+      () => {
+        fireEvent.click(screen.getByText("发送"));
+        return screen.getByText("确认无误，开始诊断");
+      },
+      { timeout: 2000 }
+    );
+    fireEvent.click(screen.getByText("确认无误，开始诊断"));
     // 进入 ab_choice
     await waitFor(() => screen.getByText(/方案 A/));
     fireEvent.click(screen.getByText(/方案 A/));
