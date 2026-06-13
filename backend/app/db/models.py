@@ -117,3 +117,19 @@ class DiagnosisFeedback(SQLModel, table=True):
     rating: int                            # 1-5
     is_useful: bool | None = None          # 有用/没用（👍👎）
     comment: str | None = None             # 用户文字意见
+
+
+class LLMConfig(SQLModel, table=True):
+    """模型厂商/API 配置。priority 小的为主，大的为备用，主失败自动切备。
+
+    TODO 生产环境：api_key 应加密存储，当前开发期明文。
+    """
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    name: str                              # 配置名（如"主力-packy-claude"）
+    provider: str                          # anthropic | openai
+    model: str
+    api_key: str                           # 开发期明文，生产需加密
+    base_url: str = ""                     # 自定义网关，空走官方
+    priority: int = Field(default=0, index=True)  # 0=主，升序 fallback
+    is_active: bool = Field(default=True, index=True)
+    created_at: datetime = Field(default_factory=_now)

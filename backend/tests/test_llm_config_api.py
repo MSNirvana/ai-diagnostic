@@ -1,0 +1,64 @@
+"""LLM 配置 CRUD 端点测试（含 key 脱敏）。"""
+from fastapi.testclient import TestClient
+
+from app.main import app
+
+client = TestClient(app)
+
+
+def test_create_list_config_masks_key(db_session):
+    resp = client.post("/admin/llm-configs/", json={
+        "name": "主力", "provider": "anthropic", "model": "claude-opus-4-8",
+        "api_key": "sk-secret-1234", "base_url": "https://x.com", "priority": 0,
+    })
+    assert resp.status_code == 201
+    body = resp.json()
+    # key 脱敏，不回明文
+    assert body["api_key_masked"] == "****1234"
+    assert "sk-secret" not in str(body)
+
+    rows = client.get("/admin/llm-configs/").json()
+    assert len(rows) == 1
+    assert rows[0]["name"] == "主力"
+
+
+def test_patch_config(db_session):
+    cid = client.post("/admin/llm-configs/", json={
+        "name": "旧", "provider": "openai", "model": "gpt-4o", "api_key": "k1234",
+    }).json()["id"]
+    resp = client.patch(f"/admin/llm-configs/{cid}", json={"name": "新", "priority": 2})
+    assert resp.status_code == 200
+    assert resp.json()["name"] == "新"
+    assert resp.json()["priority"] == 2
+
+
+def test_delete_config(db_session):
+    cid = client.post("/admin/llm-configs/", json={
+        "name": "待删", "provider": "openai", "model": "gpt-4o", "api_key": "k1234",
+    }).json()["id"]
+    assert client.delete(f"/admin/llm-configs/{cid}").status_code == 204
+    assert len(client.get("/admin/llm-configs/").json()) == 0
+
+
+def test_db_config_drives_get_llm_client(db_session):
+    """配置写库后，get_llm_client 应按 DB 配置构建（按 priority）。"""
+    import asyncio
+    from app.config import get_llm_client
+    from app.llm.fallback import FallbackLLMClient
+
+    client.post("/admin/llm-configs/", json={
+        "name": "主", "provider": "anthropic", "model": "claude-opus-4-8",
+        "api_key": "k1", "priority": 0,
+    })
+    client.post("/admin/llm-configs/", json={
+        "name": "备", "provider": "openai", "model": "gpt-4o",
+        "api_key": "k2", "priority": 1,
+    })
+
+    async def build():
+        async with db_session() as s:
+            return await get_llm_client(s)
+
+    llm = asyncio.get_event_loop().run_until_complete(build())
+    # 两条配置 → 包成 FallbackLLMClient
+    assert isinstance(llm, FallbackLLMClient)
