@@ -67,7 +67,9 @@ class DiagnosisSession(SQLModel, table=True):
     diagnosis_record_id: str | None = Field(default=None, index=True)
     # 会话标题（取自核心问题，便于列表展示）
     title: str = ""
-    status: str = "chatting"   # chatting | confirmed | diagnosed
+    status: str = "chatting"   # chatting | confirmed | filling | diagnosed
+    # 问卷填写进度快照（JSON）——跨设备恢复，避免重填/重新生成问卷
+    draft_json: str | None = None
 
 
 class QuestionnairePreference(SQLModel, table=True):

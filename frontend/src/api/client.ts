@@ -232,6 +232,14 @@ export async function getSessionDetail(id: string): Promise<SessionDetail> {
   return (await resp.json()) as SessionDetail;
 }
 
+export async function saveSessionDraft(sessionId: string, draftJson: string): Promise<void> {
+  await fetch(`${BASE}/session/${sessionId}/draft`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ draft_json: draftJson }),
+  });
+}
+
 export async function createProject(name: string): Promise<ProjectSummary> {
   const resp = await fetch(`${BASE}/project/`, {
     method: "POST",

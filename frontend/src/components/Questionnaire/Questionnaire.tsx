@@ -8,7 +8,7 @@ import type {
   ProblemMap,
   ChatMessage,
 } from "../../types";
-import { generateABFromSummary, recordPreference, getSessionDetail } from "../../api/client";
+import { generateABFromSummary, recordPreference, getSessionDetail, saveSessionDraft } from "../../api/client";
 import { useAuth } from "../../auth/useAuth";
 import { saveDraft, loadDraft, clearDraft } from "../../utils/draft";
 import type { DraftState } from "../../utils/draft";
@@ -66,6 +66,26 @@ export function Questionnaire({ onSubmit, projectId, resumeSessionId: resumeFrom
         setResumeMessages(detail.messages);
         setStoredSessionId(detail.id);
         setChatMessages(detail.messages);
+        // 有填写进度草稿 → 直接恢复到问卷填写阶段，不用重对话/重新生成问卷
+        if (detail.draft_json) {
+          try {
+            const d = JSON.parse(detail.draft_json);
+            if (d.activeModules?.length) {
+              setActiveModules(d.activeModules);
+              setCurrent(d.current ?? 0);
+              setFacts(d.facts ?? {});
+              setPains(d.pains ?? {});
+              setFreeText(d.freeText ?? {});
+              setRestoredFileNames(d.fileNames ?? {});
+              if (d.chatSummary) setStoredSummary(d.chatSummary);
+              setMode("ready");
+              setResumeReady(true);
+              return;
+            }
+          } catch {
+            // 草稿解析失败则退回对话
+          }
+        }
         setMode("chatting");
         setResumeReady(true);
       })
@@ -97,7 +117,7 @@ export function Questionnaire({ onSubmit, projectId, resumeSessionId: resumeFrom
         const k = `${f.moduleKey}__${f.fieldKey}`;
         (fileNames[k] ??= []).push(f.file.name);
       }
-      saveDraft(userId, {
+      const snapshot = {
         mode,
         messages: chatMessages,
         chatSummary: storedSummary,
@@ -108,7 +128,17 @@ export function Questionnaire({ onSubmit, projectId, resumeSessionId: resumeFrom
         pains,
         freeText,
         fileNames,
-      });
+      };
+      // 本地兜底（离线也不丢）
+      saveDraft(userId, snapshot);
+      // 主存后端：进入填写阶段(ready)且有 sessionId 时，跨设备可恢复
+      if (mode === "ready" && storedSessionId) {
+        const draftJson = JSON.stringify({
+          activeModules, current, facts, pains, freeText, fileNames,
+          chatSummary: storedSummary,
+        });
+        saveSessionDraft(storedSessionId, draftJson).catch(() => {});
+      }
     }, 500);
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);

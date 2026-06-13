@@ -48,6 +48,11 @@ class SessionDetail(BaseModel):
     messages: list[ChatMessage]
     problem_map: dict | None = None
     diagnosis_record_id: str | None = None
+    draft_json: str | None = None
+
+
+class DraftPayload(BaseModel):
+    draft_json: str
 
 
 class SessionSummary(BaseModel):
@@ -186,4 +191,26 @@ async def get_session_detail(
         messages=[ChatMessage.model_validate(m) for m in json.loads(s.messages_json)],
         problem_map=json.loads(s.problem_map_json) if s.problem_map_json else None,
         diagnosis_record_id=s.diagnosis_record_id,
+        draft_json=s.draft_json,
     )
+
+
+@router.patch("/{session_id}/draft", status_code=204)
+async def save_draft(
+    session_id: str,
+    body: DraftPayload,
+    user: User | None = Depends(get_optional_user),
+    session: AsyncSession = Depends(get_session),
+) -> None:
+    """保存问卷填写进度（跨设备恢复）。"""
+    s = await session.get(DiagnosisSession, session_id)
+    if s is None:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    if s.user_id is not None and (user is None or s.user_id != user.id):
+        raise HTTPException(status_code=404, detail="会话不存在")
+    s.draft_json = body.draft_json
+    if s.status not in ("diagnosed",):
+        s.status = "filling"
+    s.updated_at = datetime.now(timezone.utc)
+    session.add(s)
+    await session.commit()

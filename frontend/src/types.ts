@@ -137,6 +137,7 @@ export interface SessionDetail {
   messages: ChatMessage[];
   problem_map: ProblemMap | null;
   diagnosis_record_id: string | null;
+  draft_json: string | null;
 }
 
 export interface ProjectSummary {

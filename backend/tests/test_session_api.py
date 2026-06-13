@@ -75,3 +75,22 @@ def test_session_continue_appends_history(db_session):
     # 两轮 = 4 条消息（2 user + 2 assistant）
     assert len(detail["messages"]) == 4
     assert detail["messages"][2]["content"] == "第二句"
+
+
+def test_session_draft_save_and_load(db_session):
+    app.dependency_overrides[get_llm_client] = lambda: IntakeLLM()
+    token = _register("draft@b.com")
+    auth = {"Authorization": f"Bearer {token}"}
+    sid = client.post("/session/start", headers=auth).json()["session_id"]
+
+    # 存填写进度
+    draft = '{"current":2,"facts":{"market":{"客单价":"420"}},"pains":{},"freeText":{}}'
+    r = client.patch(f"/session/{sid}/draft", json={"draft_json": draft}, headers=auth)
+    assert r.status_code == 204
+
+    # 读回来：draft_json 在，status 变 filling
+    detail = client.get(f"/session/{sid}", headers=auth).json()
+    app.dependency_overrides.pop(get_llm_client, None)
+    assert detail["draft_json"] == draft
+    assert detail["status"] == "filling"
+    assert "客单价" in detail["draft_json"]

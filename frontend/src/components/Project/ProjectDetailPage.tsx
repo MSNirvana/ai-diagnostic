@@ -64,21 +64,32 @@ export function ProjectDetailPage() {
           <p style={{ color: "var(--ink-soft)" }}>暂无对话记录。</p>
         ) : (
           <div className="pd-list">
-            {project.sessions.map((s) => (
-              <div key={s.id} className="pd-item">
-                <div className="pd-item__main">
-                  <span className="pd-item__title">{s.title || "未命名会话"}</span>
-                  <span className="pd-item__meta">{fmt(s.updated_at)} · {s.status}</span>
+            {project.sessions.map((s) => {
+              const statusCn: Record<string, string> = {
+                chatting: "对话中",
+                confirmed: "已确认问题",
+                filling: "填写中",
+                diagnosed: "已诊断",
+              };
+              const isFilling = s.status === "filling";
+              return (
+                <div key={s.id} className="pd-item">
+                  <div className="pd-item__main">
+                    <span className="pd-item__title">{s.title || "未命名会话"}</span>
+                    <span className="pd-item__meta">
+                      {fmt(s.updated_at)} · {statusCn[s.status] ?? s.status}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="pd-continue"
+                    onClick={() => navigate("/", { state: { resumeSessionId: s.id, projectId: project.id } })}
+                  >
+                    {isFilling ? "继续填写 →" : "续聊 →"}
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  className="pd-continue"
-                  onClick={() => navigate("/", { state: { resumeSessionId: s.id, projectId: project.id } })}
-                >
-                  续聊 →
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>
