@@ -69,3 +69,36 @@ def test_project_isolated_between_users(db_session):
     token_b = _register("pb@b.com")
     r = client.get(f"/project/{pid}", headers={"Authorization": f"Bearer {token_b}"})
     assert r.status_code == 404
+
+
+class DiagLLM:
+    async def complete(self, system: str, prompt: str) -> str:
+        return json.dumps({
+            "signal": "red", "conclusion": "获客成本过高是核心问题",
+            "evidence": [{"text": "x", "source": "y"}],
+            "actions": ["降本"],
+            "drilldown": {"data_points": [], "comparisons": []},
+        }, ensure_ascii=False)
+
+
+def test_diagnosis_writes_project_memory(db_session):
+    from app.config import get_llm_client
+    app.dependency_overrides[get_llm_client] = lambda: DiagLLM()
+    token = _register("mem@b.com")
+    auth = {"Authorization": f"Bearer {token}"}
+    pid = client.post("/project/", json={"name": "记忆测试"}, headers=auth).json()["id"]
+
+    # 在项目下诊断
+    client.post(
+        "/diagnose",
+        json={"answers": [{"module": "market", "facts": {}, "pains": ["获客贵"]}], "project_id": pid},
+        headers=auth,
+    )
+    app.dependency_overrides.pop(get_llm_client, None)
+
+    detail = client.get(f"/project/{pid}", headers=auth).json()
+    # 项目记忆已沉淀本次诊断核心结论
+    assert detail["memory_summary"].strip() != ""
+    assert "market" in detail["memory_summary"]
+    # 诊断记录也挂到了项目下
+    assert len(detail["records"]) == 1

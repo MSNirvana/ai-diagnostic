@@ -242,6 +242,7 @@
 /* 左右两栏布局：左问题地图，右对话 */
 .chat-step--split {
   display: flex;
+  flex-direction: row;
   gap: 24px;
   align-items: flex-start;
   max-width: 1100px;

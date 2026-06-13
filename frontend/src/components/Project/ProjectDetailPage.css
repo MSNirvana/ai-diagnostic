@@ -82,3 +82,18 @@
 .pd-continue:hover {
   background: var(--gold-light);
 }
+
+.pd-item--clickable {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.pd-item--clickable:hover {
+  border-color: var(--accent);
+  box-shadow: var(--shadow);
+}
+.pd-item__arrow {
+  color: var(--accent);
+  font-size: 0.85rem;
+}

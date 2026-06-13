@@ -7,6 +7,7 @@ import { ProtectedRoute } from "./components/Auth/ProtectedRoute";
 import { HistoryPage } from "./components/History/HistoryPage";
 import { ProjectListPage } from "./components/Project/ProjectListPage";
 import { ProjectDetailPage } from "./components/Project/ProjectDetailPage";
+import { RecordDetailPage } from "./components/Project/RecordDetailPage";
 import { useAuth } from "./auth/useAuth";
 import { runDiagnose, runDiagnoseWithFiles } from "./api/client";
 import type { DiagnoseResult, ModuleAnswer } from "./types";
@@ -165,6 +166,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <HistoryPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/records/:id"
+        element={
+          <ProtectedRoute>
+            <RecordDetailPage />
           </ProtectedRoute>
         }
       />

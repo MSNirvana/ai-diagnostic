@@ -91,12 +91,18 @@ export function ProjectDetailPage() {
         ) : (
           <div className="pd-list">
             {project.records.map((r) => (
-              <div key={r.id} className="pd-item">
+              <button
+                key={r.id}
+                type="button"
+                className="pd-item pd-item--clickable"
+                onClick={() => navigate(`/records/${r.id}`)}
+              >
                 <div className="pd-item__main">
                   <span className="pd-item__title">{fmt(r.created_at)}</span>
                   <span className="pd-item__meta">{r.module_count} 个模块</span>
                 </div>
-              </div>
+                <span className="pd-item__arrow">查看 →</span>
+              </button>
             ))}
           </div>
         )}

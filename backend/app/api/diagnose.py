@@ -12,7 +12,7 @@ from app.orchestrator.dispatcher import diagnose_all
 from app.data.uploads import parse_table
 from app.auth.jwt import get_optional_user
 from app.db.database import get_session
-from app.db.models import User, DiagnosisRecord, DiagnosisFeedback, DiagnosisSession
+from app.db.models import User, DiagnosisRecord, DiagnosisFeedback, DiagnosisSession, Project
 
 router = APIRouter()
 
@@ -53,7 +53,39 @@ async def _save_history(
     await session.commit()
     if sid:
         await _link_session(session, sid, record.id)
+    # 诊断完成 → 把核心结论沉淀进项目长期记忆
+    if questionnaire.project_id:
+        await _append_diagnosis_memory(session, questionnaire.project_id, results)
     return record.id
+
+
+async def _append_diagnosis_memory(
+    session: AsyncSession,
+    project_id: str,
+    results: list[ModuleResult],
+) -> None:
+    """诊断完成后，把本次核心结论追加进项目长期记忆。
+
+    记忆反映真实诊断结果（模块 + 信号 + 一句结论），让后续诊断能延续历史。
+    保留最近 10 条，避免无限膨胀（AI 压缩留待后续）。
+    """
+    proj = await session.get(Project, project_id)
+    if proj is None or not results:
+        return
+    from datetime import datetime, timezone
+
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    # 取信号最重的模块作为本次诊断的标志性结论
+    order = {"red": 0, "yellow": 1, "green": 2}
+    top = sorted(results, key=lambda r: order.get(r.signal, 9))[0]
+    signal_cn = {"red": "需关注", "yellow": "观察", "green": "健康"}.get(top.signal, top.signal)
+    entry = f"[{stamp}] {top.module}（{signal_cn}）：{top.conclusion[:60]}"
+    lines = [ln for ln in proj.memory_summary.split("\n") if ln.strip()]
+    lines.append(entry)
+    proj.memory_summary = "\n".join(lines[-10:])
+    proj.updated_at = datetime.now(timezone.utc)
+    session.add(proj)
+    await session.commit()
 
 
 async def _link_session(
