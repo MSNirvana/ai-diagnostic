@@ -55,6 +55,9 @@ export function ProjectListPage() {
           <Link to="/history" style={{ color: "var(--accent)", textDecoration: "none", fontSize: "0.9rem" }}>
             历史记录
           </Link>
+          <Link to="/admin" style={{ color: "var(--accent)", textDecoration: "none", fontSize: "0.9rem" }}>
+            ⚙ 后台管理
+          </Link>
           <button
             type="button"
             onClick={() => { logout(); navigate("/login"); }}

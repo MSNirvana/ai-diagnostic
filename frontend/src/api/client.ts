@@ -15,6 +15,8 @@ import type {
   SessionDetail,
   ProjectSummary,
   ProjectDetail,
+  SkillVersionOut,
+  LLMConfigOut,
 } from "../types";
 import { getToken } from "../auth/authStore";
 
@@ -263,4 +265,80 @@ export async function patchProject(
   });
   if (!resp.ok) throw new Error(`更新项目失败: ${resp.status}`);
   return (await resp.json()) as ProjectSummary;
+}
+
+// ── 后台：Skill 管理 ──────────────────────────────────
+export async function listActiveSkills(): Promise<SkillVersionOut[]> {
+  const resp = await fetch(`${BASE}/admin/skills/`, { headers: { ...authHeaders() } });
+  if (!resp.ok) throw new Error(`获取 skill 失败: ${resp.status}`);
+  return (await resp.json()) as SkillVersionOut[];
+}
+
+export async function listSkillVersions(module: string): Promise<SkillVersionOut[]> {
+  const resp = await fetch(`${BASE}/admin/skills/${module}/versions`, { headers: { ...authHeaders() } });
+  if (!resp.ok) throw new Error(`获取版本失败: ${resp.status}`);
+  return (await resp.json()) as SkillVersionOut[];
+}
+
+export async function addSkillVersion(
+  module: string,
+  systemPrompt: string,
+  changeReason: string
+): Promise<SkillVersionOut> {
+  const resp = await fetch(`${BASE}/admin/skills/${module}/versions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ system_prompt: systemPrompt, change_reason: changeReason, activate: true }),
+  });
+  if (!resp.ok) throw new Error(`新增版本失败: ${resp.status}`);
+  return (await resp.json()) as SkillVersionOut;
+}
+
+export async function activateSkillVersion(module: string, versionId: string): Promise<void> {
+  const resp = await fetch(`${BASE}/admin/skills/${module}/activate/${versionId}`, {
+    method: "POST",
+    headers: { ...authHeaders() },
+  });
+  if (!resp.ok) throw new Error(`激活失败: ${resp.status}`);
+}
+
+// ── 后台：模型配置 ──────────────────────────────────
+export async function listLLMConfigs(): Promise<LLMConfigOut[]> {
+  const resp = await fetch(`${BASE}/admin/llm-configs/`, { headers: { ...authHeaders() } });
+  if (!resp.ok) throw new Error(`获取模型配置失败: ${resp.status}`);
+  return (await resp.json()) as LLMConfigOut[];
+}
+
+export async function createLLMConfig(body: {
+  name: string; provider: string; model: string; api_key: string;
+  base_url?: string; priority?: number;
+}): Promise<LLMConfigOut> {
+  const resp = await fetch(`${BASE}/admin/llm-configs/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) throw new Error(`创建配置失败: ${resp.status}`);
+  return (await resp.json()) as LLMConfigOut;
+}
+
+export async function patchLLMConfig(
+  id: string,
+  body: Partial<{ name: string; provider: string; model: string; api_key: string; base_url: string; priority: number; is_active: boolean }>
+): Promise<LLMConfigOut> {
+  const resp = await fetch(`${BASE}/admin/llm-configs/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) throw new Error(`更新配置失败: ${resp.status}`);
+  return (await resp.json()) as LLMConfigOut;
+}
+
+export async function deleteLLMConfig(id: string): Promise<void> {
+  const resp = await fetch(`${BASE}/admin/llm-configs/${id}`, {
+    method: "DELETE",
+    headers: { ...authHeaders() },
+  });
+  if (!resp.ok && resp.status !== 204) throw new Error(`删除失败: ${resp.status}`);
 }

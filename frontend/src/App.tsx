@@ -8,6 +8,7 @@ import { HistoryPage } from "./components/History/HistoryPage";
 import { ProjectListPage } from "./components/Project/ProjectListPage";
 import { ProjectDetailPage } from "./components/Project/ProjectDetailPage";
 import { RecordDetailPage } from "./components/Project/RecordDetailPage";
+import { AdminPage } from "./components/Admin/AdminPage";
 import { useAuth } from "./auth/useAuth";
 import { runDiagnose, runDiagnoseWithFiles } from "./api/client";
 import type { DiagnoseResult, ModuleAnswer } from "./types";
@@ -174,6 +175,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <RecordDetailPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin"
+        element={
+          <ProtectedRoute>
+            <AdminPage />
           </ProtectedRoute>
         }
       />

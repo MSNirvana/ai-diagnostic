@@ -171,3 +171,26 @@ export interface ProjectDetail {
   sessions: ProjectSessionBrief[];
   records: ProjectRecordBrief[];
 }
+
+export interface SkillVersionOut {
+  id: string;
+  module: string;
+  version: number;
+  system_prompt: string;
+  method: string;
+  is_active: boolean;
+  change_reason: string | null;
+  change_category: string | null;
+  reviewed_by: string | null;
+}
+
+export interface LLMConfigOut {
+  id: string;
+  name: string;
+  provider: string;
+  model: string;
+  api_key_masked: string;
+  base_url: string;
+  priority: number;
+  is_active: boolean;
+}
