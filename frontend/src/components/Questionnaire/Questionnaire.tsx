@@ -7,8 +7,9 @@ import type {
   ProblemSummary,
   ProblemMap,
   ChatMessage,
+  UploadedFileOut,
 } from "../../types";
-import { generateABFromSummary, recordPreference, getSessionDetail, saveSessionDraft } from "../../api/client";
+import { generateABFromSummary, recordPreference, getSessionDetail, saveSessionDraft, uploadSessionFile, listSessionFiles, deleteSessionFile } from "../../api/client";
 import { useAuth } from "../../auth/useAuth";
 import { saveDraft, loadDraft, clearDraft } from "../../utils/draft";
 import type { DraftState } from "../../utils/draft";
@@ -22,7 +23,8 @@ interface QuestionnaireProps {
     answers: ModuleAnswer[],
     files: { moduleKey: string; fieldKey: string; file: File }[],
     sessionId?: string,
-    projectId?: string
+    projectId?: string,
+    problemMap?: ProblemMap
   ) => void;
   projectId?: string;          // 当前所属项目（从项目页进入）
   resumeSessionId?: string;    // 续聊：要恢复的会话 id（从项目/历史页进入）
@@ -38,6 +40,7 @@ export function Questionnaire({ onSubmit, projectId, resumeSessionId: resumeFrom
   const [activeModules, setActiveModules] = useState<GeneratedModule[]>([]);
   const [abOptions, setAbOptions] = useState<ABQuestionnaire | null>(null);
   const [storedSummary, setStoredSummary] = useState<ProblemSummary | null>(null);
+  const [storedProblemMap, setStoredProblemMap] = useState<ProblemMap | null>(null);
   const [storedSessionId, setStoredSessionId] = useState<string | null>(null);
 
   const [current, setCurrent] = useState(0);
@@ -49,6 +52,9 @@ export function Questionnaire({ onSubmit, projectId, resumeSessionId: resumeFrom
     { moduleKey: string; fieldKey: string; file: File }[]
   >([]);
   const [restoredFileNames, setRestoredFileNames] = useState<Record<string, string[]>>({});
+  // 已上传到后端的文件（跨设备复用，不用重传）
+  const [storedFiles, setStoredFiles] = useState<UploadedFileOut[]>([]);
+  const [uploadingFields, setUploadingFields] = useState<Record<string, boolean>>({});
 
   const [pendingDraft, setPendingDraft] = useState<DraftState | null>(null);
   const [resumeSessionId, setResumeSessionId] = useState<string | null>(null);
@@ -65,7 +71,10 @@ export function Questionnaire({ onSubmit, projectId, resumeSessionId: resumeFrom
         setResumeSessionId(detail.id);
         setResumeMessages(detail.messages);
         setStoredSessionId(detail.id);
+        // 拉该会话已上传的文件，跨设备复用、不用重传
+        listSessionFiles(detail.id).then(setStoredFiles).catch(() => {});
         setChatMessages(detail.messages);
+        setStoredProblemMap(detail.problem_map);
         // 有填写进度草稿 → 直接恢复到问卷填写阶段，不用重对话/重新生成问卷
         if (detail.draft_json) {
           try {
@@ -78,6 +87,7 @@ export function Questionnaire({ onSubmit, projectId, resumeSessionId: resumeFrom
               setFreeText(d.freeText ?? {});
               setRestoredFileNames(d.fileNames ?? {});
               if (d.chatSummary) setStoredSummary(d.chatSummary);
+              setStoredProblemMap(d.problemMap ?? detail.problem_map);
               setMode("ready");
               setResumeReady(true);
               return;
@@ -121,6 +131,7 @@ export function Questionnaire({ onSubmit, projectId, resumeSessionId: resumeFrom
         mode,
         messages: chatMessages,
         chatSummary: storedSummary,
+        problemMap: storedProblemMap,
         sessionId: storedSessionId,
         activeModules,
         current,
@@ -136,6 +147,7 @@ export function Questionnaire({ onSubmit, projectId, resumeSessionId: resumeFrom
         const draftJson = JSON.stringify({
           activeModules, current, facts, pains, freeText, fileNames,
           chatSummary: storedSummary,
+          problemMap: storedProblemMap,
         });
         saveSessionDraft(storedSessionId, draftJson).catch(() => {});
       }
@@ -143,7 +155,7 @@ export function Questionnaire({ onSubmit, projectId, resumeSessionId: resumeFrom
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
-  }, [mode, chatMessages, storedSummary, storedSessionId, activeModules, current, facts, pains, freeText, files, userId]);
+  }, [mode, chatMessages, storedSummary, storedProblemMap, storedSessionId, activeModules, current, facts, pains, freeText, files, userId]);
 
   const resumeDraft = () => {
     const d = pendingDraft;
@@ -151,6 +163,7 @@ export function Questionnaire({ onSubmit, projectId, resumeSessionId: resumeFrom
     setMode(d.mode);
     setChatMessages(d.messages);
     setStoredSummary(d.chatSummary);
+    setStoredProblemMap(d.problemMap ?? null);
     setStoredSessionId(d.sessionId ?? null);
     setActiveModules(d.activeModules);
     setCurrent(d.current);
@@ -184,6 +197,7 @@ export function Questionnaire({ onSubmit, projectId, resumeSessionId: resumeFrom
   const handleChatComplete = async (problemMap: ProblemMap, sessionId: string) => {
     setMode("generating");
     setStoredSessionId(sessionId);
+    setStoredProblemMap(problemMap);
     // ProblemMap 投影成 ProblemSummary（后端忽略多余字段）
     const summary: ProblemSummary = {
       core_problem: problemMap.core_problem,
@@ -251,18 +265,40 @@ export function Questionnaire({ onSubmit, projectId, resumeSessionId: resumeFrom
     });
   };
 
-  const addFiles = (modKey: string, fieldKey: string, list: FileList | null) => {
-    if (!list) return;
-    const added = Array.from(list).map((file) => ({
-      moduleKey: modKey,
-      fieldKey,
-      file,
-    }));
-    setFiles((prev) => [...prev, ...added]);
+  const addFiles = async (modKey: string, fieldKey: string, list: FileList | null) => {
+    if (!list || list.length === 0) return;
+    const arr = Array.from(list);
+    // 有会话则即时上传到后端（跨设备复用）；否则退回内存暂存
+    if (storedSessionId) {
+      const fieldId = `${modKey}__${fieldKey}`;
+      setUploadingFields((p) => ({ ...p, [fieldId]: true }));
+      try {
+        for (const file of arr) {
+          const saved = await uploadSessionFile(storedSessionId, modKey, fieldKey, file);
+          setStoredFiles((prev) => [...prev, saved]);
+        }
+      } catch {
+        // 上传失败退回内存暂存，至少本次诊断能用
+        setFiles((prev) => [...prev, ...arr.map((file) => ({ moduleKey: modKey, fieldKey, file }))]);
+      } finally {
+        setUploadingFields((p) => ({ ...p, [fieldId]: false }));
+      }
+    } else {
+      setFiles((prev) => [...prev, ...arr.map((file) => ({ moduleKey: modKey, fieldKey, file }))]);
+    }
   };
 
   const removeFile = (index: number) => {
     setFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const removeStoredFile = async (fileId: string) => {
+    setStoredFiles((prev) => prev.filter((f) => f.id !== fileId));
+    try {
+      await deleteSessionFile(fileId);
+    } catch {
+      // 忽略：本地已移除
+    }
   };
 
   const handleSubmit = () => {
@@ -284,7 +320,13 @@ export function Questionnaire({ onSubmit, projectId, resumeSessionId: resumeFrom
     }
     // 提交即视为完成，清掉草稿
     clearDraft(userId);
-    onSubmit(answers, files, storedSessionId ?? undefined, projectId);
+    onSubmit(
+      answers,
+      files,
+      storedSessionId ?? undefined,
+      projectId,
+      storedProblemMap ?? undefined
+    );
   };
 
   const resumeBanner = pendingDraft && (
@@ -420,6 +462,26 @@ export function Questionnaire({ onSubmit, projectId, resumeSessionId: resumeFrom
                       e.target.value = "";
                     }}
                   />
+                  {uploadingFields[`${module.key}__${field.key}`] && (
+                    <span className="field__file-uploading">上传中…</span>
+                  )}
+                  {/* 已上传到后端的文件（跨设备复用，可删） */}
+                  {storedFiles
+                    .filter((f) => f.module_key === module.key && f.field_key === field.key)
+                    .map((f) => (
+                      <span className="field__file-item" key={f.id}>
+                        ✓ {f.original_name}
+                        <button
+                          type="button"
+                          className="field__file-remove"
+                          aria-label={`删除 ${f.original_name}`}
+                          onClick={() => removeStoredFile(f.id)}
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    ))}
+                  {/* 未登录/无会话时的内存暂存文件 */}
                   {fieldFiles(module.key, field.key).map((entry) => (
                     <span className="field__file-item" key={entry.index}>
                       {entry.file.name}
@@ -433,18 +495,6 @@ export function Questionnaire({ onSubmit, projectId, resumeSessionId: resumeFrom
                       </button>
                     </span>
                   ))}
-                  {(restoredFileNames[`${module.key}__${field.key}`] ?? [])
-                    .filter(
-                      (name) =>
-                        !fieldFiles(module.key, field.key).some(
-                          (e) => e.file.name === name
-                        )
-                    )
-                    .map((name) => (
-                      <span className="field__file-warning" key={`r-${name}`}>
-                        ⚠ 需重新上传：{name}
-                      </span>
-                    ))}
                 </div>
               )}
             </div>

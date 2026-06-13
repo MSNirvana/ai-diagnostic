@@ -1,18 +1,24 @@
 import json
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_llm_client
 from app.llm.base import LLMClient
+from app.memory.project_memory import (
+    append_diagnosis_memory,
+    append_feedback_memory,
+    append_problem_map_memory,
+)
 from app.models.questionnaire import Questionnaire
-from app.models.result import ModuleResult
+from app.models.result import ModuleResult, TriageSummary
 from app.orchestrator.dispatcher import diagnose_all
 from app.data.uploads import parse_table
 from app.auth.jwt import get_optional_user
 from app.db.database import get_session
-from app.db.models import User, DiagnosisRecord, DiagnosisFeedback, DiagnosisSession, Project
+from app.db.models import User, DiagnosisRecord, DiagnosisFeedback, DiagnosisSession, UploadedFile
+from sqlalchemy import select
 
 router = APIRouter()
 
@@ -20,7 +26,31 @@ router = APIRouter()
 class DiagnoseResponse(BaseModel):
     results: list[ModuleResult]
     record_id: str | None = None
-    skill_version_ids: dict[str, str] = {}
+    skill_version_ids: dict[str, str] = Field(default_factory=dict)
+    triage: TriageSummary = Field(default_factory=TriageSummary)
+
+
+async def _merge_stored_files(
+    session: AsyncSession, questionnaire: Questionnaire
+) -> None:
+    """诊断前，把该会话已存文件的解析摘要合并进对应模块的 facts。
+
+    文件选完即已上传并解析（UploadedFile.parsed_summary），这里直接复用，
+    无需请求带文件——跨设备恢复也能用到之前上传的文件。
+    """
+    sid = questionnaire.session_id
+    if not sid:
+        return
+    stmt = select(UploadedFile).where(UploadedFile.session_id == sid)
+    files = list(await session.scalars(stmt))
+    if not files:
+        return
+    by_module = {ans.module: ans for ans in questionnaire.answers}
+    for f in files:
+        answer = by_module.get(f.module_key)
+        if answer is None:
+            continue
+        answer.facts[f"{f.field_key}_file_{f.original_name}"] = f.parsed_summary
 
 
 async def _save_history(
@@ -28,6 +58,7 @@ async def _save_history(
     user: User | None,
     questionnaire: Questionnaire,
     results: list[ModuleResult],
+    triage: TriageSummary,
     profile_json: str | None = None,
 ) -> str | None:
     """已登录用户的诊断写入历史记录，返回 record_id；匿名用户返回 None。
@@ -53,39 +84,25 @@ async def _save_history(
     await session.commit()
     if sid:
         await _link_session(session, sid, record.id)
-    # 诊断完成 → 把核心结论沉淀进项目长期记忆
     if questionnaire.project_id:
-        await _append_diagnosis_memory(session, questionnaire.project_id, results)
+        if questionnaire.problem_map:
+            await append_problem_map_memory(
+                session,
+                project_id=questionnaire.project_id,
+                problem_map=questionnaire.problem_map,
+                user_id=user.id,
+                source_id=sid or record.id,
+            )
+        await append_diagnosis_memory(
+            session,
+            project_id=questionnaire.project_id,
+            results=results,
+            triage=triage,
+            user_id=user.id,
+            source_id=record.id,
+        )
+        await session.commit()
     return record.id
-
-
-async def _append_diagnosis_memory(
-    session: AsyncSession,
-    project_id: str,
-    results: list[ModuleResult],
-) -> None:
-    """诊断完成后，把本次核心结论追加进项目长期记忆。
-
-    记忆反映真实诊断结果（模块 + 信号 + 一句结论），让后续诊断能延续历史。
-    保留最近 10 条，避免无限膨胀（AI 压缩留待后续）。
-    """
-    proj = await session.get(Project, project_id)
-    if proj is None or not results:
-        return
-    from datetime import datetime, timezone
-
-    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    # 取信号最重的模块作为本次诊断的标志性结论
-    order = {"red": 0, "yellow": 1, "green": 2}
-    top = sorted(results, key=lambda r: order.get(r.signal, 9))[0]
-    signal_cn = {"red": "需关注", "yellow": "观察", "green": "健康"}.get(top.signal, top.signal)
-    entry = f"[{stamp}] {top.module}（{signal_cn}）：{top.conclusion[:60]}"
-    lines = [ln for ln in proj.memory_summary.split("\n") if ln.strip()]
-    lines.append(entry)
-    proj.memory_summary = "\n".join(lines[-10:])
-    proj.updated_at = datetime.now(timezone.utc)
-    session.add(proj)
-    await session.commit()
 
 
 async def _link_session(
@@ -109,12 +126,14 @@ async def diagnose(
     user: User | None = Depends(get_optional_user),
     session: AsyncSession = Depends(get_session),
 ) -> DiagnoseResponse:
+    await _merge_stored_files(session, questionnaire)
     outcome = await diagnose_all(questionnaire, llm, session)
-    record_id = await _save_history(session, user, questionnaire, outcome.results)
+    record_id = await _save_history(session, user, questionnaire, outcome.results, outcome.triage)
     return DiagnoseResponse(
         results=outcome.results,
         record_id=record_id,
         skill_version_ids=outcome.skill_version_ids,
+        triage=outcome.triage,
     )
 
 
@@ -159,12 +178,15 @@ async def diagnose_with_upload(
         answer.facts[facts_key] = str(parsed)
         answer.uploaded_files.append(upload.filename)
 
+    # 合并该会话已存文件（之前即时上传的）
+    await _merge_stored_files(session, questionnaire)
     outcome = await diagnose_all(questionnaire, llm, session)
-    record_id = await _save_history(session, user, questionnaire, outcome.results)
+    record_id = await _save_history(session, user, questionnaire, outcome.results, outcome.triage)
     return DiagnoseResponse(
         results=outcome.results,
         record_id=record_id,
         skill_version_ids=outcome.skill_version_ids,
+        triage=outcome.triage,
     )
 
 
@@ -198,5 +220,7 @@ async def submit_feedback(
         comment=body.comment,
     )
     session.add(feedback)
+    await session.commit()
+    await append_feedback_memory(session, record=record, feedback=feedback)
     await session.commit()
     return {"ok": True}

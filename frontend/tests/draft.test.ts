@@ -16,6 +16,7 @@ const baseState = {
   mode: "ready" as const,
   messages: [{ role: "user" as const, content: "你好" }],
   chatSummary: null,
+  problemMap: null,
   activeModules: [],
   current: 2,
   facts: { market: { 客单价: "120" } },
@@ -37,6 +38,33 @@ describe("draft persistence", () => {
     expect(got!.facts.market["客单价"]).toBe("120");
     expect(got!.userId).toBe("user1");
     expect(got!.savedAt).toBeTruthy();
+  });
+
+  it("保存已确认的问题地图，供后续专家分诊使用", () => {
+    saveDraft("user1", {
+      ...baseState,
+      problemMap: {
+        company_name: "",
+        industry: "直播电商",
+        main_business: "带货",
+        business_model: "撮合",
+        scale: "85人",
+        stage: "成长期",
+        core_problem: "获客成本翻倍",
+        sub_problems: ["线索质量下降"],
+        goal: "ROI回正",
+        constraints: "预算不加",
+        success_criteria: "ROI>1.2",
+        context: "近半年",
+        suspected_cause: "渠道红利消失",
+        tried: "换代理",
+        diagnosis_focus: "sales",
+      },
+    });
+
+    const got = loadDraft("user1");
+    expect(got!.problemMap?.core_problem).toBe("获客成本翻倍");
+    expect(got!.problemMap?.diagnosis_focus).toBe("sales");
   });
 
   it("不同 userId 互相隔离", () => {

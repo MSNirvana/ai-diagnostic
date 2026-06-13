@@ -93,5 +93,6 @@ describe("Questionnaire conversation flow", () => {
     expect(onSubmit).toHaveBeenCalled();
     const [answers] = onSubmit.mock.calls[0];
     expect(answers[0].facts["f1"]).toBe("测试值");
+    expect(onSubmit.mock.calls[0][4]).toEqual(fakeProblemMap);
   });
 });

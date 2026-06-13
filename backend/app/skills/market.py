@@ -1,6 +1,7 @@
 import json
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.skills.base import Skill
+from app.skills.evidence import build_evidence_package
 from app.skills.parsing import parse_json_object, to_evidence, to_drilldown, to_actions
 from app.skills.store import get_active_skill_version
 from app.skills.prompts import MARKET_DIAGNOSIS
@@ -39,12 +40,22 @@ class MarketSkill(Skill):
         signal = data.get("signal", "yellow")
         if signal not in ("red", "yellow", "green"):
             signal = "yellow"
+        evidence = [to_evidence(e) for e in (data.get("evidence") or [])[:3]]
+        actions = to_actions(data.get("actions"))
         result = ModuleResult(
             module=self.module,
             signal=signal,
             conclusion=data.get("conclusion", "（模型未给出结论）"),
-            evidence=[to_evidence(e) for e in (data.get("evidence") or [])[:3]],
-            actions=to_actions(data.get("actions")),
+            evidence=evidence,
+            actions=actions,
             drilldown=to_drilldown(data.get("drilldown")),
+            evidence_package=build_evidence_package(
+                module=self.module,
+                answer=answer,
+                benchmark=benchmark,
+                citations=evidence,
+                actions=actions,
+                skill_version_id=version_id,
+            ),
         )
         return result, version_id

@@ -19,6 +19,7 @@ from app.config import get_llm_client
 from app.db.database import get_session
 from app.db.models import User, DiagnosisSession, Project
 from app.llm.base import LLMClient
+from app.memory.project_memory import append_problem_map_memory
 from app.models.conversation import ChatMessage, ChatResponse
 
 router = APIRouter(prefix="/session")
@@ -123,31 +124,16 @@ async def session_chat(
 
     # 对话确认后，把核心问题并入所属项目的长期记忆
     if resp.phase == "done" and resp.problem_map and s.project_id:
-        await _append_project_memory(session, s.project_id, resp.problem_map)
+        await append_problem_map_memory(
+            session,
+            project_id=s.project_id,
+            problem_map=resp.problem_map,
+            user_id=s.user_id,
+            source_id=s.id,
+        )
 
     await session.commit()
     return resp
-
-
-async def _append_project_memory(
-    session: AsyncSession, project_id: str, problem_map
-) -> None:
-    """把这次诊断的核心问题追加进项目长期记忆（保留最近若干条）。"""
-    proj = await session.get(Project, project_id)
-    if proj is None:
-        return
-    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    entry = f"[{stamp}] 核心问题：{problem_map.core_problem}"
-    if problem_map.goal:
-        entry += f"；目标：{problem_map.goal}"
-    lines = [ln for ln in proj.memory_summary.split("\n") if ln.strip()]
-    lines.append(entry)
-    # 只保留最近 10 条，避免记忆无限膨胀（AI 压缩留待后续）
-    proj.memory_summary = "\n".join(lines[-10:])
-    proj.updated_at = datetime.now(timezone.utc)
-    if problem_map.core_problem:
-        proj.profile_json = problem_map.model_dump_json()
-    session.add(proj)
 
 
 @router.get("/", response_model=list[SessionSummary])

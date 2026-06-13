@@ -91,7 +91,15 @@ def test_diagnosis_writes_project_memory(db_session):
     # 在项目下诊断
     client.post(
         "/diagnose",
-        json={"answers": [{"module": "market", "facts": {}, "pains": ["获客贵"]}], "project_id": pid},
+        json={
+            "answers": [{"module": "market", "facts": {}, "pains": ["获客贵"]}],
+            "project_id": pid,
+            "problem_map": {
+                "core_problem": "获客成本过高",
+                "goal": "把 CAC 降下来",
+                "diagnosis_focus": "market",
+            },
+        },
         headers=auth,
     )
     app.dependency_overrides.pop(get_llm_client, None)
@@ -102,3 +110,43 @@ def test_diagnosis_writes_project_memory(db_session):
     assert "market" in detail["memory_summary"]
     # 诊断记录也挂到了项目下
     assert len(detail["records"]) == 1
+    assert len(detail["memory_entries"]) >= 2
+    assert detail["memory_entries"][0]["entry_type"] in {"problem_map", "diagnosis"}
+    assert any(e["entry_type"] == "problem_map" for e in detail["memory_entries"])
+    assert any(e["entry_type"] == "diagnosis" for e in detail["memory_entries"])
+    assert any("降本" in e["summary"] for e in detail["memory_entries"])
+
+
+def test_feedback_writes_project_memory(db_session):
+    from app.config import get_llm_client
+    app.dependency_overrides[get_llm_client] = lambda: DiagLLM()
+    token = _register("fbmem@b.com")
+    auth = {"Authorization": f"Bearer {token}"}
+    pid = client.post("/project/", json={"name": "反馈记忆"}, headers=auth).json()["id"]
+
+    diagnose = client.post(
+        "/diagnose",
+        json={"answers": [{"module": "market", "facts": {}, "pains": ["获客贵"]}], "project_id": pid},
+        headers=auth,
+    ).json()
+    rec_id = diagnose["record_id"]
+    skill_version_id = diagnose["skill_version_ids"]["market"]
+
+    resp = client.post(
+        f"/diagnose/{rec_id}/feedback",
+        json={
+            "module": "market",
+            "skill_version_id": skill_version_id,
+            "rating": 2,
+            "is_useful": False,
+            "comment": "建议太泛，需要给出渠道拆解。",
+        },
+        headers=auth,
+    )
+    app.dependency_overrides.pop(get_llm_client, None)
+    assert resp.status_code == 201
+
+    detail = client.get(f"/project/{pid}", headers=auth).json()
+    feedback_entries = [e for e in detail["memory_entries"] if e["entry_type"] == "feedback"]
+    assert feedback_entries
+    assert "建议太泛" in feedback_entries[0]["summary"]

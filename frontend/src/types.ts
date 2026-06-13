@@ -6,6 +6,23 @@ export interface DrillDown {
   data_points: Evidence[];
   comparisons: string[];
 }
+export interface BenchmarkReference {
+  name: string;
+  source: string;
+  value: string;
+}
+export interface AuditTrail {
+  skill_version_id: string;
+  input_modules: string[];
+  checks: string[];
+}
+export interface EvidencePackage {
+  confidence: number;
+  confidence_reason: string;
+  citations: Evidence[];
+  benchmarks: BenchmarkReference[];
+  audit_trail: AuditTrail;
+}
 export type Signal = "red" | "yellow" | "green";
 export interface ModuleResult {
   module: string;
@@ -14,11 +31,30 @@ export interface ModuleResult {
   evidence: Evidence[];
   actions: string[];
   drilldown: DrillDown | null;
+  evidence_package?: EvidencePackage | null;
+}
+export interface ExpertRoute {
+  module: string;
+  label: string;
+  reason: string;
+  priority: number;
+}
+export interface TriageConflict {
+  modules: string[];
+  description: string;
+}
+export interface TriageSummary {
+  primary_module: string | null;
+  selected_experts: ExpertRoute[];
+  conflicts: TriageConflict[];
+  dependencies: string[];
+  priority_actions: string[];
 }
 export interface DiagnoseResult {
   results: ModuleResult[];
   record_id: string | null;
   skill_version_ids: Record<string, string>;
+  triage: TriageSummary;
 }
 export interface ModuleAnswer {
   module: string;
@@ -162,6 +198,15 @@ export interface ProjectRecordBrief {
   module_count: number;
 }
 
+export interface ProjectMemoryEntry {
+  id: string;
+  created_at: string;
+  entry_type: "problem_map" | "diagnosis" | "feedback" | string;
+  summary: string;
+  payload: Record<string, unknown>;
+  source_id: string | null;
+}
+
 export interface ProjectDetail {
   id: string;
   name: string;
@@ -169,6 +214,7 @@ export interface ProjectDetail {
   updated_at: string;
   status: string;
   memory_summary: string;
+  memory_entries: ProjectMemoryEntry[];
   sessions: ProjectSessionBrief[];
   records: ProjectRecordBrief[];
 }
@@ -194,4 +240,11 @@ export interface LLMConfigOut {
   base_url: string;
   priority: number;
   is_active: boolean;
+}
+
+export interface UploadedFileOut {
+  id: string;
+  module_key: string;
+  field_key: string;
+  original_name: string;
 }

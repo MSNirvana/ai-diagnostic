@@ -35,6 +35,22 @@ class Project(SQLModel, table=True):
     status: str = "active"                 # active | archived
 
 
+class ProjectMemoryEntry(SQLModel, table=True):
+    """企业长期档案的一条结构化时间线事件。
+
+    memory_summary 是给 LLM 复诊注入的短摘要；这里保留可审计原始事件，
+    方便前端展示、后续检索和反馈驱动迭代。
+    """
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    project_id: str = Field(foreign_key="project.id", index=True)
+    user_id: str | None = Field(default=None, index=True)
+    created_at: datetime = Field(default_factory=_now)
+    entry_type: str = Field(index=True)     # problem_map | diagnosis | feedback
+    summary: str
+    payload_json: str = "{}"
+    source_id: str | None = Field(default=None, index=True)
+
+
 class DiagnosisRecord(SQLModel, table=True):
     id: str = Field(default_factory=_uuid, primary_key=True)
     user_id: str = Field(foreign_key="user.id", index=True)
@@ -134,4 +150,21 @@ class LLMConfig(SQLModel, table=True):
     base_url: str = ""                     # 自定义网关，空走官方
     priority: int = Field(default=0, index=True)  # 0=主，升序 fallback
     is_active: bool = Field(default=True, index=True)
+    created_at: datetime = Field(default_factory=_now)
+
+
+class UploadedFile(SQLModel, table=True):
+    """用户上传的文件。选完即存，关联会话，跨设备恢复复用。
+
+    原始文件存磁盘（data/uploads/{session}/），DB 只存路径+元信息+解析摘要。
+    parsed_summary 在上传时就算好缓存，诊断时直接合并进 facts。
+    """
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    session_id: str = Field(index=True)      # 关联会话
+    user_id: str | None = Field(default=None, index=True)
+    module_key: str                          # 挂在哪个模块
+    field_key: str                           # 挂在哪个字段
+    original_name: str                       # 原始文件名
+    stored_path: str                         # 磁盘相对路径
+    parsed_summary: str = ""                 # parse_table 解析结果（缓存）
     created_at: datetime = Field(default_factory=_now)

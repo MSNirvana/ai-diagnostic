@@ -11,7 +11,7 @@ import { RecordDetailPage } from "./components/Project/RecordDetailPage";
 import { AdminPage } from "./components/Admin/AdminPage";
 import { useAuth } from "./auth/useAuth";
 import { runDiagnose, runDiagnoseWithFiles } from "./api/client";
-import type { DiagnoseResult, ModuleAnswer } from "./types";
+import type { DiagnoseResult, ModuleAnswer, ProblemMap } from "./types";
 
 function DiagnoseView() {
   const navigate = useNavigate();
@@ -28,15 +28,16 @@ function DiagnoseView() {
     answers: ModuleAnswer[],
     files: { moduleKey: string; fieldKey: string; file: File }[],
     sessionId?: string,
-    pid?: string
+    pid?: string,
+    problemMap?: ProblemMap
   ) => {
     setLoading(true);
     setError(null);
     try {
       // 有文件走 multipart 上传端点，无文件走更轻的 JSON 端点
       const data = files.length
-        ? await runDiagnoseWithFiles(answers, files, sessionId, pid)
-        : await runDiagnose(answers, sessionId, pid);
+        ? await runDiagnoseWithFiles(answers, files, sessionId, pid, problemMap)
+        : await runDiagnose(answers, sessionId, pid, problemMap);
       setDiagnoseResult(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : "诊断失败");
@@ -119,6 +120,7 @@ function DiagnoseView() {
             results={diagnoseResult.results}
             recordId={diagnoseResult.record_id}
             skillVersionIds={diagnoseResult.skill_version_ids}
+            triage={diagnoseResult.triage}
           />
         </>
       ) : (

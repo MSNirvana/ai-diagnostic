@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.jwt import get_current_user
 from app.db.database import get_session
-from app.db.models import User, Project, DiagnosisSession, DiagnosisRecord
+from app.db.models import User, Project, DiagnosisSession, DiagnosisRecord, ProjectMemoryEntry
 
 router = APIRouter(prefix="/project")
 
@@ -33,6 +33,15 @@ class ProjectSummary(BaseModel):
     updated_at: datetime
     status: str
     memory_summary: str = ""
+
+
+class MemoryEntryOut(BaseModel):
+    id: str
+    created_at: datetime
+    entry_type: str
+    summary: str
+    payload: dict
+    source_id: str | None = None
 
 
 class SessionBrief(BaseModel):
@@ -55,6 +64,7 @@ class ProjectDetail(BaseModel):
     updated_at: datetime
     status: str
     memory_summary: str
+    memory_entries: list[MemoryEntryOut]
     sessions: list[SessionBrief]
     records: list[RecordBrief]
 
@@ -134,9 +144,32 @@ async def get_project(
             mc = 0
         records.append(RecordBrief(id=r.id, created_at=r.created_at, module_count=mc))
 
+    mem_stmt = (
+        select(ProjectMemoryEntry)
+        .where(ProjectMemoryEntry.project_id == project_id)
+        .order_by(ProjectMemoryEntry.created_at.desc())
+    )
+    memory_entries: list[MemoryEntryOut] = []
+    for entry in (await session.scalars(mem_stmt)).all():
+        try:
+            payload = json.loads(entry.payload_json)
+        except (ValueError, TypeError):
+            payload = {}
+        memory_entries.append(
+            MemoryEntryOut(
+                id=entry.id,
+                created_at=entry.created_at,
+                entry_type=entry.entry_type,
+                summary=entry.summary,
+                payload=payload,
+                source_id=entry.source_id,
+            )
+        )
+
     return ProjectDetail(
         id=p.id, name=p.name, created_at=p.created_at, updated_at=p.updated_at,
         status=p.status, memory_summary=p.memory_summary,
+        memory_entries=memory_entries,
         sessions=sessions, records=records,
     )
 

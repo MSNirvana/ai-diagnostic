@@ -26,15 +26,21 @@ def client(db_session):
 
 def test_diagnose_returns_results(client):
     resp = client.post("/diagnose", json={
-        "answers": [{"module": "market", "facts": {}, "pains": ["竞品强"]}]
+        "answers": [{"module": "market", "facts": {}, "pains": ["竞品强"]}],
+        "problem_map": {"core_problem": "获客成本高", "diagnosis_focus": "sales"},
     })
     assert resp.status_code == 200
     body = resp.json()
-    assert body["results"][0]["module"] == "market"
+    assert body["results"][0]["module"] == "sales"
     assert body["results"][0]["signal"] == "red"
+    assert body["results"][0]["evidence_package"]["confidence"] > 0
+    assert body["results"][0]["evidence_package"]["citations"][0]["source"] == "行业报告"
+    assert body["triage"]["primary_module"] == "sales"
+    assert body["triage"]["selected_experts"][0]["reason"] == "问题地图建议优先诊断"
 
 
 def test_diagnose_empty_answers_returns_empty(client):
     resp = client.post("/diagnose", json={"answers": []})
     assert resp.status_code == 200
     assert resp.json()["results"] == []
+    assert resp.json()["triage"]["selected_experts"] == []

@@ -10,6 +10,7 @@ import type {
   ChatMessage,
   ChatResponse,
   ChatTurnResponse,
+  ProblemMap,
   ProblemSummary,
   SessionSummary,
   SessionDetail,
@@ -17,6 +18,7 @@ import type {
   ProjectDetail,
   SkillVersionOut,
   LLMConfigOut,
+  UploadedFileOut,
 } from "../types";
 import { getToken } from "../auth/authStore";
 
@@ -30,12 +32,18 @@ function authHeaders(): Record<string, string> {
 export async function runDiagnose(
   answers: ModuleAnswer[],
   sessionId?: string,
-  projectId?: string
+  projectId?: string,
+  problemMap?: Partial<ProblemMap>
 ): Promise<DiagnoseResult> {
   const resp = await fetch(`${BASE}/diagnose`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify({ answers, session_id: sessionId, project_id: projectId }),
+    body: JSON.stringify({
+      answers,
+      session_id: sessionId,
+      project_id: projectId,
+      problem_map: problemMap,
+    }),
   });
   if (!resp.ok) throw new Error(`diagnose failed: ${resp.status}`);
   const body = await resp.json();
@@ -46,12 +54,18 @@ export async function runDiagnoseWithFiles(
   answers: ModuleAnswer[],
   files: { moduleKey: string; fieldKey: string; file: File }[],
   sessionId?: string,
-  projectId?: string
+  projectId?: string,
+  problemMap?: Partial<ProblemMap>
 ): Promise<DiagnoseResult> {
   const form = new FormData();
   form.append(
     "answers_json",
-    JSON.stringify({ answers, session_id: sessionId, project_id: projectId })
+    JSON.stringify({
+      answers,
+      session_id: sessionId,
+      project_id: projectId,
+      problem_map: problemMap,
+    })
   );
   for (const { moduleKey, fieldKey, file } of files) {
     // 三段命名 {moduleKey}_{fieldKey}_{原名}，后端据此把文件挂到对应字段
@@ -349,4 +363,34 @@ export async function deleteLLMConfig(id: string): Promise<void> {
     headers: { ...authHeaders() },
   });
   if (!resp.ok && resp.status !== 204) throw new Error(`删除失败: ${resp.status}`);
+}
+
+// ── 会话文件：选完即时上传，跨设备复用 ──────────────
+export async function uploadSessionFile(
+  sessionId: string,
+  moduleKey: string,
+  fieldKey: string,
+  file: File
+): Promise<UploadedFileOut> {
+  const form = new FormData();
+  form.append("module_key", moduleKey);
+  form.append("field_key", fieldKey);
+  form.append("file", file);
+  const resp = await fetch(`${BASE}/session/${sessionId}/files`, {
+    method: "POST",
+    headers: { ...authHeaders() },
+    body: form,
+  });
+  if (!resp.ok) throw new Error(`上传失败: ${resp.status}`);
+  return (await resp.json()) as UploadedFileOut;
+}
+
+export async function listSessionFiles(sessionId: string): Promise<UploadedFileOut[]> {
+  const resp = await fetch(`${BASE}/session/${sessionId}/files`, { headers: { ...authHeaders() } });
+  if (!resp.ok) throw new Error(`获取文件失败: ${resp.status}`);
+  return (await resp.json()) as UploadedFileOut[];
+}
+
+export async function deleteSessionFile(fileId: string): Promise<void> {
+  await fetch(`${BASE}/files/${fileId}`, { method: "DELETE", headers: { ...authHeaders() } });
 }

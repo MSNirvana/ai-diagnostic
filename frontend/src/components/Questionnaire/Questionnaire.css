@@ -490,3 +490,10 @@
   color: var(--signal-amber);
   margin-top: 4px;
 }
+
+.field__file-uploading {
+  display: inline-block;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+  margin-top: 4px;
+}

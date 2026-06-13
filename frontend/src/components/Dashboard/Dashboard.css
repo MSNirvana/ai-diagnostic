@@ -1,5 +1,145 @@
+.triage-panel {
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 20px;
+  padding: 24px;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--line));
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 8% 10%, rgba(230, 126, 34, 0.16), transparent 28%),
+    linear-gradient(135deg, color-mix(in srgb, var(--surface) 92%, #f8d7a8), var(--surface));
+  box-shadow: 0 18px 45px rgba(55, 40, 22, 0.08);
+}
+
+.triage-panel::after {
+  content: "";
+  position: absolute;
+  inset: auto -80px -120px auto;
+  width: 240px;
+  height: 240px;
+  border: 1px solid rgba(230, 126, 34, 0.22);
+  border-radius: 999px;
+}
+
+.triage-panel__intro {
+  position: relative;
+  z-index: 1;
+}
+
+.triage-panel__eyebrow {
+  color: var(--accent);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.triage-panel__title {
+  margin: 6px 0 4px;
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: clamp(1.45rem, 3vw, 2rem);
+}
+
+.triage-panel__primary {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+.triage-panel__experts {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.triage-expert {
+  padding: 14px;
+  border: 1px solid rgba(135, 100, 56, 0.16);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(8px);
+}
+
+.triage-expert__rank {
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.triage-expert h3 {
+  margin: 5px 0;
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+.triage-expert p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+.triage-panel__signals {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.triage-panel__signals > div,
+.triage-panel__actions {
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.54);
+  border: 1px solid rgba(135, 100, 56, 0.14);
+}
+
+.triage-panel__signals h3 {
+  margin: 0 0 8px;
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+
+.triage-panel ul,
+.triage-panel ol {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  line-height: 1.65;
+}
+
+.triage-panel__actions {
+  position: relative;
+  z-index: 1;
+  margin-top: 16px;
+}
+
+.triage-panel__actions span {
+  display: inline-block;
+  margin-bottom: 8px;
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .dashboard {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 18px;
+}
+
+@media (max-width: 640px) {
+  .triage-panel {
+    padding: 18px;
+    border-radius: 14px;
+  }
 }

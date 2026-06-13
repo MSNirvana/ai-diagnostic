@@ -1,8 +1,18 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { getProject } from "../../api/client";
-import type { ProjectDetail } from "../../types";
+import type { ProjectDetail, ProjectMemoryEntry } from "../../types";
 import "./ProjectDetailPage.css";
+
+const MEMORY_LABELS: Record<string, string> = {
+  problem_map: "问题地图",
+  diagnosis: "诊断",
+  feedback: "反馈",
+};
+
+function memoryLabel(entry: ProjectMemoryEntry): string {
+  return MEMORY_LABELS[entry.entry_type] ?? entry.entry_type;
+}
 
 export function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -26,7 +36,7 @@ export function ProjectDetailPage() {
     return <div style={{ padding: 40, color: "var(--ink-soft)" }}>加载中…</div>;
   }
 
-  const memoryLines = project.memory_summary.split("\n").filter((l) => l.trim());
+  const memoryEntries = project.memory_entries ?? [];
 
   return (
     <div style={{ maxWidth: 1000, margin: "0 auto", padding: "40px 24px" }}>
@@ -45,15 +55,23 @@ export function ProjectDetailPage() {
         </button>
       </header>
 
-      {/* 项目记忆 */}
+      {/* 企业长期档案 */}
       <section className="pd-section">
-        <h2 className="pd-section__title">项目记忆</h2>
-        {memoryLines.length === 0 ? (
+        <h2 className="pd-section__title">企业长期档案</h2>
+        {memoryEntries.length === 0 ? (
           <p style={{ color: "var(--ink-soft)" }}>还没有诊断记忆，开始一次诊断后这里会沉淀核心问题。</p>
         ) : (
-          <ul className="pd-memory">
-            {memoryLines.map((line, i) => <li key={i}>{line}</li>)}
-          </ul>
+          <div className="pd-memory-timeline">
+            {memoryEntries.map((entry) => (
+              <article key={entry.id} className={`pd-memory-card pd-memory-card--${entry.entry_type}`}>
+                <div className="pd-memory-card__meta">
+                  <span>{memoryLabel(entry)}</span>
+                  <time>{fmt(entry.created_at)}</time>
+                </div>
+                <p>{entry.summary}</p>
+              </article>
+            ))}
+          </div>
         )}
       </section>
 
