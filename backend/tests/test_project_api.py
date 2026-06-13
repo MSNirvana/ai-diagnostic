@@ -110,6 +110,7 @@ def test_diagnosis_writes_project_memory(db_session):
     assert "market" in detail["memory_summary"]
     # 诊断记录也挂到了项目下
     assert len(detail["records"]) == 1
+    assert detail["records"][0]["has_war_room_plan"] is True
     assert len(detail["memory_entries"]) >= 2
     assert detail["memory_entries"][0]["entry_type"] in {"problem_map", "diagnosis"}
     assert any(e["entry_type"] == "problem_map" for e in detail["memory_entries"])
@@ -150,3 +151,52 @@ def test_feedback_writes_project_memory(db_session):
     feedback_entries = [e for e in detail["memory_entries"] if e["entry_type"] == "feedback"]
     assert feedback_entries
     assert "建议太泛" in feedback_entries[0]["summary"]
+
+
+def test_legacy_project_record_is_exposed_as_war_room_capable(db_session):
+    import asyncio
+    from sqlalchemy import select
+    from app.db.models import DiagnosisRecord, User
+
+    token = _register("legacy-project-record@b.com")
+    auth = {"Authorization": f"Bearer {token}"}
+    pid = client.post("/project/", json={"name": "历史项目"}, headers=auth).json()["id"]
+
+    async def seed_record() -> None:
+        async with db_session() as session:
+            user = (
+                await session.scalars(
+                    select(User).where(User.email == "legacy-project-record@b.com")
+                )
+            ).one()
+            session.add(
+                DiagnosisRecord(
+                    user_id=user.id,
+                    project_id=pid,
+                    answers_json=json.dumps(
+                        {"answers": [{"module": "market", "facts": {}, "pains": []}]}
+                    ),
+                    results_json=json.dumps(
+                        [
+                            {
+                                "module": "market",
+                                "signal": "yellow",
+                                "conclusion": "渠道效率需要改善",
+                                "evidence": [],
+                                "actions": ["清理低效渠道"],
+                                "drilldown": None,
+                                "evidence_package": None,
+                                "data_requests": [],
+                            }
+                        ],
+                        ensure_ascii=False,
+                    ),
+                    war_room_plan_json=None,
+                )
+            )
+            await session.commit()
+
+    asyncio.get_event_loop().run_until_complete(seed_record())
+    detail = client.get(f"/project/{pid}", headers=auth).json()
+
+    assert detail["records"][0]["has_war_room_plan"] is True

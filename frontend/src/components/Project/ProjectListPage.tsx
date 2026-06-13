@@ -1,13 +1,12 @@
 import { useEffect, useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { listProjects, createProject } from "../../api/client";
-import { useAuth } from "../../auth/useAuth";
+import { AppShell } from "../Layout/AppShell";
 import type { ProjectSummary } from "../../types";
 import "./ProjectListPage.css";
 
 export function ProjectListPage() {
   const navigate = useNavigate();
-  const { logout } = useAuth();
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -25,10 +24,10 @@ export function ProjectListPage() {
     const name = newName.trim();
     if (!name) return;
     try {
-      await createProject(name);
+      const project = await createProject(name);
       setNewName("");
       setCreating(false);
-      load();
+      navigate(`/projects/${project.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "创建失败");
     }
@@ -37,88 +36,91 @@ export function ProjectListPage() {
   const fmt = (iso: string) => new Date(iso).toLocaleString("zh-CN");
 
   return (
-    <div style={{ maxWidth: 1000, margin: "0 auto", padding: "40px 24px" }}>
-      <header
-        style={{
-          marginBottom: 28,
-          borderBottom: "1px solid var(--line)",
-          paddingBottom: 20,
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}
-      >
-        <h1 style={{ fontFamily: "var(--font-serif)", fontSize: "2rem", margin: 0 }}>
-          我的项目
-        </h1>
-        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-          <Link to="/history" style={{ color: "var(--accent)", textDecoration: "none", fontSize: "0.9rem" }}>
-            历史记录
-          </Link>
-          <Link to="/admin" style={{ color: "var(--accent)", textDecoration: "none", fontSize: "0.9rem" }}>
-            ⚙ 后台管理
-          </Link>
-          <button
-            type="button"
-            onClick={() => { logout(); navigate("/login"); }}
-            className="proj-logout-btn"
-          >
-            退出登录
+    <AppShell
+      eyebrow="Client Portfolio"
+      title="项目中心"
+      description="以企业项目为单位管理诊断、对话、证据与复诊记忆。所有工作从一个项目工作台开始。"
+      actions={
+        !creating ? (
+          <button type="button" className="btn-primary" onClick={() => setCreating(true)}>
+            新建项目
           </button>
-        </div>
-      </header>
+        ) : null
+      }
+    >
+      {error && <p className="proj-error">{error}</p>}
 
-      {error && <p style={{ color: "var(--signal-red)" }}>{error}</p>}
-
-      <div style={{ marginBottom: 20 }}>
-        {creating ? (
+      {creating && (
+        <section className="proj-create-panel">
+          <div>
+            <span className="proj-panel-kicker">New Engagement</span>
+            <h2>建立一个企业长期档案</h2>
+            <p>建议使用企业名、业务线或咨询项目名，后续诊断和会话都会沉淀到这里。</p>
+          </div>
           <div className="proj-create-row">
             <input
               className="proj-create-input"
-              placeholder="项目名称（如：星麦直播）"
+              placeholder="项目名称，如：星麦直播增长诊断"
               value={newName}
               autoFocus
               onChange={(e) => setNewName(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") void handleCreate(); }}
             />
             <button type="button" className="btn-primary" onClick={() => void handleCreate()}>
-              创建
+              创建并进入
             </button>
             <button type="button" className="proj-cancel-btn" onClick={() => setCreating(false)}>
               取消
             </button>
           </div>
-        ) : (
-          <button type="button" className="btn-primary" onClick={() => setCreating(true)}>
-            + 新建项目
-          </button>
-        )}
-      </div>
+        </section>
+      )}
 
-      <div className="proj-list">
-        {projects === null && !error && <p style={{ color: "var(--ink-soft)" }}>加载中…</p>}
-        {projects && projects.length === 0 && (
-          <p style={{ color: "var(--ink-soft)" }}>
-            还没有项目，新建一个开始持续诊断。
-          </p>
-        )}
-        {projects?.map((p) => (
-          <button
-            key={p.id}
-            type="button"
-            className="proj-card"
-            onClick={() => navigate(`/projects/${p.id}`)}
-          >
-            <span className="proj-card__name">{p.name}</span>
-            <span className="proj-card__meta">更新于 {fmt(p.updated_at)}</span>
-            {p.memory_summary && (
-              <span className="proj-card__memory">
-                {p.memory_summary.split("\n").slice(-1)[0]}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
-    </div>
+      <section className="portfolio-board">
+        <div className="portfolio-board__head">
+          <div>
+            <span className="proj-panel-kicker">Active Files</span>
+            <h2>客户项目组合</h2>
+          </div>
+          <span>{projects?.length ?? 0} 个项目</span>
+        </div>
+
+        <div className="proj-list">
+          {projects === null && !error && <p className="proj-empty">加载中…</p>}
+          {projects && projects.length === 0 && (
+            <div className="proj-empty-card">
+              <span>01</span>
+              <h3>先创建一个项目</h3>
+              <p>项目会成为所有问题地图、专家会诊、证据包和反馈复诊的归档中心。</p>
+              <button type="button" className="btn-primary" onClick={() => setCreating(true)}>
+                创建第一个项目
+              </button>
+            </div>
+          )}
+          {projects?.map((p, index) => (
+            <button
+              key={p.id}
+              type="button"
+              className="proj-card"
+              onClick={() => navigate(`/projects/${p.id}`)}
+            >
+              <span className="proj-card__index">{String(index + 1).padStart(2, "0")}</span>
+              <span className="proj-card__name">{p.name}</span>
+              <span className="proj-card__meta">更新于 {fmt(p.updated_at)}</span>
+              {p.memory_summary ? (
+                <span className="proj-card__memory">
+                  {p.memory_summary.split("\n").slice(-1)[0]}
+                </span>
+              ) : (
+                <span className="proj-card__memory proj-card__memory--empty">
+                  暂无档案事件，进入工作台开始诊断
+                </span>
+              )}
+              <span className="proj-card__arrow">进入工作台</span>
+            </button>
+          ))}
+        </div>
+      </section>
+    </AppShell>
   );
 }

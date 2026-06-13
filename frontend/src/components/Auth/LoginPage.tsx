@@ -45,8 +45,9 @@ export function LoginPage() {
   return (
     <div className="auth-wrap">
       <div className="auth-card">
-        <h1 className="auth-title">AI 企业诊断</h1>
-        <p className="auth-subtitle">登录以获取结论先行、数据支撑的分模块诊断</p>
+        <div className="auth-logo">RC</div>
+        <h1 className="auth-title">睿策视界</h1>
+        <p className="auth-subtitle">以项目为核心沉淀企业诊断、证据与复诊记忆</p>
 
         <div className="auth-tabs">
           <button

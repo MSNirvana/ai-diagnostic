@@ -2,6 +2,7 @@ from app.models.questionnaire import ModuleAnswer
 from app.models.result import (
     AuditTrail,
     BenchmarkReference,
+    DataRequest,
     Evidence,
     EvidencePackage,
 )
@@ -15,6 +16,7 @@ def build_evidence_package(
     citations: list[Evidence],
     actions: list[str],
     skill_version_id: str,
+    data_requests: list[DataRequest] | None = None,
 ) -> EvidencePackage:
     """Build the first auditable evidence package for a module diagnosis.
 
@@ -24,6 +26,7 @@ def build_evidence_package(
     without changing the API contract.
     """
     has_benchmark = bool(benchmark)
+    missing_required = [req for req in (data_requests or []) if req.required]
     input_count = len([v for v in answer.facts.values() if str(v).strip()]) + len(answer.pains)
     citation_count = len(citations)
 
@@ -34,7 +37,10 @@ def build_evidence_package(
         confidence += 0.12
     if actions:
         confidence += 0.05
+    if missing_required:
+        confidence -= min(len(missing_required), 4) * 0.08
     confidence = min(round(confidence, 2), 0.92)
+    confidence = max(confidence, 0.25)
 
     reasons: list[str] = []
     if citation_count:
@@ -45,6 +51,8 @@ def build_evidence_package(
         reasons.append(f"结合 {input_count} 条用户输入信号")
     if has_benchmark:
         reasons.append("已附外部基准")
+    if missing_required:
+        reasons.append(f"缺少 {len(missing_required)} 类关键数据，置信度下调")
 
     return EvidencePackage(
         confidence=confidence,
@@ -58,6 +66,7 @@ def build_evidence_package(
                 f"引用数量: {citation_count}",
                 f"行动建议数量: {len(actions)}",
                 f"用户输入信号: {input_count}",
+                f"缺失数据请求: {len(missing_required)}",
             ],
         ),
     )

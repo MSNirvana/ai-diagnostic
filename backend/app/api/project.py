@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.jwt import get_current_user
 from app.db.database import get_session
 from app.db.models import User, Project, DiagnosisSession, DiagnosisRecord, ProjectMemoryEntry
+from app.warroom.history import can_build_war_room_plan
 
 router = APIRouter(prefix="/project")
 
@@ -55,6 +56,7 @@ class RecordBrief(BaseModel):
     id: str
     created_at: datetime
     module_count: int
+    has_war_room_plan: bool = False
 
 
 class ProjectDetail(BaseModel):
@@ -142,7 +144,14 @@ async def get_project(
             mc = len(answers.get("answers", []))
         except (ValueError, TypeError):
             mc = 0
-        records.append(RecordBrief(id=r.id, created_at=r.created_at, module_count=mc))
+        records.append(
+            RecordBrief(
+                id=r.id,
+                created_at=r.created_at,
+                module_count=mc,
+                has_war_room_plan=can_build_war_room_plan(r),
+            )
+        )
 
     mem_stmt = (
         select(ProjectMemoryEntry)

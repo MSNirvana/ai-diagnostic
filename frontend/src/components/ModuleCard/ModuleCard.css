@@ -213,3 +213,46 @@
   font-size: 0.86rem;
   line-height: 1.6;
 }
+
+.data-request-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.data-request {
+  border: 1px solid rgba(193, 154, 76, 0.28);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: rgba(255, 251, 241, 0.7);
+}
+
+.data-request__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.data-request__head strong {
+  color: var(--ink);
+  font-size: 0.88rem;
+}
+
+.data-request__head span {
+  border: 1px solid rgba(193, 154, 76, 0.45);
+  border-radius: 999px;
+  color: var(--gold);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 8px;
+}
+
+.data-request p,
+.data-request small {
+  display: block;
+  margin: 6px 0 0;
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}

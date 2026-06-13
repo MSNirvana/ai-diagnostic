@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.jwt import get_current_user
 from app.db.database import get_session
 from app.db.models import User, DiagnosisRecord
+from app.warroom.history import get_or_build_war_room_plan
 
 router = APIRouter(prefix="/history")
 
@@ -24,6 +25,7 @@ class HistoryDetail(BaseModel):
     created_at: datetime
     answers: dict
     results: list
+    war_room_plan: dict | None = None
     profile: dict | None = None
 
 
@@ -57,10 +59,12 @@ async def get_history(
     record = await session.get(DiagnosisRecord, record_id)
     if record is None or record.user_id != user.id:
         raise HTTPException(status_code=404, detail="记录不存在")
+    war_room_plan = await get_or_build_war_room_plan(session, record)
     return HistoryDetail(
         id=record.id,
         created_at=record.created_at,
         answers=json.loads(record.answers_json),
         results=json.loads(record.results_json),
+        war_room_plan=war_room_plan.model_dump() if war_room_plan else None,
         profile=json.loads(record.profile_json) if record.profile_json else None,
     )

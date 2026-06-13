@@ -23,6 +23,13 @@ export interface EvidencePackage {
   benchmarks: BenchmarkReference[];
   audit_trail: AuditTrail;
 }
+export interface DataRequest {
+  key: string;
+  label: string;
+  reason: string;
+  source_hint: string;
+  required: boolean;
+}
 export type Signal = "red" | "yellow" | "green";
 export interface ModuleResult {
   module: string;
@@ -32,6 +39,7 @@ export interface ModuleResult {
   actions: string[];
   drilldown: DrillDown | null;
   evidence_package?: EvidencePackage | null;
+  data_requests: DataRequest[];
 }
 export interface ExpertRoute {
   module: string;
@@ -50,11 +58,76 @@ export interface TriageSummary {
   dependencies: string[];
   priority_actions: string[];
 }
+export type WarRoomUrgency = "now" | "soon" | "later";
+export interface DecisionItem {
+  title: string;
+  detail: string;
+  urgency: WarRoomUrgency;
+}
+export interface ActionMetric {
+  name: string;
+  current?: string | null;
+  target: string;
+  direction: "up" | "down" | "stable";
+}
+export interface DepartmentAction {
+  id: string;
+  department: string;
+  department_label: string;
+  battle_goal: string;
+  priority: WarRoomUrgency;
+  action_title: string;
+  action_detail: string;
+  owner_role: string;
+  start_window: string;
+  dependency?: string;
+  acceptance_rule: string;
+  required_data: DataRequest[];
+  metrics: ActionMetric[];
+  risk_note?: string;
+  confidence?: number | null;
+  evidence_refs?: string[];
+}
+export interface BattleChainStep {
+  id: string;
+  label: string;
+  depends_on: string[];
+  note?: string;
+}
+export interface ReviewCheckpoint {
+  window: "7d" | "14d" | "30d";
+  title: string;
+  checks: string[];
+}
+export interface PriorityBoard {
+  now: string[];
+  soon: string[];
+  later: string[];
+}
+export interface WarRoomPlan {
+  id: string;
+  record_id: string | null;
+  project_id?: string | null;
+  summary: string;
+  primary_battlefield: string;
+  secondary_battlefield?: string;
+  objective: string;
+  confidence: number;
+  decision_items: DecisionItem[];
+  battle_chain: BattleChainStep[];
+  department_actions: DepartmentAction[];
+  priority_board: PriorityBoard;
+  evidence_summary: string[];
+  risk_summary: string[];
+  data_gaps: DataRequest[];
+  checkpoints: ReviewCheckpoint[];
+}
 export interface DiagnoseResult {
   results: ModuleResult[];
   record_id: string | null;
   skill_version_ids: Record<string, string>;
   triage: TriageSummary;
+  war_room_plan?: WarRoomPlan;
 }
 export interface ModuleAnswer {
   module: string;
@@ -74,6 +147,7 @@ export interface DiagnosisDetail {
   created_at: string;
   answers: { answers: ModuleAnswer[] };
   results: ModuleResult[];
+  war_room_plan?: WarRoomPlan | null;
   profile: Record<string, string> | null;
 }
 
@@ -142,10 +216,15 @@ export interface ProblemMap {
   goal: string;
   constraints: string;
   success_criteria: string;
+  impact: string;
   context: string;
   suspected_cause: string;
   tried: string;
+  data_readiness: string;
   diagnosis_focus: string;
+  information_score: number;
+  missing_fields: string[];
+  next_question_reason: string;
 }
 
 export interface ChatTurnResponse {
@@ -196,6 +275,7 @@ export interface ProjectRecordBrief {
   id: string;
   created_at: string;
   module_count: number;
+  has_war_room_plan?: boolean;
 }
 
 export interface ProjectMemoryEntry {

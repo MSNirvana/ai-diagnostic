@@ -1,0 +1,39 @@
+from app.skills.configured import ConfiguredExpertSkill, DataRequirement, ExpertConfig
+from app.skills.prompts import SALES_DIAGNOSIS
+
+
+SALES_CONFIG = ExpertConfig(
+    module="sales",
+    method="funnel-evidence",
+    label="销售与增长",
+    fallback_prompt=SALES_DIAGNOSIS,
+    data_requirements=(
+        DataRequirement(
+            key="sales_funnel",
+            label="销售漏斗数据",
+            reason="销售诊断必须看到线索、到店/咨询、报价、成交、客单价和各环节转化率。",
+            source_hint="上传近30/90天线索漏斗、渠道漏斗或销售日报。",
+            keywords=("线索", "漏斗", "转化率", "报价", "成交", "客单价", "到店", "咨询"),
+        ),
+        DataRequirement(
+            key="crm_deal_data",
+            label="CRM与成交明细",
+            reason="需要把获客与成交打通，识别是渠道质量、跟进效率还是成交策略问题。",
+            source_hint="连接 CRM，或上传客户跟进、成交、丢单原因和销售阶段明细。",
+            keywords=("CRM", "跟进", "成交明细", "丢单", "销售阶段", "商机"),
+        ),
+        DataRequirement(
+            key="channel_performance",
+            label="渠道投放与获客成本",
+            reason="增长问题需要联动广告花费、渠道来源、CAC 和 ROI。",
+            source_hint="连接广告账号或上传渠道花费与线索来源报表。",
+            keywords=("渠道", "广告", "投放", "CAC", "ROI", "ROAS", "来源"),
+            required=False,
+        ),
+    ),
+)
+
+
+class SalesSkill(ConfiguredExpertSkill):
+    def __init__(self):
+        super().__init__(SALES_CONFIG)

@@ -1,0 +1,382 @@
+.war-room {
+  display: grid;
+  gap: 18px;
+}
+
+.war-room__brief,
+.war-panel {
+  border: 1px solid rgba(164, 180, 199, 0.34);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: var(--shadow);
+}
+
+.war-room__brief {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
+  gap: 28px;
+  padding: clamp(24px, 4vw, 40px);
+}
+
+.war-room__brief::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(120deg, rgba(14, 74, 125, 0.13), transparent 42%),
+    radial-gradient(circle at 92% 12%, rgba(179, 139, 77, 0.18), transparent 26%);
+  pointer-events: none;
+}
+
+.war-room__brief-copy,
+.war-room__brief-metrics {
+  position: relative;
+  z-index: 1;
+}
+
+.war-room__eyebrow,
+.war-panel__heading span {
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.war-room__brief h2 {
+  max-width: 780px;
+  margin: 10px 0 14px;
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: clamp(1.8rem, 3.7vw, 3.45rem);
+  line-height: 1.12;
+  letter-spacing: -0.04em;
+}
+
+.war-room__brief p {
+  max-width: 720px;
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 1rem;
+}
+
+.war-room__conservative {
+  display: inline-flex;
+  margin-top: 18px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: var(--gold-light);
+  color: #7b5a25;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.war-room__brief-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-self: end;
+}
+
+.war-room__brief-metrics div {
+  min-height: 102px;
+  padding: 16px;
+  border: 1px solid rgba(14, 74, 125, 0.14);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.68);
+  backdrop-filter: blur(10px);
+}
+
+.war-room__brief-metrics span,
+.department-card__meta dt {
+  display: block;
+  color: var(--ink-soft);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.war-room__brief-metrics strong {
+  display: block;
+  margin-top: 8px;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  line-height: 1.25;
+  word-break: break-word;
+}
+
+.war-room__top-grid,
+.war-room__bottom-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.18fr) minmax(320px, 0.82fr);
+  gap: 18px;
+}
+
+.war-panel {
+  padding: clamp(18px, 3vw, 26px);
+}
+
+.war-panel__heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.war-panel__heading h3 {
+  margin: 4px 0 0;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 1.22rem;
+}
+
+.decision-list,
+.checkpoint-list {
+  display: grid;
+  gap: 12px;
+}
+
+.decision-card {
+  padding: 16px;
+  border: 1px solid rgba(14, 74, 125, 0.13);
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(244, 248, 252, 0.82), rgba(255, 255, 255, 0.92));
+}
+
+.decision-card h4,
+.department-card h4,
+.checkpoint-card h4,
+.evidence-grid h4 {
+  margin: 8px 0 6px;
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+.decision-card p,
+.department-card p,
+.checkpoint-card li,
+.evidence-grid li,
+.priority-column li,
+.battle-chain__step p {
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  line-height: 1.58;
+}
+
+.decision-card p,
+.department-card p,
+.battle-chain__step p {
+  margin: 0;
+}
+
+.war-priority {
+  display: inline-flex;
+  width: fit-content;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.war-priority--now {
+  background: rgba(163, 58, 58, 0.1);
+  color: var(--signal-red);
+}
+
+.war-priority--soon {
+  background: rgba(183, 122, 44, 0.12);
+  color: var(--signal-amber);
+}
+
+.war-priority--later {
+  background: rgba(37, 113, 90, 0.1);
+  color: var(--signal-green);
+}
+
+.battle-chain {
+  position: relative;
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.battle-chain__step {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 14px;
+  border: 1px solid rgba(179, 139, 77, 0.16);
+  border-radius: 18px;
+  background: rgba(246, 240, 229, 0.38);
+}
+
+.battle-chain__index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 13px;
+  background: var(--accent);
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+}
+
+.battle-chain__step strong {
+  display: block;
+  color: var(--ink);
+  font-size: 0.98rem;
+}
+
+.department-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.department-card {
+  padding: 18px;
+  border: 1px solid rgba(14, 74, 125, 0.14);
+  border-radius: 20px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(244, 248, 252, 0.78));
+}
+
+.department-card__topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.department-card__goal {
+  color: var(--ink) !important;
+  font-weight: 700;
+}
+
+.department-card__meta {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.department-card__meta div {
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(238, 244, 250, 0.72);
+}
+
+.department-card__meta dd {
+  margin: 3px 0 0;
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+
+.metric-row,
+.data-gap-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.metric-row span,
+.data-gap-pill {
+  display: inline-flex;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.metric-row span {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.data-gap-pill {
+  background: var(--gold-light);
+  color: #765720;
+}
+
+.department-card__gaps {
+  margin-top: 10px;
+}
+
+.department-card__risk {
+  margin-top: 12px !important;
+  padding: 10px 12px;
+  border-left: 3px solid var(--gold);
+  border-radius: 10px;
+  background: rgba(246, 240, 229, 0.56);
+}
+
+.department-card__confidence {
+  display: inline-block;
+  margin-top: 10px;
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.priority-board,
+.evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.priority-column,
+.checkpoint-card,
+.evidence-grid > div {
+  padding: 15px;
+  border: 1px solid rgba(164, 180, 199, 0.28);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.priority-column ul,
+.checkpoint-card ul,
+.evidence-grid ul {
+  margin: 10px 0 0;
+  padding-left: 18px;
+}
+
+.checkpoint-card span {
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-weight: 800;
+}
+
+@media (max-width: 900px) {
+  .war-room__brief,
+  .war-room__top-grid,
+  .war-room__bottom-grid,
+  .priority-board,
+  .evidence-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .war-room__brief-metrics,
+  .department-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .war-panel__heading {
+    display: block;
+  }
+}

@@ -58,6 +58,7 @@ class DiagnosisRecord(SQLModel, table=True):
     # 输入与输出都以 JSON 字符串整存，历史列表只读摘要字段，详情时再反序列化
     answers_json: str
     results_json: str
+    war_room_plan_json: str | None = None
     profile_json: str | None = None
     # 关联的诊断会话（记忆文件），可空（旧记录无此关联）
     session_id: str | None = Field(default=None, index=True)

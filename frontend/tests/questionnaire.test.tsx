@@ -24,10 +24,15 @@ const fakeProblemMap = {
   goal: "ROI回正",
   constraints: "预算不加",
   success_criteria: "ROI>1.2",
+  impact: "ROI 从 1.2 降到 0.8",
   context: "近半年",
   suspected_cause: "渠道红利消失",
   tried: "换代理",
+  data_readiness: "可提供投放报表",
   diagnosis_focus: "sales",
+  information_score: 92,
+  missing_fields: [],
+  next_question_reason: "",
 };
 
 vi.mock("../src/api/client", () => ({

@@ -1,10 +1,13 @@
 """历史记录端点：列表、详情、权限隔离。"""
 import json
+import asyncio
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.main import app
 from app.config import get_llm_client
+from app.db.models import DiagnosisRecord, User
 
 client = TestClient(app)
 
@@ -66,6 +69,8 @@ def test_history_detail_returns_full_record(db_session):
     body = resp.json()
     assert body["answers"]["answers"][0]["module"] == "market"
     assert body["results"][0]["module"] == "market"
+    assert body["war_room_plan"]["record_id"] == record_id
+    assert body["war_room_plan"]["primary_battlefield"] == "market"
 
 
 def test_history_detail_blocks_other_user(db_session):
@@ -81,3 +86,75 @@ def test_history_detail_blocks_other_user(db_session):
     )
     app.dependency_overrides.pop(get_llm_client, None)
     assert resp.status_code == 404  # B 看不到 A 的记录
+
+
+def test_history_detail_builds_and_persists_war_room_for_legacy_record(db_session):
+    token = _register("legacy-war-room@b.com")
+
+    async def seed_legacy_record() -> str:
+        async with db_session() as session:
+            user = (
+                await session.scalars(
+                    select(User).where(User.email == "legacy-war-room@b.com")
+                )
+            ).one()
+            record = DiagnosisRecord(
+                user_id=user.id,
+                project_id="legacy-project",
+                answers_json=json.dumps(
+                    {
+                        "answers": [
+                            {
+                                "module": "sales",
+                                "facts": {},
+                                "pains": ["成交率持续下降"],
+                            }
+                        ],
+                        "project_id": "legacy-project",
+                        "problem_map": {"goal": "30 天内恢复成交率"},
+                    },
+                    ensure_ascii=False,
+                ),
+                results_json=json.dumps(
+                    [
+                        {
+                            "module": "sales",
+                            "signal": "red",
+                            "conclusion": "销售承接链路是当前主战场",
+                            "evidence": [
+                                {"text": "高意向线索流失增加", "source": "历史 CRM"}
+                            ],
+                            "actions": ["重分线索池"],
+                            "drilldown": None,
+                            "evidence_package": None,
+                            "data_requests": [],
+                        }
+                    ],
+                    ensure_ascii=False,
+                ),
+                war_room_plan_json=None,
+            )
+            session.add(record)
+            await session.commit()
+            return record.id
+
+    record_id = asyncio.get_event_loop().run_until_complete(seed_legacy_record())
+    resp = client.get(
+        f"/history/{record_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert resp.status_code == 200
+    plan = resp.json()["war_room_plan"]
+    assert plan["record_id"] == record_id
+    assert plan["project_id"] == "legacy-project"
+    assert plan["primary_battlefield"] == "sales"
+    assert plan["department_actions"][0]["action_title"] == "重分线索池"
+
+    async def read_persisted_plan() -> str | None:
+        async with db_session() as session:
+            record = await session.get(DiagnosisRecord, record_id)
+            return record.war_room_plan_json if record else None
+
+    persisted = asyncio.get_event_loop().run_until_complete(read_persisted_plan())
+    assert persisted

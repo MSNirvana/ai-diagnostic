@@ -11,6 +11,7 @@ const results: ModuleResult[] = [
     evidence: [],
     actions: ["先拆解线索到成交的漏斗"],
     drilldown: null,
+    data_requests: [],
   },
 ];
 

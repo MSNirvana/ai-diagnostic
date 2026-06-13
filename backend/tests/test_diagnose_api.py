@@ -37,6 +37,12 @@ def test_diagnose_returns_results(client):
     assert body["results"][0]["evidence_package"]["citations"][0]["source"] == "行业报告"
     assert body["triage"]["primary_module"] == "sales"
     assert body["triage"]["selected_experts"][0]["reason"] == "问题地图建议优先诊断"
+    assert body["war_room_plan"]["record_id"] is None
+    assert body["war_room_plan"]["primary_battlefield"] == "sales"
+    assert body["war_room_plan"]["objective"]
+    assert body["war_room_plan"]["decision_items"]
+    assert body["war_room_plan"]["department_actions"][0]["department"] == "sales"
+    assert body["war_room_plan"]["checkpoints"][0]["window"] == "7d"
 
 
 def test_diagnose_empty_answers_returns_empty(client):
@@ -44,3 +50,5 @@ def test_diagnose_empty_answers_returns_empty(client):
     assert resp.status_code == 200
     assert resp.json()["results"] == []
     assert resp.json()["triage"]["selected_experts"] == []
+    assert resp.json()["war_room_plan"]["primary_battlefield"] == "overall"
+    assert resp.json()["war_room_plan"]["department_actions"] == []

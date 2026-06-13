@@ -38,12 +38,18 @@ class ProblemMap(BaseModel):
     goal: str = ""                     # 想达成什么
     constraints: str = ""              # 约束/不能动的
     success_criteria: str = ""         # 怎么算解决了
+    impact: str = ""                   # 影响程度/时间范围/量化损失
     # 背景
     context: str = ""
     suspected_cause: str = ""
     tried: str = ""
+    data_readiness: str = ""           # 已有数据、文件、指标口径，或明确暂无
     # 诊断优先级（建议先诊断哪个模块的 key）
     diagnosis_focus: str = ""
+    # intake 质量闸门（由后端 Skill 评估补充）
+    information_score: int = 0
+    missing_fields: list[str] = Field(default_factory=list)
+    next_question_reason: str = ""
 
     def to_summary(self) -> ProblemSummary:
         """投影成 ProblemSummary 喂给现有 questionnaire 生成端点。"""
@@ -72,4 +78,3 @@ class ChatResponse(BaseModel):
     problem_map: ProblemMap | None = None   # phase 为 confirm/done 时返回
     # 向后兼容：在 done 时同步填一份 summary
     summary: ProblemSummary | None = None
-

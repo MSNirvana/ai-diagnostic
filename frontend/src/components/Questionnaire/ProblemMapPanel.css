@@ -34,6 +34,57 @@
   gap: 14px;
 }
 
+.map-panel__score-card {
+  border: 1px solid rgba(193, 154, 76, 0.28);
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(255, 251, 241, 0.96), rgba(246, 250, 255, 0.92));
+  padding: 14px;
+}
+
+.map-panel__score-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  letter-spacing: 0.04em;
+}
+
+.map-panel__score-head strong {
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: 1.15rem;
+  letter-spacing: 0;
+}
+
+.map-panel__meter {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(15, 45, 76, 0.1);
+  overflow: hidden;
+  margin-top: 10px;
+}
+
+.map-panel__meter span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--gold), var(--accent));
+}
+
+.map-panel__score-copy,
+.map-panel__reason {
+  margin: 10px 0 0;
+  color: var(--ink);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.map-panel__reason {
+  color: var(--ink-soft);
+}
+
 .map-panel__block {
   display: flex;
   flex-direction: column;

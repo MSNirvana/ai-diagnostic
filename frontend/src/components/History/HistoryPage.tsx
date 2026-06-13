@@ -55,10 +55,6 @@ export function HistoryPage() {
     }
   };
 
-  const continueSession = (id: string) => {
-    navigate("/", { state: { resumeSessionId: id } });
-  };
-
   const fmt = (iso: string) => new Date(iso).toLocaleString("zh-CN");
 
   return (
@@ -76,8 +72,8 @@ export function HistoryPage() {
         <h1 style={{ fontFamily: "var(--font-serif)", fontSize: "2rem", margin: 0 }}>
           诊断历史
         </h1>
-        <Link to="/" style={{ color: "var(--accent)", textDecoration: "none" }}>
-          ← 返回诊断
+        <Link to="/projects" style={{ color: "var(--accent)", textDecoration: "none" }}>
+          ← 返回项目中心
         </Link>
       </header>
 
@@ -114,9 +110,9 @@ export function HistoryPage() {
             type="button"
             className="btn-primary"
             style={{ marginTop: 16 }}
-            onClick={() => continueSession(sessionDetail.id)}
+            onClick={() => navigate("/projects")}
           >
-            继续这个对话
+            前往项目工作台继续
           </button>
         </>
       ) : detail ? (
@@ -144,8 +140,8 @@ export function HistoryPage() {
                       <span className="history-item__date">{s.title || "未命名会话"}</span>
                       <span className="history-item__count">{fmt(s.updated_at)} · {s.status}</span>
                     </button>
-                    <button type="button" className="history-item__continue" onClick={() => continueSession(s.id)}>
-                      续聊 →
+                    <button type="button" className="history-item__continue" onClick={() => navigate("/projects")}>
+                      到项目继续 →
                     </button>
                   </div>
                 ))}
@@ -161,7 +157,7 @@ export function HistoryPage() {
             {list === null && !error && <p style={{ color: "var(--ink-soft)" }}>加载中…</p>}
             {list && list.length === 0 && (
               <p style={{ color: "var(--ink-soft)" }}>
-                还没有诊断记录。<Link to="/" style={{ color: "var(--accent)" }}>去做一次诊断</Link>
+                还没有诊断记录。<Link to="/projects" style={{ color: "var(--accent)" }}>去项目中心创建诊断</Link>
               </p>
             )}
             {list?.map((item) => (

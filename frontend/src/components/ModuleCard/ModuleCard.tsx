@@ -21,6 +21,7 @@ export function ModuleCard({ result, recordId, skillVersionId }: ModuleCardProps
 
   const showFeedback = Boolean(recordId && skillVersionId);
   const evidencePackage = result.evidence_package;
+  const dataRequests = result.data_requests ?? [];
 
   const handleSubmitFeedback = async () => {
     if (!recordId || !skillVersionId) return;
@@ -82,6 +83,26 @@ export function ModuleCard({ result, recordId, skillVersionId }: ModuleCardProps
                       </li>
                     ))}
                   </ul>
+                </>
+              )}
+
+              {dataRequests.length > 0 && (
+                <>
+                  <h5>待补数据</h5>
+                  <div className="data-request-list">
+                    {dataRequests.map((request) => (
+                      <div className="data-request" key={request.key}>
+                        <div className="data-request__head">
+                          <strong>{request.label}</strong>
+                          {request.required && <span>必需</span>}
+                        </div>
+                        <p>{request.reason}</p>
+                        {request.source_hint && (
+                          <small>{request.source_hint}</small>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </>
               )}
 

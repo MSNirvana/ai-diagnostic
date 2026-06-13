@@ -27,6 +27,15 @@ class AuditTrail(BaseModel):
     checks: list[str] = Field(default_factory=list)
 
 
+class DataRequest(BaseModel):
+    """专家需要补充的数据，用于把低置信度结论变成下一步数据采集任务。"""
+    key: str
+    label: str
+    reason: str
+    source_hint: str = ""
+    required: bool = True
+
+
 class EvidencePackage(BaseModel):
     """可信证据层：给每个专家结论附上可解释、可追溯的证据包。"""
     confidence: float = Field(ge=0, le=1)
@@ -44,6 +53,7 @@ class ModuleResult(BaseModel):
     actions: list[str] = Field(min_length=1)
     drilldown: DrillDown | None = None
     evidence_package: EvidencePackage | None = None
+    data_requests: list[DataRequest] = Field(default_factory=list)
 
 
 class ExpertRoute(BaseModel):

@@ -9,6 +9,15 @@ const result = {
   conclusion: "定价偏高是流失主因",
   evidence: [{ text: "定价高18%", source: "行业报告" }],
   actions: ["下调定价"],
+  data_requests: [
+    {
+      key: "promotion_account",
+      label: "推广账号与广告平台",
+      reason: "没有账号或平台范围，无法核验真实获客渠道与预算结构。",
+      source_hint: "连接广告账号或上传投放报表。",
+      required: true,
+    },
+  ],
   drilldown: { data_points: [{ text: "客单价¥420 vs ¥350", source: "销售表" }], comparisons: ["高出20%"] },
   evidence_package: {
     confidence: 0.82,
@@ -31,6 +40,8 @@ describe("ModuleCard", () => {
     fireEvent.click(screen.getByText("查看更多"));
     expect(screen.getByText(/客单价¥420/)).toBeTruthy();
     expect(screen.getByText("可信证据包")).toBeTruthy();
+    expect(screen.getByText("待补数据")).toBeTruthy();
+    expect(screen.getByText("推广账号与广告平台")).toBeTruthy();
     expect(screen.getByText("置信度：82%")).toBeTruthy();
     expect(screen.getByText(/AI Diagnostic benchmark stub/)).toBeTruthy();
     expect(screen.getByText(/skill fallback/)).toBeTruthy();

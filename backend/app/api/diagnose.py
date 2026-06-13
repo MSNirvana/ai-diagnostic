@@ -13,7 +13,9 @@ from app.memory.project_memory import (
 )
 from app.models.questionnaire import Questionnaire
 from app.models.result import ModuleResult, TriageSummary
+from app.models.warroom import WarRoomPlan
 from app.orchestrator.dispatcher import diagnose_all
+from app.warroom.composer import compose_war_room_plan
 from app.data.uploads import parse_table
 from app.auth.jwt import get_optional_user
 from app.db.database import get_session
@@ -28,6 +30,7 @@ class DiagnoseResponse(BaseModel):
     record_id: str | None = None
     skill_version_ids: dict[str, str] = Field(default_factory=dict)
     triage: TriageSummary = Field(default_factory=TriageSummary)
+    war_room_plan: WarRoomPlan
 
 
 async def _merge_stored_files(
@@ -59,6 +62,7 @@ async def _save_history(
     questionnaire: Questionnaire,
     results: list[ModuleResult],
     triage: TriageSummary,
+    war_room_plan: WarRoomPlan,
     profile_json: str | None = None,
 ) -> str | None:
     """已登录用户的诊断写入历史记录，返回 record_id；匿名用户返回 None。
@@ -80,6 +84,8 @@ async def _save_history(
         session_id=sid,
         project_id=questionnaire.project_id,
     )
+    war_room_plan.record_id = record.id
+    record.war_room_plan_json = war_room_plan.model_dump_json()
     session.add(record)
     await session.commit()
     if sid:
@@ -128,12 +134,27 @@ async def diagnose(
 ) -> DiagnoseResponse:
     await _merge_stored_files(session, questionnaire)
     outcome = await diagnose_all(questionnaire, llm, session)
-    record_id = await _save_history(session, user, questionnaire, outcome.results, outcome.triage)
+    war_room_plan = compose_war_room_plan(
+        questionnaire,
+        outcome.results,
+        outcome.triage,
+        outcome.skill_version_ids,
+    )
+    record_id = await _save_history(
+        session,
+        user,
+        questionnaire,
+        outcome.results,
+        outcome.triage,
+        war_room_plan,
+    )
+    war_room_plan.record_id = record_id
     return DiagnoseResponse(
         results=outcome.results,
         record_id=record_id,
         skill_version_ids=outcome.skill_version_ids,
         triage=outcome.triage,
+        war_room_plan=war_room_plan,
     )
 
 
@@ -181,12 +202,27 @@ async def diagnose_with_upload(
     # 合并该会话已存文件（之前即时上传的）
     await _merge_stored_files(session, questionnaire)
     outcome = await diagnose_all(questionnaire, llm, session)
-    record_id = await _save_history(session, user, questionnaire, outcome.results, outcome.triage)
+    war_room_plan = compose_war_room_plan(
+        questionnaire,
+        outcome.results,
+        outcome.triage,
+        outcome.skill_version_ids,
+    )
+    record_id = await _save_history(
+        session,
+        user,
+        questionnaire,
+        outcome.results,
+        outcome.triage,
+        war_room_plan,
+    )
+    war_room_plan.record_id = record_id
     return DiagnoseResponse(
         results=outcome.results,
         record_id=record_id,
         skill_version_ids=outcome.skill_version_ids,
         triage=outcome.triage,
+        war_room_plan=war_room_plan,
     )
 
 

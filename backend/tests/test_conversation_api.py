@@ -3,8 +3,10 @@ import json
 
 from fastapi.testclient import TestClient
 
+from app.api.conversation import run_chat_turn
 from app.main import app
 from app.config import get_llm_client
+from app.db.models import SkillVersion
 
 client = TestClient(app)
 
@@ -20,14 +22,16 @@ class AskingLLM:
 
 
 class DoneLLM:
-    """模拟信息充分、输出 summary 的 AI。"""
+    """模拟信息充分、输出完整 problem_map 的 AI。"""
     async def complete(self, system: str, prompt: str) -> str:
         return json.dumps({
+            "phase": "done",
             "done": True,
             "message": "我已了解，将据此定制诊断。",
-            "summary": {
+            "problem_map": {
                 "core_problem": "获客成本翻倍但转化没涨",
                 "context": "近半年投放预算翻倍",
+                "impact": "近半年投放预算翻倍，ROI 从 1.2 降到 0.8",
                 "suspected_cause": "渠道红利消失",
                 "tried": "换过两个投放代理",
                 "company_name": "星麦",
@@ -36,6 +40,12 @@ class DoneLLM:
                 "business_model": "平台撮合",
                 "scale": "85人",
                 "stage": "成长期",
+                "sub_problems": ["转化漏斗后段流失", "复购率偏低"],
+                "goal": "三个月内把 ROI 拉回 1.2 以上",
+                "constraints": "投放预算不能再加，团队暂时不扩编",
+                "success_criteria": "ROI 大于 1.2 且月单量稳定",
+                "data_readiness": "可提供投放账户报表、订单明细和客户复购数据",
+                "diagnosis_focus": "sales",
             },
         }, ensure_ascii=False)
 
@@ -185,3 +195,125 @@ def test_chat_phase_intake_to_confirm_to_done(db_session):
     assert r3["summary"]["industry"] == "直播电商"
 
     app.dependency_overrides.pop(get_llm_client, None)
+
+
+# ── 信息完整度闸门：防止过早 confirm/done ───────────────
+
+class PrematureConfirmLLM:
+    """模拟 AI 太快收口：只拿到症状就想确认。"""
+    async def complete(self, system: str, prompt: str) -> str:
+        return json.dumps({
+            "phase": "confirm",
+            "done": False,
+            "message": "我理解你们现在获客贵，这样对吗？",
+            "problem_map": {
+                "company_name": "星麦",
+                "industry": "直播电商",
+                "main_business": "达人带货",
+                "business_model": "",
+                "scale": "",
+                "stage": "",
+                "core_problem": "获客成本变高",
+                "sub_problems": [],
+                "goal": "",
+                "constraints": "",
+                "success_criteria": "",
+                "context": "",
+                "suspected_cause": "",
+                "tried": "",
+                "diagnosis_focus": "",
+            },
+        }, ensure_ascii=False)
+
+
+class PrematureDoneLLM:
+    """模拟用户未确认、地图也不完整时 AI 直接 done。"""
+    async def complete(self, system: str, prompt: str) -> str:
+        return json.dumps({
+            "phase": "done",
+            "done": True,
+            "message": "好的，开始诊断。",
+            "problem_map": {
+                "core_problem": "库存很高",
+                "industry": "消费品",
+            },
+        }, ensure_ascii=False)
+
+
+def test_chat_blocks_premature_confirm_until_intake_is_complete(db_session):
+    app.dependency_overrides[get_llm_client] = lambda: PrematureConfirmLLM()
+    resp = client.post("/conversation/chat", json={
+        "messages": [{"role": "user", "content": "我们获客成本越来越高"}]
+    })
+    app.dependency_overrides.pop(get_llm_client, None)
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["phase"] == "intake"
+    assert body["done"] is False
+    assert body["problem_map"]["core_problem"] == "获客成本变高"
+    assert body["problem_map"]["information_score"] < 70
+    assert "目标" in body["problem_map"]["missing_fields"]
+    assert "不要急着进入确认" in body["message"]
+
+
+def test_chat_blocks_premature_done_without_complete_problem_map(db_session):
+    app.dependency_overrides[get_llm_client] = lambda: PrematureDoneLLM()
+    resp = client.post("/conversation/chat", json={
+        "messages": [
+            {"role": "user", "content": "库存很高"},
+            {"role": "assistant", "content": "库存压力主要体现在哪里？"},
+            {"role": "user", "content": "仓库快满了"},
+        ]
+    })
+    app.dependency_overrides.pop(get_llm_client, None)
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["phase"] == "intake"
+    assert body["done"] is False
+    assert body["summary"] is None
+    assert body["problem_map"]["information_score"] < 70
+    assert body["problem_map"]["missing_fields"]
+
+
+async def test_chat_composes_intake_and_completeness_skill_versions(db_session):
+    class PromptSpyLLM:
+        seen_system = ""
+
+        async def complete(self, system: str, prompt: str) -> str:
+            PromptSpyLLM.seen_system = system
+            return json.dumps({
+                "phase": "intake",
+                "done": False,
+                "message": "请继续补充。",
+                "problem_map": None,
+            }, ensure_ascii=False)
+
+    async with db_session() as session:
+        session.add(SkillVersion(
+            module="conversation_intake",
+            skill_type="conversation",
+            version=1,
+            system_prompt="主对话 Skill",
+            method="intake",
+            is_active=True,
+        ))
+        session.add(SkillVersion(
+            module="intake_completeness",
+            skill_type="conversation",
+            version=1,
+            system_prompt="完整度闸门 Skill",
+            method="quality_gate",
+            is_active=True,
+        ))
+        await session.commit()
+
+        await run_chat_turn(
+            messages=[],
+            llm=PromptSpyLLM(),
+            session=session,
+        )
+
+    assert "主对话 Skill" in PromptSpyLLM.seen_system
+    assert "完整度闸门 Skill" in PromptSpyLLM.seen_system

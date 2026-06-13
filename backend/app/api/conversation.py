@@ -15,9 +15,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_llm_client
 from app.llm.base import LLMClient
 from app.models.conversation import ChatRequest, ChatResponse, ProblemMap
+from app.skills.intake_completeness import (
+    annotate_problem_map,
+    build_intake_gate_message,
+    evaluate_problem_map,
+)
 from app.skills.parsing import parse_json_object
 from app.skills.store import get_active_skill_version
-from app.skills.prompts import CONVERSATION_INTAKE
+from app.skills.prompts import CONVERSATION_INTAKE, INTAKE_COMPLETENESS
 from app.db.database import get_session
 
 router = APIRouter(prefix="/conversation")
@@ -46,6 +51,11 @@ async def run_chat_turn(
     """
     ver = await get_active_skill_version(session, "conversation_intake")
     system = ver.system_prompt if ver else CONVERSATION_INTAKE
+    completeness_ver = await get_active_skill_version(session, "intake_completeness")
+    completeness_prompt = (
+        completeness_ver.system_prompt if completeness_ver else INTAKE_COMPLETENESS
+    )
+    system = system + "\n\n" + completeness_prompt
 
     # 注入项目长期记忆，让"再次诊断"能基于这家企业的历史，而非从零开始
     if project_memory.strip():
@@ -92,6 +102,18 @@ async def run_chat_turn(
             problem_map = ProblemMap.model_validate(raw_map)
         except ValidationError:
             problem_map = None
+
+    problem_map = annotate_problem_map(problem_map)
+    if phase in ("confirm", "done"):
+        completeness = evaluate_problem_map(problem_map)
+        if not completeness.can_confirm:
+            return ChatResponse(
+                message=build_intake_gate_message(completeness),
+                done=False,
+                phase="intake",
+                problem_map=problem_map,
+                summary=None,
+            )
 
     done = phase == "done"
     return ChatResponse(

@@ -12,6 +12,13 @@ const FOCUS_LABELS: Record<string, string> = {
 
 const focusLabel = (key: string): string => FOCUS_LABELS[key] ?? key;
 
+const scoreLabel = (score: number): string => {
+  if (score >= 85) return "充分";
+  if (score >= 70) return "可诊断";
+  if (score >= 45) return "待补充";
+  return "初步";
+};
+
 interface ProblemMapPanelProps {
   problemMap: ProblemMap | null;
   phase: "intake" | "confirm" | "done";
@@ -27,6 +34,25 @@ export function ProblemMapPanel({ problemMap, phase }: ProblemMapPanelProps) {
         </p>
       ) : (
         <div className="map-panel__body">
+          <div className="map-panel__score-card">
+            <div className="map-panel__score-head">
+              <span>信息完整度</span>
+              <strong>{problemMap.information_score ?? 0}/100</strong>
+            </div>
+            <div className="map-panel__meter" aria-hidden="true">
+              <span style={{ width: `${Math.min(100, problemMap.information_score ?? 0)}%` }} />
+            </div>
+            <p className="map-panel__score-copy">
+              {scoreLabel(problemMap.information_score ?? 0)}
+              {problemMap.missing_fields?.length
+                ? ` · 待补：${problemMap.missing_fields.slice(0, 3).join("、")}`
+                : " · 已达到确认门槛"}
+            </p>
+            {problemMap.next_question_reason && (
+              <p className="map-panel__reason">{problemMap.next_question_reason}</p>
+            )}
+          </div>
+
           <div className="map-panel__block">
             <span className="map-panel__label">核心问题</span>
             <p className="map-panel__core">{problemMap.core_problem || "—"}</p>
@@ -59,6 +85,18 @@ export function ProblemMapPanel({ problemMap, phase }: ProblemMapPanelProps) {
             <div className="map-panel__block">
               <span className="map-panel__label">成功标准</span>
               <p>{problemMap.success_criteria}</p>
+            </div>
+          )}
+          {problemMap.impact && (
+            <div className="map-panel__block">
+              <span className="map-panel__label">影响与时间</span>
+              <p>{problemMap.impact}</p>
+            </div>
+          )}
+          {problemMap.data_readiness && (
+            <div className="map-panel__block">
+              <span className="map-panel__label">可用数据</span>
+              <p>{problemMap.data_readiness}</p>
             </div>
           )}
           {problemMap.diagnosis_focus && (

@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Routes, Route, Link, useNavigate, useLocation } from "react-router-dom";
+import { Routes, Route, Navigate, useNavigate, useLocation, useParams } from "react-router-dom";
 import { Questionnaire } from "./components/Questionnaire/Questionnaire";
 import { Dashboard } from "./components/Dashboard/Dashboard";
+import { WarRoomPage } from "./components/WarRoom/WarRoomPage";
 import { LoginPage } from "./components/Auth/LoginPage";
 import { ProtectedRoute } from "./components/Auth/ProtectedRoute";
 import { HistoryPage } from "./components/History/HistoryPage";
@@ -9,18 +10,20 @@ import { ProjectListPage } from "./components/Project/ProjectListPage";
 import { ProjectDetailPage } from "./components/Project/ProjectDetailPage";
 import { RecordDetailPage } from "./components/Project/RecordDetailPage";
 import { AdminPage } from "./components/Admin/AdminPage";
-import { useAuth } from "./auth/useAuth";
+import { AppShell } from "./components/Layout/AppShell";
 import { runDiagnose, runDiagnoseWithFiles } from "./api/client";
 import type { DiagnoseResult, ModuleAnswer, ProblemMap } from "./types";
+import "./App.css";
 
-function DiagnoseView() {
+function ProjectDiagnoseView() {
   const navigate = useNavigate();
+  const { projectId: routeProjectId } = useParams<{ projectId: string }>();
   const location = useLocation();
   const navState = (location.state as { projectId?: string; resumeSessionId?: string }) ?? {};
-  const projectId = navState.projectId;
+  const projectId = routeProjectId ?? navState.projectId;
   const resumeSessionId = navState.resumeSessionId;
-  const { logout } = useAuth();
   const [diagnoseResult, setDiagnoseResult] = useState<DiagnoseResult | null>(null);
+  const [resultView, setResultView] = useState<"war-room" | "experts">("war-room");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,7 +41,15 @@ function DiagnoseView() {
       const data = files.length
         ? await runDiagnoseWithFiles(answers, files, sessionId, pid, problemMap)
         : await runDiagnose(answers, sessionId, pid, problemMap);
+      const diagnosedProjectId = pid ?? projectId;
+      if (data.war_room_plan && data.record_id && diagnosedProjectId) {
+        navigate(
+          `/projects/${diagnosedProjectId}/war-room/${data.record_id}`
+        );
+        return;
+      }
       setDiagnoseResult(data);
+      setResultView(data.war_room_plan ? "war-room" : "experts");
     } catch (e) {
       setError(e instanceof Error ? e.message : "诊断失败");
     } finally {
@@ -48,80 +59,70 @@ function DiagnoseView() {
 
   const restart = () => {
     setDiagnoseResult(null);
+    setResultView("war-room");
     setError(null);
   };
 
-  const handleLogout = () => {
-    logout();
-    navigate("/login");
-  };
-
   return (
-    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "40px 24px" }}>
-      <header style={{ marginBottom: 32, borderBottom: "1px solid var(--line)", paddingBottom: 20 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-          <div>
-            <h1 style={{ fontFamily: "var(--font-serif)", fontSize: "2.2rem", margin: 0, letterSpacing: "0.02em" }}>
-              AI 企业诊断
-            </h1>
-            <p style={{ color: "var(--ink-soft)", marginTop: 8, fontSize: "1.02rem" }}>
-              结构化提交企业现状，获得结论先行、数据支撑的分模块诊断。
-            </p>
-          </div>
-          <div style={{ display: "flex", gap: 12, alignItems: "center", flexShrink: 0 }}>
-            <Link
-              to="/history"
-              style={{ color: "var(--accent)", textDecoration: "none", fontSize: "0.9rem" }}
-            >
-              历史记录
-            </Link>
-            <button
-              type="button"
-              onClick={handleLogout}
-              style={{
-                background: "transparent",
-                border: "1px solid var(--line)",
-                color: "var(--ink-soft)",
-                padding: "8px 16px",
-                borderRadius: "var(--radius)",
-                cursor: "pointer",
-                fontSize: "0.9rem",
-              }}
-            >
-              退出登录
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {loading && <p style={{ color: "var(--ink-soft)" }}>诊断进行中，正在调取数据与分析…</p>}
-      {error && <p style={{ color: "var(--signal-red)" }}>{error}</p>}
+    <AppShell
+      eyebrow="Diagnostic Engagement"
+      title={resumeSessionId ? "继续项目诊断" : "新建诊断工作流"}
+      description="围绕当前项目沉淀问题地图、专家会诊、证据包与后续反馈，形成可复诊的企业长期档案。"
+      actions={
+        projectId ? (
+          <button type="button" className="btn-ghost" onClick={() => navigate(`/projects/${projectId}`)}>
+            返回项目工作台
+          </button>
+        ) : null
+      }
+    >
+      {loading && <p className="state-note">诊断进行中，正在调取数据与分析…</p>}
+      {error && <p className="state-note state-note--error">{error}</p>}
 
       {diagnoseResult ? (
         <>
-          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
-            <button
-              type="button"
-              onClick={restart}
-              style={{
-                background: "transparent",
-                border: "1px solid var(--accent)",
-                color: "var(--accent)",
-                padding: "8px 18px",
-                borderRadius: "var(--radius)",
-                cursor: "pointer",
-                fontSize: "0.9rem",
-              }}
-            >
+          <div className="result-actions">
+            {diagnoseResult.war_room_plan && (
+              <div className="result-view-switch" aria-label="诊断结果视图切换">
+                <button
+                  type="button"
+                  className={resultView === "war-room" ? "result-view-switch__active" : ""}
+                  onClick={() => setResultView("war-room")}
+                >
+                  老板作战室
+                </button>
+                <button
+                  type="button"
+                  className={resultView === "experts" ? "result-view-switch__active" : ""}
+                  onClick={() => setResultView("experts")}
+                >
+                  专家原始诊断
+                </button>
+              </div>
+            )}
+            <button type="button" className="btn-ghost" onClick={restart}>
               重新诊断
             </button>
+            {projectId && (
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => navigate(`/projects/${projectId}`)}
+              >
+                回到项目档案
+              </button>
+            )}
           </div>
-          <Dashboard
-            results={diagnoseResult.results}
-            recordId={diagnoseResult.record_id}
-            skillVersionIds={diagnoseResult.skill_version_ids}
-            triage={diagnoseResult.triage}
-          />
+          {diagnoseResult.war_room_plan && resultView === "war-room" ? (
+            <WarRoomPage plan={diagnoseResult.war_room_plan} />
+          ) : (
+            <Dashboard
+              results={diagnoseResult.results}
+              recordId={diagnoseResult.record_id}
+              skillVersionIds={diagnoseResult.skill_version_ids}
+              triage={diagnoseResult.triage}
+            />
+          )}
         </>
       ) : (
         !loading && (
@@ -132,7 +133,7 @@ function DiagnoseView() {
           />
         )
       )}
-    </div>
+    </AppShell>
   );
 }
 
@@ -157,10 +158,18 @@ export default function App() {
         }
       />
       <Route
+        path="/projects/:projectId/diagnose"
+        element={
+          <ProtectedRoute>
+            <ProjectDiagnoseView />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/"
         element={
           <ProtectedRoute>
-            <DiagnoseView />
+            <Navigate to="/projects" replace />
           </ProtectedRoute>
         }
       />
@@ -174,6 +183,14 @@ export default function App() {
       />
       <Route
         path="/records/:id"
+        element={
+          <ProtectedRoute>
+            <RecordDetailPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/projects/:projectId/war-room/:recordId"
         element={
           <ProtectedRoute>
             <RecordDetailPage />

@@ -10,16 +10,33 @@ from sqlalchemy import select, func
 from app.db.database import AsyncSessionLocal, init_db
 from app.db.models import SkillVersion
 from app.skills.prompts import (
+    FINANCE_DIAGNOSIS,
     MARKET_DIAGNOSIS,
+    OPS_DIAGNOSIS,
+    ORG_DIAGNOSIS,
+    PRODUCT_DIAGNOSIS,
+    SALES_DIAGNOSIS,
     CONVERSATION_INTAKE,
+    INTAKE_COMPLETENESS,
     QUESTIONNAIRE_AB_A,
     QUESTIONNAIRE_AB_B,
 )
 
 # (module key, skill_type, method, prompt)
 SEEDS = [
-    ("market", "diagnosis", "hypothesis", MARKET_DIAGNOSIS),
+    ("market", "diagnosis", "market-evidence", MARKET_DIAGNOSIS),
+    ("product", "diagnosis", "product-evidence", PRODUCT_DIAGNOSIS),
+    ("sales", "diagnosis", "funnel-evidence", SALES_DIAGNOSIS),
+    ("ops", "diagnosis", "operations-evidence", OPS_DIAGNOSIS),
+    ("org", "diagnosis", "organization-evidence", ORG_DIAGNOSIS),
+    ("finance", "diagnosis", "finance-evidence", FINANCE_DIAGNOSIS),
     ("conversation_intake", "conversation", "intake", CONVERSATION_INTAKE),
+    (
+        "intake_completeness",
+        "conversation",
+        "quality_gate",
+        INTAKE_COMPLETENESS,
+    ),
     ("questionnaire_ab_a", "questionnaire", "coverage", QUESTIONNAIRE_AB_A),
     ("questionnaire_ab_b", "questionnaire", "painpoint", QUESTIONNAIRE_AB_B),
 ]
