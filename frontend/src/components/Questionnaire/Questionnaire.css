@@ -146,6 +146,19 @@
   letter-spacing: 0.02em;
 }
 
+.field__known {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--accent, #2f7d5b);
+  background: rgba(47, 125, 91, 0.1);
+  border-radius: 10px;
+  vertical-align: middle;
+}
+
 .field__input {
   width: 100%;
   padding: 12px 14px;

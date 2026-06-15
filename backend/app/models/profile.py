@@ -17,6 +17,10 @@ class GeneratedField(BaseModel):
     placeholder: str
     hint: str | None = None
     accept_file: bool = False
+    # 二次诊断预填：历史已知值 + 来源标注。前端据此把字段预填为"已知，可修正"，
+    # 老板不必重填已收集过的信息。默认 None → 全新字段，行为与改动前一致。
+    prefilled_value: str | None = None
+    known_source: str | None = None
 
 
 class GeneratedModule(BaseModel):

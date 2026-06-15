@@ -214,7 +214,7 @@ export function Questionnaire({ onSubmit, projectId, resumeSessionId: resumeFrom
     };
     setStoredSummary(summary);
     try {
-      const ab = await generateABFromSummary(summary);
+      const ab = await generateABFromSummary(summary, projectId);
       setAbOptions(ab);
       setMode("ab_choice");
     } catch {
@@ -229,6 +229,19 @@ export function Questionnaire({ onSubmit, projectId, resumeSessionId: resumeFrom
     setActiveModules(modules);
     setMode("ready");
     setCurrent(0);
+    // 二次诊断预填：把后端带回的 prefilled_value 注入 facts，老板不必重填。
+    // 只填用户尚未填过的字段，不覆盖草稿恢复的值。
+    setFacts((prev) => {
+      const next = { ...prev };
+      for (const module of modules) {
+        for (const field of module.fields) {
+          if (field.prefilled_value && !(next[module.key]?.[field.key])) {
+            next[module.key] = { ...(next[module.key] ?? {}), [field.key]: field.prefilled_value };
+          }
+        }
+      }
+      return next;
+    });
     if (abOptions && storedSummary) {
       const profileLike = {
         company_name: storedSummary.company_name,
@@ -434,6 +447,9 @@ export function Questionnaire({ onSubmit, projectId, resumeSessionId: resumeFrom
             <div className="field" key={field.key}>
               <label className="field__label" htmlFor={`${module.key}-${field.key}`}>
                 {field.label}
+                {field.known_source && (
+                  <span className="field__known">已知 · {field.known_source} · 可修正</span>
+                )}
               </label>
               <input
                 id={`${module.key}-${field.key}`}

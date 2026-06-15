@@ -1,0 +1,41 @@
+{
+  "skill_key": "dtc_private_traffic",
+  "cases": [
+    {
+      "id": "red-1",
+      "input": {"module": "dtc_private_traffic", "facts": {"复购率": "12%", "首单转化率": "18%", "私域沉淀率": "22%"}, "pains": ["私域加了很多人但不复购"]},
+      "expected_signal": "red", "expect_data_requests": false,
+      "assertions": ["conclusion 含 复购 或 沉淀", "至少一条 action 含强动作动词", "evidence 引用 12 或 18 或 22"]
+    },
+    {
+      "id": "red-2",
+      "input": {"module": "dtc_private_traffic", "facts": {"企微好友数": "5万", "社群活跃度": "3%", "复购率": "15%"}, "pains": ["社群基本是死群"]},
+      "expected_signal": "red", "expect_data_requests": false,
+      "assertions": ["conclusion 命中行业KPI", "action 可执行"]
+    },
+    {
+      "id": "yellow-1",
+      "input": {"module": "dtc_private_traffic", "facts": {"复购率": "28%", "私域沉淀率": "35%"}, "pains": ["想把私域做得更深"]},
+      "expected_signal": "yellow", "expect_data_requests": false,
+      "assertions": ["conclusion 命中行业KPI"]
+    },
+    {
+      "id": "green-1",
+      "input": {"module": "dtc_private_traffic", "facts": {"复购率": "42%", "私域沉淀率": "55%", "LTV": "1200", "客单价": "320"}, "pains": ["私域不错想再优化"]},
+      "expected_signal": "green", "expect_data_requests": false,
+      "assertions": ["结论基调不全是负面", "conclusion 命中行业KPI"]
+    },
+    {
+      "id": "missing-1",
+      "input": {"module": "dtc_private_traffic", "facts": {}, "pains": ["想做私域不知怎么开始"]},
+      "expected_signal": "yellow", "expect_data_requests": true,
+      "assertions": ["data_requests 非空", "confidence < 0.5"]
+    },
+    {
+      "id": "missing-2",
+      "input": {"module": "dtc_private_traffic", "facts": {"企微好友数": "2万"}, "pains": ["复购上不去"]},
+      "expected_signal": "yellow", "expect_data_requests": true,
+      "assertions": ["data_requests 含 retention_funnel 或 private_pool_structure"]
+    }
+  ]
+}

@@ -19,9 +19,15 @@ DTC美妆电商,投放,广告ROI与获客成本诊断,1
 ## 执行策略
 
 1. 读 CSV，按 priority 升序排队。
-2. **并行跑**：用 dispatching-parallel-agents 的方式，一次并发 3-5 个 `/factory`（每个是独立的 research→draft→eval→critic 链）。不要串行，浪费算力。
-3. 每个 skill 产出后，记录到汇总表：`key | verdict | rounds | L2率 | critic建议`。
-4. 全部跑完，输出：
+2. **幂等去重（关键，避免重复造 + 覆盖已上线的）**：对每一行先算出 skill key（行业_功能，转拼音/英文小写下划线），再判断该跳过还是该造：
+   - `configs/<key>.json` 存在 **且** `configs/_review/<key>.json` 里 `review_status == "approved"`（已人审通过/已上线）→ **跳过**，不重造（重造会覆盖沉淀的案例 few-shot）。
+   - `configs/<key>.json` 存在但仍是草稿（无 approved 标记）→ 默认**跳过并提示**；仅当用户在参数里传 `--force` 时才重造刷新。
+   - `configs/<key>.json` 不存在 → 正常造（新行）。
+   - 跳过的行也要进最终报告的「已跳过」清单，让用户清楚这次实际造了几个、跳了几个。
+3. **并行跑**：对需要造的行，用 dispatching-parallel-agents 的方式，一次并发 3-5 个 `/factory`（每个是独立的 research→draft→eval→critic 链）。不要串行，浪费算力。
+4. 每个 skill 产出后，记录到汇总表：`key | verdict | rounds | L2率 | critic建议`。
+5. 全部跑完，输出：
+   - 本次新造 X / 跳过 Y(已上线) / 跳过 Z(草稿，可 --force 刷新)
    - 总数 / pass / redo超限failed / 分布
    - **进人审队列的候选清单**（verdict=pass 的）
    - **难产清单**（failed 的，附原因，作为下次起草的反面教材）

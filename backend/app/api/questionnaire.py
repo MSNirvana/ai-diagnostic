@@ -29,6 +29,7 @@ from app.skills.skill_network import (
 from app.auth.jwt import get_optional_user
 from app.db.database import get_session
 from app.db.models import User, QuestionnairePreference
+from app.memory.known_facts import collect_known_facts, match_known_value
 
 router = APIRouter(prefix="/questionnaire")
 
@@ -49,6 +50,8 @@ class GenerateRequest(BaseModel):
     profile: BusinessProfile | None = None
     summary: ProblemSummary | None = None
     problem_map: ProblemMap | None = None
+    # 二次诊断：传 project_id → 用历史已知 facts 预填问卷，老板不必重填
+    project_id: str | None = None
 
 
 def _build_context(body: "GenerateRequest", mode: str) -> QuestionnaireGenerationContext:
@@ -178,6 +181,26 @@ def _skill_context(text: str, focus: str | None = None) -> dict[str, list[dict]]
 def _parse_questionnaire(raw: str) -> GeneratedQuestionnaire:
     data = parse_json_object(raw)
     return GeneratedQuestionnaire.model_validate(data)
+
+
+def _prefill_known(
+    questionnaire: GeneratedQuestionnaire,
+    known: dict[str, str],
+    source_label: str = "上次诊断已填",
+) -> GeneratedQuestionnaire:
+    """用历史已知 facts 预填问卷字段。命中的字段填值 + 标来源，老板只需确认/修正。
+
+    known 为空（首次诊断/无历史）时原样返回——行为与改动前完全一致。
+    """
+    if not known:
+        return questionnaire
+    for module in questionnaire.modules:
+        for field in module.fields:
+            value = match_known_value(field.label, field.key, known)
+            if value:
+                field.prefilled_value = value
+                field.known_source = source_label
+    return questionnaire
 
 
 def _ensure_mode_prefix(module_key: str, index: int, mode: str) -> str:
@@ -387,10 +410,12 @@ async def generate_questionnaire(
     prompt = _build_input(body, "coverage")
     system = await _prompt_for(session, "questionnaire_ab_a", _SYSTEM)
     raw = await llm.complete(system=system, prompt=prompt)
+    known = await collect_known_facts(session, body.project_id)
     try:
         data = parse_json_object(raw)
         generated = GeneratedQuestionnaire.model_validate(data)
-        return _normalize_questionnaire(generated, mode="coverage", context=context)
+        normalized = _normalize_questionnaire(generated, mode="coverage", context=context)
+        return _prefill_known(normalized, known)
     except (ValueError, ValidationError):
         # LLM 输出不合规：返回 422，前端降级到固定问卷
         raise HTTPException(status_code=422, detail="问卷生成失败，请使用通用问卷")
@@ -450,6 +475,11 @@ async def generate_ab(
         parsed_b = parsed_a
     if parsed_a is not None and parsed_b is not None and not _questionnaires_are_meaningfully_different(parsed_a, parsed_b):
         parsed_b = _normalize_questionnaire(parsed_b, mode="painpoint", context=context_b)
+
+    # 二次诊断预填：两份候选都用历史已知 facts 填充
+    known = await collect_known_facts(session, body.project_id)
+    parsed_a = _prefill_known(parsed_a, known)
+    parsed_b = _prefill_known(parsed_b, known)
 
     return GenerateABResponse(option_a=parsed_a, option_b=parsed_b)
 

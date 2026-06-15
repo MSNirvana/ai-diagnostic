@@ -1,0 +1,245 @@
+{
+  "skill_key": "saas_sales",
+  "cases": [
+    {
+      "id": "red-1",
+      "input": {
+        "module": "saas_sales",
+        "facts": {"MQL→SQL转化率": "7%", "SQL Win Rate": "12%", "销售周期": "150天", "客单类型": "中端市场"},
+        "pains": ["市场线索很多但销售说没价值", "成单越来越难"]
+      },
+      "expected_signal": "red",
+      "expect_data_requests": false,
+      "assertions": [
+        "conclusion 命中 MQL→SQL 或 Win Rate 或 线索质量",
+        "至少一条 action 含 暂停/改写/重建/下调/重分/核验/重定 之一",
+        "evidence 引用 7 或 12 或 150 这些输入数字"
+      ]
+    },
+    {
+      "id": "red-2",
+      "input": {
+        "module": "saas_sales",
+        "facts": {"SQL Win Rate": "9%", "ACV": "8万", "客单类型": "中端市场"},
+        "pains": ["漏斗上宽下窄", "进来很多机会最后成单就几个"]
+      },
+      "expected_signal": "red",
+      "expect_data_requests": false,
+      "assertions": [
+        "conclusion 命中 Win Rate",
+        "evidence 引用 9 这个输入数字",
+        "至少一条 action 含强动作动词"
+      ]
+    },
+    {
+      "id": "red-3",
+      "input": {
+        "module": "saas_sales",
+        "facts": {"CAC回收期": "32个月", "客单类型": "中端市场", "LTV:CAC": "1.6"},
+        "pains": ["获客越来越贵", "账算不过来"]
+      },
+      "expected_signal": "red",
+      "expect_data_requests": false,
+      "assertions": [
+        "conclusion 命中 CAC回收期 或 LTV:CAC",
+        "evidence 引用 32 或 1.6 这些输入数字",
+        "至少一条 action 含强动作动词"
+      ]
+    },
+    {
+      "id": "red-4",
+      "input": {
+        "module": "saas_sales",
+        "facts": {"Pipeline Coverage": "1.8", "Quota Attainment": "38%"},
+        "pains": ["销售每月说管道够季末却完不成", "管道数字不可信"]
+      },
+      "expected_signal": "red",
+      "expect_data_requests": false,
+      "assertions": [
+        "conclusion 命中 Pipeline Coverage 或 配额 或 Quota",
+        "evidence 引用 1.8 或 38 这些输入数字",
+        "至少一条 action 含强动作动词"
+      ]
+    },
+    {
+      "id": "red-5",
+      "input": {
+        "module": "saas_sales",
+        "facts": {"NRR": "82%", "MQL→SQL转化率": "8%"},
+        "pains": ["老客户不断流失", "续费率越来越低"]
+      },
+      "expected_signal": "red",
+      "expect_data_requests": false,
+      "assertions": [
+        "conclusion 命中 NRR 或 MQL→SQL",
+        "evidence 引用 82 或 8 这些输入数字",
+        "至少一条 action 含强动作动词"
+      ]
+    },
+    {
+      "id": "yellow-1",
+      "input": {
+        "module": "saas_sales",
+        "facts": {"MQL→SQL转化率": "12%", "SQL Win Rate": "18%", "客单类型": "中端市场"},
+        "pains": ["想知道转化能不能再提"]
+      },
+      "expected_signal": "yellow",
+      "expect_data_requests": false,
+      "assertions": ["conclusion 命中行业KPI"]
+    },
+    {
+      "id": "yellow-2",
+      "input": {
+        "module": "saas_sales",
+        "facts": {"CAC回收期": "21个月", "客单类型": "企业级"},
+        "pains": ["回收期感觉有点长不确定正不正常"]
+      },
+      "expected_signal": "yellow",
+      "expect_data_requests": false,
+      "assertions": ["conclusion 命中 CAC回收期"]
+    },
+    {
+      "id": "yellow-3",
+      "input": {
+        "module": "saas_sales",
+        "facts": {"销售周期": "110天", "客单类型": "中端市场", "ACV": "12万"},
+        "pains": ["销售周期比以前长了"]
+      },
+      "expected_signal": "yellow",
+      "expect_data_requests": false,
+      "assertions": ["conclusion 命中 销售周期"]
+    },
+    {
+      "id": "yellow-4",
+      "input": {
+        "module": "saas_sales",
+        "facts": {"Pipeline Coverage": "2.7", "Quota Attainment": "62%"},
+        "pains": ["管道够不够心里没底"]
+      },
+      "expected_signal": "yellow",
+      "expect_data_requests": false,
+      "assertions": ["conclusion 命中 Pipeline Coverage 或 配额"]
+    },
+    {
+      "id": "yellow-5",
+      "input": {
+        "module": "saas_sales",
+        "facts": {"NRR": "98%", "SQL Win Rate": "22%"},
+        "pains": ["增长有点放缓想找突破口"]
+      },
+      "expected_signal": "yellow",
+      "expect_data_requests": false,
+      "assertions": ["conclusion 命中 NRR 或 Win Rate"]
+    },
+    {
+      "id": "green-1",
+      "input": {
+        "module": "saas_sales",
+        "facts": {"MQL→SQL转化率": "22%", "SQL Win Rate": "28%", "CAC回收期": "11个月", "客单类型": "SMB"},
+        "pains": ["想知道还能不能更好"]
+      },
+      "expected_signal": "green",
+      "expect_data_requests": false,
+      "assertions": ["结论基调不全是负面"]
+    },
+    {
+      "id": "green-2",
+      "input": {
+        "module": "saas_sales",
+        "facts": {"NRR": "118%", "SQL Win Rate": "31%", "LTV:CAC": "4.2"},
+        "pains": ["整体不错想找增量空间"]
+      },
+      "expected_signal": "green",
+      "expect_data_requests": false,
+      "assertions": ["结论基调不全是负面", "conclusion 命中行业KPI"]
+    },
+    {
+      "id": "green-3",
+      "input": {
+        "module": "saas_sales",
+        "facts": {"Pipeline Coverage": "3.6", "Quota Attainment": "78%", "销售周期": "70天", "客单类型": "中端市场"},
+        "pains": ["团队状态挺好想保持"]
+      },
+      "expected_signal": "green",
+      "expect_data_requests": false,
+      "assertions": ["结论基调不全是负面"]
+    },
+    {
+      "id": "green-4",
+      "input": {
+        "module": "saas_sales",
+        "facts": {"MQL→SQL转化率": "20%", "CAC回收期": "16个月", "客单类型": "企业级", "NRR": "112%"},
+        "pains": ["想验证一下健康度"]
+      },
+      "expected_signal": "green",
+      "expect_data_requests": false,
+      "assertions": ["结论基调不全是负面", "conclusion 命中行业KPI"]
+    },
+    {
+      "id": "green-5",
+      "input": {
+        "module": "saas_sales",
+        "facts": {"SQL Win Rate": "26%", "LTV:CAC": "3.5", "销售周期": "30天", "客单类型": "SMB"},
+        "pains": ["想知道扩张前还有什么风险"]
+      },
+      "expected_signal": "green",
+      "expect_data_requests": false,
+      "assertions": ["结论基调不全是负面"]
+    },
+    {
+      "id": "missing-1",
+      "input": {
+        "module": "saas_sales",
+        "facts": {},
+        "pains": ["销售业绩不好但不知道问题在哪"]
+      },
+      "expected_signal": "yellow",
+      "expect_data_requests": true,
+      "assertions": ["data_requests 非空", "confidence < 0.5"]
+    },
+    {
+      "id": "missing-2",
+      "input": {
+        "module": "saas_sales",
+        "facts": {"客单类型": "中端市场"},
+        "pains": ["想优化销售漏斗"]
+      },
+      "expected_signal": "yellow",
+      "expect_data_requests": true,
+      "assertions": ["data_requests 含 funnel_metrics 或 deal_economics"]
+    },
+    {
+      "id": "missing-3",
+      "input": {
+        "module": "saas_sales",
+        "facts": {"团队规模": "8个销售"},
+        "pains": ["想知道Win Rate正不正常"]
+      },
+      "expected_signal": "yellow",
+      "expect_data_requests": true,
+      "assertions": ["data_requests 非空", "confidence < 0.5"]
+    },
+    {
+      "id": "missing-4",
+      "input": {
+        "module": "saas_sales",
+        "facts": {"线索很多": "是"},
+        "pains": ["市场说线索够多销售说没价值想搞清谁的问题"]
+      },
+      "expected_signal": "yellow",
+      "expect_data_requests": true,
+      "assertions": ["data_requests 含 funnel_metrics", "confidence < 0.5"]
+    },
+    {
+      "id": "missing-5",
+      "input": {
+        "module": "saas_sales",
+        "facts": {},
+        "pains": ["想算一下获客划不划算"]
+      },
+      "expected_signal": "yellow",
+      "expect_data_requests": true,
+      "assertions": ["data_requests 含 deal_economics 或 funnel_metrics", "confidence < 0.5"]
+    }
+  ]
+}
