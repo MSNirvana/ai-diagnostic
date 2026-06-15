@@ -21,6 +21,11 @@ class AskingLLM:
         }, ensure_ascii=False)
 
 
+class BrokenLLM:
+    async def complete(self, system: str, prompt: str) -> str:
+        raise TypeError("missing api key")
+
+
 class DoneLLM:
     """模拟信息充分、输出完整 problem_map 的 AI。"""
     async def complete(self, system: str, prompt: str) -> str:
@@ -86,6 +91,18 @@ def test_chat_empty_start(db_session):
     app.dependency_overrides.pop(get_llm_client, None)
     assert resp.status_code == 200
     assert resp.json()["done"] is False
+
+
+def test_chat_returns_clear_error_when_llm_unavailable(db_session):
+    app.dependency_overrides[get_llm_client] = lambda: BrokenLLM()
+    resp = client.post("/conversation/chat", json={
+        "messages": [{"role": "user", "content": "公司招聘一直招不到合适的人"}]
+    })
+    app.dependency_overrides.pop(get_llm_client, None)
+
+    assert resp.status_code == 503
+    assert "模型通道暂时不可用" in resp.json()["detail"]
+    assert "没接住" not in resp.text
 
 
 def test_generate_ab_accepts_summary(db_session):

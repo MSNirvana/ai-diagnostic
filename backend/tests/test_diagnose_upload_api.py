@@ -9,9 +9,11 @@ class FakeLLM:
     """回显收到的 facts，便于断言文件数据是否合并进了 prompt。"""
 
     last_prompt: str = ""
+    all_prompts: list[str] = []
 
     async def complete(self, system: str, prompt: str) -> str:
         FakeLLM.last_prompt = prompt
+        FakeLLM.all_prompts.append(prompt)
         return json.dumps({
             "signal": "green",
             "conclusion": "数据已接收",
@@ -25,6 +27,7 @@ class FakeLLM:
 def client(db_session):
     # db_session 注入内存库覆盖 get_session；再设 llm override
     FakeLLM.last_prompt = ""
+    FakeLLM.all_prompts = []
     app.dependency_overrides[get_llm_client] = lambda: FakeLLM()
     yield TestClient(app)
     app.dependency_overrides.pop(get_llm_client, None)
@@ -41,9 +44,11 @@ def test_upload_merges_file_into_facts(client):
     assert resp.status_code == 200
     body = resp.json()
     assert body["results"][0]["module"] == "market"
-    # 文件解析后的数据进入了 LLM prompt（合并到了 facts）
-    assert "file_market_sales.csv" in FakeLLM.last_prompt
-    assert "row_count" in FakeLLM.last_prompt
+    # 文件解析后的数据进入了 LLM prompt（合并到了 facts）。
+    # 用 all_prompts：诊断后还有作战方案增强调用，last_prompt 会被覆盖。
+    joined = "\n".join(FakeLLM.all_prompts)
+    assert "file_market_sales.csv" in joined
+    assert "row_count" in joined
 
 
 def test_upload_without_files_still_works(client):

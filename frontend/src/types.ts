@@ -86,6 +86,7 @@ export interface DepartmentAction {
   metrics: ActionMetric[];
   risk_note?: string;
   confidence?: number | null;
+  confidence_reason?: string;
   evidence_refs?: string[];
 }
 export interface BattleChainStep {
@@ -104,10 +105,22 @@ export interface PriorityBoard {
   soon: string[];
   later: string[];
 }
+export interface WarRoomIteration {
+  record_id: string;
+  created_at: string;
+  summary: string;
+  primary_battlefield: string;
+  objective: string;
+  confidence: number;
+  changes: string[];
+}
 export interface WarRoomPlan {
   id: string;
   record_id: string | null;
   project_id?: string | null;
+  source_record_ids?: string[];
+  iteration_count?: number;
+  iterations?: WarRoomIteration[];
   summary: string;
   primary_battlefield: string;
   secondary_battlefield?: string;
@@ -297,11 +310,13 @@ export interface ProjectDetail {
   memory_entries: ProjectMemoryEntry[];
   sessions: ProjectSessionBrief[];
   records: ProjectRecordBrief[];
+  war_room_plan?: WarRoomPlan | null;
 }
 
 export interface SkillVersionOut {
   id: string;
   module: string;
+  skill_type?: string;
   version: number;
   system_prompt: string;
   method: string;
@@ -309,6 +324,32 @@ export interface SkillVersionOut {
   change_reason: string | null;
   change_category: string | null;
   reviewed_by: string | null;
+}
+
+export interface SkillDataRequirement {
+  key: string;
+  label: string;
+  reason: string;
+  source_hint: string;
+  required: boolean;
+}
+
+export interface SkillRegistryItem {
+  key: string;
+  label: string;
+  category: string;
+  category_label: string;
+  skill_type: string;
+  method: string;
+  description: string;
+  fallback_prompt: string;
+  trigger_keywords: string[];
+  data_requirements: SkillDataRequirement[];
+  upgrade_policy: string;
+  evaluation_metrics: string[];
+  enabled: boolean;
+  default_core: boolean;
+  active_version: SkillVersionOut | null;
 }
 
 export interface LLMConfigOut {

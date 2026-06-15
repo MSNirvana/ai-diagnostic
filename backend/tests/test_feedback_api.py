@@ -92,3 +92,44 @@ def test_admin_add_and_activate_version(db_session):
     # 查激活列表能看到它
     active = client.get("/admin/skills/").json()
     assert any(v["module"] == "market" and v["is_active"] for v in active)
+
+
+def test_admin_skill_registry_lists_extensible_network(db_session):
+    client.post(
+        "/admin/skills/market/versions",
+        json={
+            "system_prompt": "市场 active prompt",
+            "method": "market-evidence",
+            "skill_type": "diagnosis",
+            "change_reason": "registry active version test",
+            "activate": True,
+        },
+    )
+
+    resp = client.get("/admin/skills/registry")
+    assert resp.status_code == 200
+    body = resp.json()
+    keys = {item["key"] for item in body}
+    assert {
+        "market",
+        "sales",
+        "legal_compliance",
+        "tax",
+        "channel_franchise",
+        "evidence_confidence",
+    }.issubset(keys)
+
+    legal = next(item for item in body if item["key"] == "legal_compliance")
+    assert legal["category"] == "professional"
+    assert legal["fallback_prompt"]
+    assert any(req["label"] == "经营资质与许可文件" for req in legal["data_requirements"])
+    assert "低评分率" in legal["evaluation_metrics"]
+
+    market = next(item for item in body if item["key"] == "market")
+    assert market["active_version"]["version"] == 1
+    assert market["active_version"]["method"] == "market-evidence"
+
+    confidence = next(item for item in body if item["key"] == "evidence_confidence")
+    assert confidence["category"] == "delivery"
+    assert confidence["method"] == "confidence_calibration"
+    assert "禁止固定高分" in confidence["fallback_prompt"]

@@ -1,14 +1,19 @@
 .questionnaire {
-  max-width: 880px;
+  max-width: 960px;
   margin: 0 auto;
-  padding: 40px 32px 56px;
+  padding: 32px 0 56px;
 }
 
 /* ---------- Step indicator ---------- */
 .step-indicator {
   display: flex;
   align-items: flex-start;
-  margin-bottom: 32px;
+  margin-bottom: 26px;
+  padding: 14px 18px;
+  border: 1px solid rgba(151, 164, 184, 0.2);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: var(--shadow-sm);
 }
 
 .step-item {
@@ -39,22 +44,22 @@
 }
 
 .step-node {
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 0.8rem;
   font-family: var(--font-sans);
-  background: var(--surface);
-  border: 1px solid var(--line);
+  background: var(--surface-raised);
+  border: 1px solid rgba(151, 164, 184, 0.28);
   color: var(--ink-soft);
   transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
 }
 
 .step-node--current {
-  background: var(--accent);
+  background: linear-gradient(135deg, var(--accent), #2A78A4);
   border-color: var(--accent);
   color: #fff;
   font-weight: 600;
@@ -80,11 +85,12 @@
 
 /* ---------- Card ---------- */
 .wizard-card {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 36px 40px 32px;
+  background: var(--surface-glass);
+  border: 1px solid rgba(151, 164, 184, 0.22);
+  border-radius: var(--radius-xl);
+  padding: clamp(24px, 4vw, 42px);
   box-shadow: var(--shadow);
+  backdrop-filter: blur(16px);
 }
 
 /* ---------- Module head ---------- */
@@ -95,8 +101,8 @@
 }
 
 .module-head__title {
-  font-family: var(--font-serif);
-  font-size: 1.6rem;
+  font-family: var(--font-display);
+  font-size: clamp(1.45rem, 3vw, 2rem);
   font-weight: 700;
   color: var(--ink);
   margin: 0 0 8px;
@@ -112,9 +118,9 @@
 /* ---------- Section titles ---------- */
 .section-title {
   display: block;
-  font-family: var(--font-serif);
+  font-family: var(--font-display);
   font-size: 1.02rem;
-  font-weight: 600;
+  font-weight: 800;
   color: var(--ink);
   margin: 0 0 14px;
 }
@@ -123,7 +129,7 @@
 .fields-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px 24px;
+  gap: 18px 24px;
   margin-bottom: 32px;
 }
 
@@ -136,15 +142,16 @@
   font-size: 0.85rem;
   color: var(--ink-soft);
   margin-bottom: 6px;
-  letter-spacing: 0.01em;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 .field__input {
   width: 100%;
-  padding: 10px 12px;
+  padding: 12px 14px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: var(--surface);
+  background: var(--surface-raised);
   color: var(--ink);
   font-family: var(--font-sans);
   font-size: 0.95rem;
@@ -157,9 +164,8 @@
 }
 
 .field__input:focus {
-  outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(27, 58, 92, 0.10);
+  box-shadow: var(--focus-ring);
 }
 
 .field__hint {
@@ -180,10 +186,10 @@
 }
 
 .chip {
-  padding: 8px 16px;
-  border: 1px solid var(--line);
+  padding: 9px 16px;
+  border: 1px solid rgba(151, 164, 184, 0.28);
   border-radius: 999px;
-  background: transparent;
+  background: rgba(255, 255, 255, 0.72);
   color: var(--ink);
   cursor: pointer;
   font-size: 0.92rem;
@@ -193,6 +199,7 @@
 
 .chip:hover {
   border-color: var(--accent);
+  background: var(--accent-soft);
 }
 
 .chip--selected {
@@ -212,7 +219,7 @@
   padding: 12px 14px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: var(--surface);
+  background: var(--surface-raised);
   color: var(--ink);
   font-family: inherit;
   font-size: 0.95rem;
@@ -222,9 +229,8 @@
 }
 
 .free-text:focus {
-  outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(27, 58, 92, 0.10);
+  box-shadow: var(--focus-ring);
 }
 
 /* ---------- File upload ---------- */
@@ -238,7 +244,7 @@
   align-items: center;
   gap: 6px;
   border: 1.5px dashed var(--gold);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   padding: 24px;
   text-align: center;
   background: var(--gold-light);
@@ -329,72 +335,16 @@
   gap: 12px;
 }
 
-/* ---------- Buttons ---------- */
-.btn-primary {
-  background: var(--accent);
-  color: #fff;
-  border: none;
-  padding: 11px 26px;
-  border-radius: var(--radius);
-  font-size: 0.96rem;
-  font-family: var(--font-sans);
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-
-.btn-primary:hover {
-  background: var(--accent-hover);
-}
-
-.btn-primary:disabled {
-  background: var(--line);
-  color: var(--ink-soft);
-  cursor: not-allowed;
-}
-
 .btn-primary--final {
   padding: 12px 32px;
-  font-weight: 600;
+  font-weight: 900;
   letter-spacing: 0.02em;
-  box-shadow: var(--shadow);
-}
-
-.btn-ghost {
-  background: transparent;
-  color: var(--accent);
-  border: 1px solid var(--accent);
-  padding: 10px 22px;
-  border-radius: var(--radius);
-  font-size: 0.96rem;
-  font-family: var(--font-sans);
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-
-.btn-ghost:hover {
-  background: var(--accent);
-  color: #fff;
-}
-
-.btn-text {
-  background: transparent;
-  border: none;
-  color: var(--ink-soft);
-  font-size: 0.9rem;
-  font-family: var(--font-sans);
-  cursor: pointer;
-  padding: 6px 4px;
-  transition: color 0.15s ease;
-}
-
-.btn-text:hover {
-  color: var(--accent);
 }
 
 /* ---------- Responsive ---------- */
 @media (max-width: 640px) {
   .questionnaire {
-    padding: 24px 16px 40px;
+    padding: 18px 0 40px;
   }
 
   .wizard-card {
@@ -412,6 +362,11 @@
   .step-line {
     top: 0;
   }
+
+  .step-indicator {
+    border-radius: var(--radius-lg);
+    overflow-x: auto;
+  }
 }
 
 /* ---------- Field-level file upload ---------- */
@@ -428,7 +383,7 @@
   color: var(--gold);
   cursor: pointer;
   border: 1px dashed var(--gold);
-  border-radius: 6px;
+  border-radius: 999px;
   padding: 4px 10px;
   transition: background 0.15s;
 }
@@ -448,7 +403,7 @@
   font-size: 0.78rem;
   color: var(--ink-soft);
   background: var(--surface-subtle);
-  border-radius: 6px;
+  border-radius: 999px;
   padding: 3px 8px;
 }
 
@@ -468,12 +423,13 @@
 
 /* ---------- 草稿恢复横幅 ---------- */
 .resume-banner {
-  max-width: 880px;
-  margin: 0 auto 16px;
-  padding: 14px 20px;
-  background: var(--gold-light);
-  border: 1px solid var(--gold);
-  border-radius: var(--radius);
+  max-width: 960px;
+  margin: 0 auto 18px;
+  padding: 14px 16px;
+  background: rgba(246, 240, 229, 0.72);
+  border: 1px solid rgba(179, 139, 77, 0.28);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -482,7 +438,7 @@
 }
 .resume-banner__text { color: var(--ink); font-size: 0.92rem; }
 .resume-banner__actions { display: flex; align-items: center; gap: 10px; }
-.resume-banner__btn { padding: 6px 16px; font-size: 0.88rem; }
+.resume-banner__btn { min-height: 36px; padding: 6px 16px; font-size: 0.88rem; }
 
 .field__file-warning {
   display: inline-block;

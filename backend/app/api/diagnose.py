@@ -16,6 +16,9 @@ from app.models.result import ModuleResult, TriageSummary
 from app.models.warroom import WarRoomPlan
 from app.orchestrator.dispatcher import diagnose_all
 from app.warroom.composer import compose_war_room_plan
+from app.warroom.enhancer import enhance_war_room_plan
+from app.cases.archiver import archive_case
+from app.warroom.history import apply_project_war_room_iteration
 from app.data.uploads import parse_table
 from app.auth.jwt import get_optional_user
 from app.db.database import get_session
@@ -64,7 +67,7 @@ async def _save_history(
     triage: TriageSummary,
     war_room_plan: WarRoomPlan,
     profile_json: str | None = None,
-) -> str | None:
+) -> tuple[str | None, WarRoomPlan]:
     """已登录用户的诊断写入历史记录，返回 record_id；匿名用户返回 None。
 
     若 questionnaire 带了 session_id，则把诊断记录回关到对应的诊断会话
@@ -75,7 +78,7 @@ async def _save_history(
         # 匿名也回填 session 状态（如果有），但不建历史记录
         if sid:
             await _link_session(session, sid, None)
-        return None
+        return None, war_room_plan
     record = DiagnosisRecord(
         user_id=user.id,
         answers_json=questionnaire.model_dump_json(),
@@ -91,6 +94,14 @@ async def _save_history(
     if sid:
         await _link_session(session, sid, record.id)
     if questionnaire.project_id:
+        project_plan = await apply_project_war_room_iteration(
+            session,
+            questionnaire.project_id,
+            record,
+            war_room_plan,
+        )
+        if project_plan is not None:
+            war_room_plan = project_plan
         if questionnaire.problem_map:
             await append_problem_map_memory(
                 session,
@@ -108,7 +119,7 @@ async def _save_history(
             source_id=record.id,
         )
         await session.commit()
-    return record.id
+    return record.id, war_room_plan
 
 
 async def _link_session(
@@ -140,7 +151,8 @@ async def diagnose(
         outcome.triage,
         outcome.skill_version_ids,
     )
-    record_id = await _save_history(
+    war_room_plan = await enhance_war_room_plan(war_room_plan, outcome.results, llm)
+    record_id, war_room_plan = await _save_history(
         session,
         user,
         questionnaire,
@@ -148,7 +160,10 @@ async def diagnose(
         outcome.triage,
         war_room_plan,
     )
-    war_room_plan.record_id = record_id
+    if not war_room_plan.record_id:
+        war_room_plan.record_id = record_id
+    # Loop 3 案例飞轮：脱敏归档为可复用案例资产（旁路，失败不影响返回）
+    await archive_case(session, questionnaire, outcome.results, outcome.triage, record_id)
     return DiagnoseResponse(
         results=outcome.results,
         record_id=record_id,
@@ -208,7 +223,8 @@ async def diagnose_with_upload(
         outcome.triage,
         outcome.skill_version_ids,
     )
-    record_id = await _save_history(
+    war_room_plan = await enhance_war_room_plan(war_room_plan, outcome.results, llm)
+    record_id, war_room_plan = await _save_history(
         session,
         user,
         questionnaire,
@@ -216,7 +232,10 @@ async def diagnose_with_upload(
         outcome.triage,
         war_room_plan,
     )
-    war_room_plan.record_id = record_id
+    if not war_room_plan.record_id:
+        war_room_plan.record_id = record_id
+    # Loop 3 案例飞轮：脱敏归档为可复用案例资产（旁路，失败不影响返回）
+    await archive_case(session, questionnaire, outcome.results, outcome.triage, record_id)
     return DiagnoseResponse(
         results=outcome.results,
         record_id=record_id,

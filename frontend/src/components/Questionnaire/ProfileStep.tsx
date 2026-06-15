@@ -77,7 +77,7 @@ export function ProfileStep({ onGenerate, generating, error }: ProfileStepProps)
             disabled={generating}
             onClick={() => onGenerate(profile)}
           >
-            {generating ? "AI 正在定制问卷…" : "生成专属问卷"}
+            {generating ? "正在生成问卷…" : "生成专属问卷"}
           </button>
         </div>
       </section>

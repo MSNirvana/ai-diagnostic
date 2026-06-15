@@ -14,7 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.jwt import get_current_user
 from app.db.database import get_session
 from app.db.models import User, Project, DiagnosisSession, DiagnosisRecord, ProjectMemoryEntry
-from app.warroom.history import can_build_war_room_plan
+from app.memory.session_visibility import is_meaningful_session
+from app.models.warroom import WarRoomPlan
+from app.warroom.history import can_build_war_room_plan, get_or_build_project_war_room_plan
 
 router = APIRouter(prefix="/project")
 
@@ -69,6 +71,7 @@ class ProjectDetail(BaseModel):
     memory_entries: list[MemoryEntryOut]
     sessions: list[SessionBrief]
     records: list[RecordBrief]
+    war_room_plan: WarRoomPlan | None = None
 
 
 class PatchProjectRequest(BaseModel):
@@ -130,6 +133,7 @@ async def get_project(
     sessions = [
         SessionBrief(id=s.id, title=s.title or "未命名会话", status=s.status, updated_at=s.updated_at)
         for s in (await session.scalars(sess_stmt)).all()
+        if is_meaningful_session(s)
     ]
 
     rec_stmt = (
@@ -175,12 +179,30 @@ async def get_project(
             )
         )
 
+    war_room_plan = await get_or_build_project_war_room_plan(session, p)
+
     return ProjectDetail(
         id=p.id, name=p.name, created_at=p.created_at, updated_at=p.updated_at,
         status=p.status, memory_summary=p.memory_summary,
         memory_entries=memory_entries,
         sessions=sessions, records=records,
+        war_room_plan=war_room_plan,
     )
+
+
+@router.get("/{project_id}/war-room", response_model=WarRoomPlan)
+async def get_project_war_room(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> WarRoomPlan:
+    p = await session.get(Project, project_id)
+    if p is None or p.user_id != user.id:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    plan = await get_or_build_project_war_room_plan(session, p)
+    if plan is None:
+        raise HTTPException(status_code=404, detail="作战室尚未建立")
+    return plan
 
 
 @router.patch("/{project_id}", response_model=ProjectSummary)

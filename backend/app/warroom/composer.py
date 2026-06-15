@@ -11,16 +11,7 @@ from app.models.warroom import (
     ReviewCheckpoint,
     WarRoomPlan,
 )
-
-
-MODULE_LABELS = {
-    "market": "市场与客户",
-    "product": "产品与服务",
-    "sales": "销售与增长",
-    "ops": "运营与供应链",
-    "org": "组织与人才",
-    "finance": "财务与资本",
-}
+from app.skills.skill_network import skill_label
 
 OWNER_ROLES = {
     "market": "市场负责人",
@@ -29,6 +20,13 @@ OWNER_ROLES = {
     "ops": "运营负责人",
     "org": "HR / 组织负责人",
     "finance": "财务负责人",
+    "legal_compliance": "法务 / 合规负责人",
+    "tax": "财务 / 税务负责人",
+    "policy": "政策事务负责人",
+    "ip": "知识产权负责人",
+    "supply_chain": "供应链负责人",
+    "channel_franchise": "渠道负责人",
+    "data_systems": "数据 / 信息化负责人",
 }
 
 ACTION_METRICS = {
@@ -38,6 +36,13 @@ ACTION_METRICS = {
     "ops": ActionMetric(name="交付准时率", target="两周内暴露并处理主要交付卡点", direction="up"),
     "org": ActionMetric(name="关键岗位人效", target="30 天内明确责任与激励口径", direction="up"),
     "finance": ActionMetric(name="预算偏差", target="两周内建立投入上限与复盘节奏", direction="down"),
+    "legal_compliance": ActionMetric(name="合规风险清单关闭率", target="两周内完成高风险项确认", direction="down"),
+    "tax": ActionMetric(name="税务资料完整率", target="两周内补齐票据与申报口径", direction="up"),
+    "policy": ActionMetric(name="政策匹配项", target="30 天内确认可申报/需规避事项", direction="stable"),
+    "ip": ActionMetric(name="核心资产保护率", target="30 天内补齐重点权属材料", direction="up"),
+    "supply_chain": ActionMetric(name="关键物料风险项", target="两周内形成替代与安全库存方案", direction="down"),
+    "channel_franchise": ActionMetric(name="渠道单元模型完整率", target="30 天内跑通样板渠道复盘", direction="up"),
+    "data_systems": ActionMetric(name="核心指标可追踪率", target="两周内建立最小经营看板", direction="up"),
 }
 
 CHAIN_LABELS = {
@@ -47,9 +52,36 @@ CHAIN_LABELS = {
     "ops": "运营补承接",
     "org": "组织定责任",
     "finance": "财务设预算红线",
+    "legal_compliance": "合规先清红线",
+    "tax": "税务核票据链",
+    "policy": "政策定边界",
+    "ip": "知识产权补保护",
+    "supply_chain": "供应链稳供给",
+    "channel_franchise": "渠道校准模型",
+    "data_systems": "数据统一口径",
 }
 
 SIGNAL_WEIGHT = {"red": 0, "yellow": 1, "green": 2}
+
+
+def _metric_for(module: str) -> ActionMetric:
+    """取部门动作的核心指标。优先级：
+    1) composer 手工映射 ACTION_METRICS（核心六模块+专业类，措辞最贴）
+    2) skill config 声明的 industry_kpis 第一个（Loop 1 产出的行业 skill 自动有指标）
+    3) 通用占位（最后兜底）
+
+    这样 Loop 1 跑批出的 100 个行业 skill 不用回来手维护字典，自带像样指标。
+    """
+    if module in ACTION_METRICS:
+        return ACTION_METRICS[module]
+    try:
+        from app.skills.config_loader import load_config_meta
+        kpis = load_config_meta(module).get("industry_kpis") or []
+        if kpis:
+            return ActionMetric(name=kpis[0], target="30 天内出现可复盘改善", direction="stable")
+    except Exception:  # noqa: BLE001 — 取不到就走通用兜底
+        pass
+    return ActionMetric(name="核心指标", target="下次复盘可量化", direction="stable")
 
 
 def compose_war_room_plan(
@@ -71,6 +103,9 @@ def compose_war_room_plan(
         id=f"wr_{uuid4().hex[:12]}",
         record_id=record_id,
         project_id=questionnaire.project_id,
+        source_record_ids=[record_id] if record_id else [],
+        iteration_count=1 if record_id else 0,
+        iterations=[],
         summary=_summary(results, primary, secondary, bool(data_gaps)),
         primary_battlefield=primary,
         secondary_battlefield=secondary,
@@ -125,8 +160,8 @@ def _summary(
 ) -> str:
     if not results:
         return "当前输入不足，建议先补齐经营数据，再生成完整部门作战方案。"
-    primary_label = MODULE_LABELS.get(primary, primary)
-    secondary_label = MODULE_LABELS.get(secondary, secondary)
+    primary_label = skill_label(primary)
+    secondary_label = skill_label(secondary)
     primary_result = _find_result(results, primary)
     conclusion = primary_result.conclusion if primary_result else "核心经营瓶颈"
     if secondary:
@@ -186,6 +221,9 @@ def _department_actions(
         confidence = (
             result.evidence_package.confidence if result.evidence_package is not None else None
         )
+        confidence_reason = (
+            result.evidence_package.confidence_reason if result.evidence_package is not None else ""
+        )
         required_data = _dedupe_data_requests([result])
         action_title = result.actions[0]
         action_detail = "；".join(result.actions[1:3]) if len(result.actions) > 1 else result.conclusion
@@ -194,7 +232,7 @@ def _department_actions(
             DepartmentAction(
                 id=f"{result.module}-action-1",
                 department=result.module,
-                department_label=MODULE_LABELS.get(result.module, result.module),
+                department_label=skill_label(result.module),
                 battle_goal=result.conclusion,
                 priority=priority,
                 action_title=action_title,
@@ -204,9 +242,10 @@ def _department_actions(
                 dependency=_dependency_note(result.module, primary, secondary),
                 acceptance_rule=f"{start_window}后，能提供「{action_title}」的执行记录和指标变化。",
                 required_data=required_data,
-                metrics=[ACTION_METRICS.get(result.module, ActionMetric(name="核心指标", target="下次复盘可量化", direction="stable"))],
+                metrics=[_metric_for(result.module)],
                 risk_note=_risk_note(result, required_data, confidence),
                 confidence=confidence,
+                confidence_reason=confidence_reason,
                 evidence_refs=_evidence_refs(result),
             )
         )
@@ -285,7 +324,7 @@ def _decision_items(
             )
         )
     while len(items) < 3:
-        primary_label = MODULE_LABELS.get(primary, primary)
+        primary_label = skill_label(primary)
         fallback_index = len(items) + 1
         if fallback_index == 1:
             title = f"拍板：把{primary_label}设为本期主战场"
@@ -319,7 +358,7 @@ def _battle_chain(
         steps.append(
             BattleChainStep(
                 id=module,
-                label=CHAIN_LABELS.get(module, MODULE_LABELS.get(module, "补齐经营输入")),
+                label=CHAIN_LABELS.get(module, skill_label(module) if module != "overall" else "补齐经营输入"),
                 depends_on=[steps[index - 1].id] if index > 0 else [],
                 note=dependency_note,
             )
@@ -345,11 +384,11 @@ def _evidence_summary(
     summary: list[str] = []
     for result in selected:
         for evidence in result.evidence[:2]:
-            summary.append(f"{MODULE_LABELS.get(result.module, result.module)}：{evidence.text}（{evidence.source}）")
+            summary.append(f"{skill_label(result.module)}：{evidence.text}（{evidence.source}）")
         if result.evidence_package:
             for benchmark in result.evidence_package.benchmarks[:1]:
                 summary.append(
-                    f"{MODULE_LABELS.get(result.module, result.module)}参考{benchmark.name}：{benchmark.value}"
+                    f"{skill_label(result.module)}参考{benchmark.name}：{benchmark.value}"
                 )
     if not summary:
         summary.append("当前证据不足，建议先补齐关键经营数据。")
@@ -365,7 +404,7 @@ def _risk_summary(
     for result in results:
         if result.evidence_package and result.evidence_package.confidence < 0.65:
             risks.append(
-                f"{MODULE_LABELS.get(result.module, result.module)}证据置信度偏低，需先用复盘指标验证。"
+                f"{skill_label(result.module)}证据置信度偏低，需先用复盘指标验证。"
             )
     for gap in data_gaps[:3]:
         risks.append(f"缺少{gap.label}，相关判断先按保守方案执行。")
@@ -383,7 +422,7 @@ def _dedupe_data_requests(results: list[ModuleResult]) -> list[DataRequest]:
 
 
 def _checkpoints(primary: str) -> list[ReviewCheckpoint]:
-    primary_label = MODULE_LABELS.get(primary, "主战场")
+    primary_label = skill_label(primary) if primary else "主战场"
     return [
         ReviewCheckpoint(
             window="7d",

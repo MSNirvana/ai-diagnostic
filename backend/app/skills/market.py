@@ -10,6 +10,7 @@ MARKET_CONFIG = ExpertConfig(
     method="market-evidence",
     label="市场与客户",
     fallback_prompt=_SYSTEM_FALLBACK,
+    scenarios=("live_commerce", "ecommerce_retail", "b2b_solution", "local_service"),
     data_requirements=(
         DataRequirement(
             key="promotion_account",
@@ -24,6 +25,13 @@ MARKET_CONFIG = ExpertConfig(
             reason="市场诊断必须看到花费、曝光、点击、CTR、CPC、转化、CAC、ROAS 等趋势。",
             source_hint="上传 campaign/adgroup/creative 维度投放报表。",
             keywords=("花费", "曝光", "点击", "CTR", "CPC", "转化", "CAC", "ROAS", "campaign", "计划"),
+        ),
+        DataRequirement(
+            key="account_structure",
+            label="账号矩阵与渠道结构",
+            reason="仅看总花费看不出问题，需要知道主投平台、账号矩阵、自然流量与付费流量占比。",
+            source_hint="补充账号矩阵、渠道占比、自然/付费流量结构、达人/自播占比。",
+            keywords=("账号矩阵", "自然流量", "付费流量", "平台占比", "达人", "自播", "渠道结构"),
         ),
         DataRequirement(
             key="competitor_or_benchmark",

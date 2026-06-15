@@ -1,11 +1,15 @@
 from anthropic import AsyncAnthropic
 from app.llm.base import LLMClient
+from app.llm.base_url import normalize_anthropic_base_url
 
 
 class AnthropicClient(LLMClient):
     def __init__(self, api_key: str, model: str, base_url: str | None = None):
-        # base_url 为空时走 Anthropic 官方地址；传入则走自定义网关
-        self._client = AsyncAnthropic(api_key=api_key, base_url=base_url or None)
+        # Anthropic SDK 会自行拼 /v1/messages；自定义网关填到 /v1 时要剥掉。
+        self._client = AsyncAnthropic(
+            api_key=api_key,
+            base_url=normalize_anthropic_base_url(base_url),
+        )
         self._model = model
 
     async def complete(self, system: str, prompt: str) -> str:

@@ -12,6 +12,25 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _finish_sentence(text: str) -> str:
+    text = " ".join(str(text or "").split()).strip("；;，, ")
+    if not text:
+        return ""
+    return text if text[-1] in "。！？.!?" else f"{text}。"
+
+
+def _compact_sentence(text: str, limit: int = 110) -> str:
+    """Keep memory summaries readable without cutting words mid-sentence."""
+    text = " ".join(str(text or "").split()).strip()
+    if len(text) <= limit:
+        return _finish_sentence(text)
+    for mark in ("。", "！", "？", ".", "!", "?"):
+        idx = text.find(mark)
+        if 0 < idx + 1 <= limit:
+            return _finish_sentence(text[: idx + 1])
+    return _finish_sentence(text[:limit].rsplit("，", 1)[0] or text[:limit])
+
+
 async def append_memory_entry(
     session: AsyncSession,
     *,
@@ -52,9 +71,9 @@ async def append_problem_map_memory(
     payload = _dump_model(problem_map)
     core = str(payload.get("core_problem") or "").strip()
     goal = str(payload.get("goal") or "").strip()
-    summary = f"核心问题：{core or '未命名问题'}"
+    summary = f"核心问题：{_finish_sentence(core or '未命名问题')}"
     if goal:
-        summary += f"；目标：{goal}"
+        summary += f"；目标：{_finish_sentence(goal)}"
     entry = await append_memory_entry(
         session,
         project_id=project_id,
@@ -87,7 +106,10 @@ async def append_diagnosis_memory(
     top = sorted(results, key=lambda r: order.get(r.signal, 9))[0]
     signal_cn = {"red": "需关注", "yellow": "观察", "green": "健康"}.get(top.signal, top.signal)
     first_action = top.actions[0] if top.actions else "暂无行动建议"
-    summary = f"{top.module}（{signal_cn}）：{top.conclusion[:60]}；建议：{first_action[:60]}"
+    summary = (
+        f"{top.module}（{signal_cn}）：{_compact_sentence(top.conclusion)}"
+        f"；建议：{_compact_sentence(first_action)}"
+    )
     payload = {
         "top_module": top.module,
         "signal": top.signal,
@@ -116,8 +138,10 @@ async def append_feedback_memory(
     if not record.project_id:
         return None
     tone = "有帮助" if feedback.is_useful else "待改进"
-    comment = f"；反馈：{feedback.comment}" if feedback.comment else ""
-    summary = f"{feedback.module} 诊断反馈：{tone}，评分 {feedback.rating}/5{comment}"
+    parts = [f"{feedback.module} 诊断反馈：{tone}，评分 {feedback.rating}/5"]
+    if feedback.comment:
+        parts.append(f"反馈：{_finish_sentence(feedback.comment)}")
+    summary = "；".join(parts)
     return await append_memory_entry(
         session,
         project_id=record.project_id,

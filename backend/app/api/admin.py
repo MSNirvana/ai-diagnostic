@@ -7,12 +7,13 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_session
 from app.db.models import SkillVersion
+from app.skills.skill_network import all_skill_definitions, skill_definition
 
 router = APIRouter(prefix="/admin/skills")
 
@@ -20,6 +21,7 @@ router = APIRouter(prefix="/admin/skills")
 class NewVersionRequest(BaseModel):
     system_prompt: str
     method: str = "hypothesis"
+    skill_type: str | None = None
     change_reason: str
     change_category: str | None = None
     reviewed_by: str | None = None
@@ -27,8 +29,11 @@ class NewVersionRequest(BaseModel):
 
 
 class SkillVersionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     module: str
+    skill_type: str
     version: int
     system_prompt: str
     method: str
@@ -38,11 +43,71 @@ class SkillVersionOut(BaseModel):
     reviewed_by: str | None
 
 
+class SkillRegistryItemOut(BaseModel):
+    key: str
+    label: str
+    category: str
+    category_label: str
+    skill_type: str
+    method: str
+    description: str
+    fallback_prompt: str
+    trigger_keywords: list[str]
+    data_requirements: list[dict[str, object]]
+    upgrade_policy: str
+    evaluation_metrics: list[str]
+    enabled: bool
+    default_core: bool
+    active_version: SkillVersionOut | None = None
+
+
 @router.get("/", response_model=list[SkillVersionOut])
 async def list_active(session: AsyncSession = Depends(get_session)):
     """所有模块的当前激活版本。"""
     stmt = select(SkillVersion).where(SkillVersion.is_active == True)  # noqa: E712
     return list(await session.scalars(stmt))
+
+
+@router.get("/registry", response_model=list[SkillRegistryItemOut])
+async def list_registry(session: AsyncSession = Depends(get_session)):
+    """Skill 网络目录：包含未创建 DB 版本的可用 Skill。"""
+    active_rows = list(await session.scalars(
+        select(SkillVersion).where(SkillVersion.is_active == True)  # noqa: E712
+    ))
+    active_by_module = {row.module: row for row in active_rows}
+    return [
+        SkillRegistryItemOut(
+            key=definition.key,
+            label=definition.label,
+            category=definition.category,
+            category_label=definition.category_label,
+            skill_type=definition.skill_type,
+            method=definition.method,
+            description=definition.description,
+            fallback_prompt=definition.fallback_prompt,
+            trigger_keywords=list(definition.trigger_keywords),
+            data_requirements=[
+                {
+                    "key": requirement.key,
+                    "label": requirement.label,
+                    "reason": requirement.reason,
+                    "source_hint": requirement.source_hint,
+                    "required": requirement.required,
+                }
+                for requirement in definition.data_requirements
+            ],
+            upgrade_policy=definition.upgrade_policy,
+            evaluation_metrics=list(definition.evaluation_metrics),
+            enabled=definition.enabled,
+            default_core=definition.default_core,
+            active_version=(
+                SkillVersionOut.model_validate(active_by_module[definition.key])
+                if definition.key in active_by_module
+                else None
+            ),
+        )
+        for definition in all_skill_definitions()
+    ]
 
 
 @router.get("/{module}/versions", response_model=list[SkillVersionOut])
@@ -76,13 +141,21 @@ async def add_version(
         select(func.max(SkillVersion.version)).where(SkillVersion.module == module)
     )
     next_v = (max_v or 0) + 1
+    previous = await session.scalar(
+        select(SkillVersion)
+        .where(SkillVersion.module == module)
+        .order_by(SkillVersion.version.desc())
+        .limit(1)
+    )
     if body.activate:
         await _deactivate_all(session, module)
+    definition = skill_definition(module)
     ver = SkillVersion(
         module=module,
+        skill_type=body.skill_type or (previous.skill_type if previous else definition.skill_type if definition else "diagnosis"),
         version=next_v,
         system_prompt=body.system_prompt,
-        method=body.method,
+        method=body.method if body.method != "hypothesis" or definition is None else definition.method,
         is_active=body.activate,
         change_reason=body.change_reason,
         change_category=body.change_category,

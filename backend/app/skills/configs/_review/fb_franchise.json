@@ -1,0 +1,33 @@
+{
+  "skill_key": "fb_franchise",
+  "machine_verdict": "pass(待真实LLM复核)",
+  "reviewed_by": null,
+  "review_status": "pending_human",
+  "human_review_notes": [
+    {
+      "type": "判断纪律",
+      "finding": "green 5题全部被skill判成yellow——数据很漂亮（回本11月/存活88%/坪效1600）也不给绿灯。",
+      "machine_can_judge": false,
+      "consultant_question": "餐饮加盟这行，单店模型这么好还只给yellow是否过度保守？还是说加盟扩张本就该永远留一手谨慎？请真人顾问定绿灯阈值。",
+      "recommendation": "倾向接受——咨询产品偏保守比偏乐观安全。但若5/5全保守，可在prompt里给一条'数据全面达标且无硬伤时可给green'的明确出口。"
+    },
+    {
+      "type": "证据透明度",
+      "finding": "skill会引用衍生数字（如闭店率39%=闭店47/开业120），但只甩结果不写算式，被C2标记为'疑似编造'。",
+      "machine_can_judge": "部分（C2按严格档判fail）",
+      "consultant_question": "这些是合理推算不是幻觉。是否要求skill把算式写进证据（闭店率=47/120≈39%）？",
+      "recommendation": "要求亮算式。既过C2，又对老板更透明（契合透明派方向）。下一版prompt加一条：衍生指标必须在evidence里写明计算过程。"
+    },
+    {
+      "type": "合规",
+      "finding": "skill多次主动提示'承诺收益/保证回本'招商话术的合规风险，并声明不替代法律意见。",
+      "machine_can_judge": false,
+      "consultant_question": "这个合规敏感度对餐饮加盟是对的（招商确实是监管重点）。确认表述无误导即可。",
+      "recommendation": "通过——这正是行业内行该有的警觉。"
+    }
+  ],
+  "next_actions": [
+    "真人顾问签字前，用真实LLM重跑确认error_count=0、L1全过",
+    "绿灯阈值和衍生数字亮算式两点，可在首批PoC真实反馈后通过Loop3迭代，不阻塞当前收口"
+  ]
+}

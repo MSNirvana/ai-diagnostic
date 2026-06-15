@@ -1,0 +1,60 @@
+{
+  "skill_key": "dtc_ads",
+  "case_count": 6,
+  "l1_all_pass": true,
+  "l2_overall_rate": 0.958,
+  "machine_verdict": "pass",
+  "cases": [
+    {
+      "case_id": "red-1",
+      "expected_signal": "red",
+      "got_signal": "red",
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    },
+    {
+      "case_id": "red-2",
+      "expected_signal": "red",
+      "got_signal": "red",
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    },
+    {
+      "case_id": "yellow-1",
+      "expected_signal": "yellow",
+      "got_signal": "red",
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    },
+    {
+      "case_id": "green-1",
+      "expected_signal": "green",
+      "got_signal": "red",
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    },
+    {
+      "case_id": "missing-1",
+      "expected_signal": "yellow",
+      "got_signal": "yellow",
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    },
+    {
+      "case_id": "missing-2",
+      "expected_signal": "yellow",
+      "got_signal": "red",
+      "l1_passed": true,
+      "l2_pass_rate": 0.75,
+      "failures": [
+        "C1: 证据含具体数字",
+        "C6: 未命中任何行业KPI"
+      ]
+    }
+  ]
+}

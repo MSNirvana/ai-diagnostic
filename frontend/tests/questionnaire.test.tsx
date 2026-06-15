@@ -2,6 +2,8 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { Questionnaire } from "../src/components/Questionnaire/Questionnaire";
+import { startSession } from "../src/api/client";
+import { formatChatBlocks } from "../src/components/Questionnaire/ChatStep";
 
 const fakeModule = {
   key: "market",
@@ -62,9 +64,20 @@ vi.mock("../src/utils/draft", () => ({
   loadDraft: vi.fn(() => null),
   saveDraft: vi.fn(),
   clearDraft: vi.fn(),
+  clearLegacyDraft: vi.fn(),
 }));
 
 describe("Questionnaire conversation flow", () => {
+  it("把长段 AI 回复拆成更易读的段落和追问", () => {
+    const blocks = formatChatBlocks(
+      "这里我得跟你点做一个硬矛盾，否则30天会白跑：按刚才的账，每月烧5万，代理毛利约240元/台，不亏钱意味着月销要冲到约208台。所以「不亏钱」其实有两条路：一条是砍成本，另一条是维持投入。你更倾向哪一条？",
+      "assistant"
+    );
+
+    expect(blocks.length).toBeGreaterThan(1);
+    expect(blocks[blocks.length - 1]?.kind).toBe("question");
+  });
+
   it("对话→确认问题地图→生成→选A→填问卷→提交", async () => {
     const onSubmit = vi.fn();
     render(
@@ -72,10 +85,10 @@ describe("Questionnaire conversation flow", () => {
         <Questionnaire onSubmit={onSubmit} />
       </MemoryRouter>
     );
-    // 等 startSession 完成（sessionId 就绪）后再交互
     const input = screen.getByPlaceholderText(/描述|问题|输入|补充/);
+    expect(startSession).not.toHaveBeenCalled();
     fireEvent.change(input, { target: { value: "获客成本越来越高" } });
-    // sessionId 异步就绪，反复点发送直到 confirm 卡片出现
+    // 首条真实消息发送时才创建会话，避免用户只点进诊断页产生空历史。
     await waitFor(
       () => {
         fireEvent.click(screen.getByText("发送"));
@@ -83,6 +96,7 @@ describe("Questionnaire conversation flow", () => {
       },
       { timeout: 2000 }
     );
+    expect(startSession).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByText("确认无误，开始诊断"));
     // 进入 ab_choice
     await waitFor(() => screen.getByText(/方案 A/));

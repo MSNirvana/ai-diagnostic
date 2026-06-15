@@ -20,7 +20,7 @@ class GeneratedField(BaseModel):
 
 
 class GeneratedModule(BaseModel):
-    key: str               # 仍用 market/product/sales/ops/org/finance
+    key: str               # 使用 Skill 网络里的诊断 key，可随业务场景扩展
     label: str
     subtitle: str
     fields: list[GeneratedField] = Field(default_factory=list)
@@ -30,3 +30,30 @@ class GeneratedModule(BaseModel):
 
 class GeneratedQuestionnaire(BaseModel):
     modules: list[GeneratedModule]
+
+
+class QuestionnaireGenerationContext(BaseModel):
+    mode: str = "coverage"
+    company_name: str = ""
+    industry: str = ""
+    main_business: str = ""
+    business_model: str = ""
+    scale: str = ""
+    stage: str = ""
+    core_problem: str = ""
+    sub_problems: list[str] = Field(default_factory=list)
+    goal: str = ""
+    constraints: str = ""
+    success_criteria: str = ""
+    impact: str = ""
+    context: str = ""
+    suspected_cause: str = ""
+    tried: str = ""
+    data_readiness: str = ""
+    diagnosis_focus: str = ""
+    scenario_key: str = ""
+    scenario_label: str = ""
+    benchmark_keywords: list[str] = Field(default_factory=list)
+    evidence_lens: list[str] = Field(default_factory=list)
+    available_skills: list[dict] = Field(default_factory=list)
+    recommended_skills: list[dict] = Field(default_factory=list)

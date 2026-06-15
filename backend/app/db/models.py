@@ -32,6 +32,7 @@ class Project(SQLModel, table=True):
     name: str                              # 项目名（企业名/业务线名）
     profile_json: str | None = None        # 最新画像/问题地图
     memory_summary: str = ""               # 项目长期记忆（重点摘要，供后续对话注入）
+    war_room_plan_json: str | None = None   # 项目当前作战室快照（由多次诊断迭代更新）
     status: str = "active"                 # active | archived
 
 
@@ -138,6 +139,7 @@ class DiagnosisFeedback(SQLModel, table=True):
     comment: str | None = None             # 用户文字意见
 
 
+
 class LLMConfig(SQLModel, table=True):
     """模型厂商/API 配置。priority 小的为主，大的为备用，主失败自动切备。
 
@@ -169,3 +171,49 @@ class UploadedFile(SQLModel, table=True):
     stored_path: str                         # 磁盘相对路径
     parsed_summary: str = ""                 # parse_table 解析结果（缓存）
     created_at: datetime = Field(default_factory=_now)
+
+
+class RoutingSample(SQLModel, table=True):
+    """一次诊断的路由决策 + 结果快照——router 越用越准的训练燃料（Loop 2）。
+
+    记下"什么信号召回了谁、召回得准不准"，供离线校准关键词权重：
+    - 高分召回却回 green/低置信 → 关键词可能假阳性
+    - 手填+red 却没被关键词召到 → 关键词缺口（漏召回）
+    写入失败绝不能影响诊断，全部 best-effort。
+    """
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    record_id: str | None = Field(default=None, index=True)
+    created_at: datetime = Field(default_factory=_now)
+    scenario_key: str = ""
+    problem_text: str = ""                   # 驱动关键词召回的文本
+    recall_scores_json: str = "[]"           # [{key, score}] 候选打分快照
+    selected_json: str = "[]"                # [{module, source, reason, priority}]
+    outcomes_json: str = "[]"                # [{module, signal, confidence}]
+    missed_json: str = "[]"                  # [module] 手填+red 但关键词漏召回
+
+
+class CaseAsset(SQLModel, table=True):
+    """脱敏后的结构化案例资产——Loop 3 案例飞轮的核心沉淀物。
+
+    与 DiagnosisRecord 的区别：
+    - DiagnosisRecord 是给用户看的原始历史（含企业名/精确数字，仅本人可见）。
+    - CaseAsset 是脱敏后跨客户复用的"教材"：企业名抹掉、金额模糊成量级，
+      保留行业/场景/KPI 结构。客户越多，系统对行业理解越准——这是真护城河。
+
+    匿名诊断也归档（脱敏后无 PII，正是飞轮要的料）。归档失败绝不影响诊断。
+    effectiveness_score / consultant_notes 由后续 7/14/30 天复盘回填。
+    """
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    created_at: datetime = Field(default_factory=_now)
+    source_record_id: str | None = Field(default=None, index=True)  # 关联原始诊断记录
+    industry: str = Field(default="", index=True)   # 行业标签，按行业聚合召回先验
+    scenario_key: str = Field(default="", index=True)
+    primary_module: str = ""                         # 主战场 skill
+    company_profile_json: str = "{}"                 # 脱敏企业画像
+    problem_map_json: str = "{}"                      # 脱敏问题地图
+    skills_used_json: str = "[]"                     # 本案召回的 skill 列表
+    diagnosis_summary_json: str = "{}"                # {module: {signal, conclusion(脱敏), confidence}}
+    data_gaps_json: str = "[]"                        # 缺数据 key 列表
+    # —— 复盘回填字段（7/14/30 天后），唯一可信的 PMF 信号，不可自动 ——
+    effectiveness_score: float | None = None          # 老板执行后 KPI 是否改善
+    consultant_notes_json: str | None = None          # 顾问标注：哪些洞察真有用

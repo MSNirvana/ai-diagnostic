@@ -9,6 +9,27 @@ import re
 from app.models.result import Evidence, DrillDown
 
 _FENCE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
+_TRAILING_COMMA = re.compile(r",(\s*[}\]])")
+# 中文全角引号/书名号：出现在字符串值内部时不是 JSON 结构符，
+# 但模型有时用半角双引号 " 包中文短语（如 "高签约"低存活），会提前闭合字符串。
+# 把这些"内容性引号"统一换成安全的全角引号，避免破坏 JSON 结构。
+_SMART_QUOTES = {
+    "“": "「",  # " → 「
+    "”": "」",  # " → 」
+}
+
+
+def _repair_common_defects(text: str) -> str:
+    """修复真实 LLM 输出最常见的 JSON 毛病（保守，只动有把握的）。
+
+    1. 尾随逗号：{"a":1,} / [1,2,] —— 合法 JSON 不允许，但模型高频产出。
+    2. 弯引号 ""：模型常用它包中文短语，换成全角「」不影响语义也不破坏结构。
+    字符串内未转义的"半角"双引号无法安全自动修复（无法区分内容引号和结构引号），
+    故不处理——让它如实暴露给上层记 ERROR，不静默吞。
+    """
+    for bad, good in _SMART_QUOTES.items():
+        text = text.replace(bad, good)
+    return _TRAILING_COMMA.sub(r"\1", text)
 
 
 def parse_json_object(raw: str) -> dict:
@@ -20,11 +41,18 @@ def parse_json_object(raw: str) -> dict:
     try:
         return json.loads(text)
     except json.JSONDecodeError:
-        # 兜底：截取第一个 { 到最后一个 } 之间的内容
-        start, end = text.find("{"), text.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            return json.loads(text[start : end + 1])
-        raise
+        pass
+    # 兜底1：截取第一个 { 到最后一个 } 之间的内容
+    start, end = text.find("{"), text.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        candidate = text[start : end + 1]
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            # 兜底2：修复尾随逗号等常见毛病后再试
+            return json.loads(_repair_common_defects(candidate))
+    # 没有花括号结构，最后再试一次修复
+    return json.loads(_repair_common_defects(text))
 
 
 def to_evidence(item: object) -> Evidence:

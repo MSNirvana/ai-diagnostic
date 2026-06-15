@@ -35,7 +35,7 @@ describe("Dashboard triage summary", () => {
   it("renders expert routing, conflicts and priority actions", () => {
     render(<Dashboard results={results} triage={triage} />);
 
-    expect(screen.getByText("多专家会诊路线")).toBeTruthy();
+    expect(screen.getByText("会诊路径与优先级")).toBeTruthy();
     expect(screen.getByText("主诊专家：销售与增长")).toBeTruthy();
     expect(screen.getByText("销售与增长")).toBeTruthy();
     expect(screen.getByText("财务与资本")).toBeTruthy();

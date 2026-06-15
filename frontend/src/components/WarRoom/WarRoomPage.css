@@ -1,23 +1,24 @@
 .war-room {
   display: grid;
-  gap: 18px;
+  gap: 20px;
 }
 
 .war-room__brief,
 .war-panel {
   border: 1px solid rgba(164, 180, 199, 0.34);
-  border-radius: 24px;
-  background: rgba(255, 255, 255, 0.82);
+  border-radius: var(--radius-xl);
+  background: var(--surface-glass);
   box-shadow: var(--shadow);
+  backdrop-filter: blur(16px);
 }
 
 .war-room__brief {
   position: relative;
   overflow: hidden;
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
-  gap: 28px;
-  padding: clamp(24px, 4vw, 40px);
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.48fr);
+  gap: clamp(24px, 4vw, 52px);
+  padding: clamp(30px, 4.2vw, 48px);
 }
 
 .war-room__brief::before {
@@ -25,7 +26,7 @@
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(120deg, rgba(14, 74, 125, 0.13), transparent 42%),
+    linear-gradient(120deg, rgba(14, 74, 125, 0.14), transparent 44%),
     radial-gradient(circle at 92% 12%, rgba(179, 139, 77, 0.18), transparent 26%);
   pointer-events: none;
 }
@@ -40,26 +41,55 @@
 .war-panel__heading span {
   color: var(--accent);
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 900;
   letter-spacing: 0.16em;
   text-transform: uppercase;
 }
 
 .war-room__brief h2 {
-  max-width: 780px;
-  margin: 10px 0 14px;
+  max-width: 760px;
+  margin: 12px 0 12px;
   color: var(--ink);
-  font-family: var(--font-serif);
-  font-size: clamp(1.8rem, 3.7vw, 3.45rem);
-  line-height: 1.12;
-  letter-spacing: -0.04em;
+  font-family: var(--font-display);
+  font-size: clamp(1.9rem, 3.6vw, 3.35rem);
+  line-height: 1.05;
+  letter-spacing: -0.055em;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
 }
 
-.war-room__brief p {
-  max-width: 720px;
+.war-room__objective {
+  max-width: 680px;
   margin: 0;
   color: var(--ink-soft);
-  font-size: 1rem;
+  font-size: 1.02rem;
+  line-height: 1.7;
+}
+
+.war-room__brief-summary {
+  max-width: 760px;
+  margin-top: 22px;
+  padding: 16px 18px;
+  border: 1px solid rgba(14, 74, 125, 0.12);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.war-room__brief-summary span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.war-room__brief-summary p {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.94rem;
+  line-height: 1.72;
 }
 
 .war-room__conservative {
@@ -77,14 +107,14 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
-  align-self: end;
+  align-self: center;
 }
 
 .war-room__brief-metrics div {
-  min-height: 102px;
+  min-height: 92px;
   padding: 16px;
   border: 1px solid rgba(14, 74, 125, 0.14);
-  border-radius: 18px;
+  border-radius: var(--radius-lg);
   background: rgba(255, 255, 255, 0.68);
   backdrop-filter: blur(10px);
 }
@@ -104,7 +134,7 @@
   margin-top: 8px;
   color: var(--ink);
   font-family: var(--font-display);
-  font-size: 1.05rem;
+  font-size: 1rem;
   line-height: 1.25;
   word-break: break-word;
 }
@@ -113,7 +143,7 @@
 .war-room__bottom-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.18fr) minmax(320px, 0.82fr);
-  gap: 18px;
+  gap: 20px;
 }
 
 .war-panel {
@@ -126,6 +156,15 @@
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 16px;
+}
+
+.war-panel__count {
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.82rem;
+  padding: 7px 12px;
 }
 
 .war-panel__heading h3 {
@@ -142,10 +181,25 @@
 }
 
 .decision-card {
-  padding: 16px;
+  display: block;
+  padding: 16px 18px;
   border: 1px solid rgba(14, 74, 125, 0.13);
-  border-radius: 18px;
+  border-radius: var(--radius-lg);
   background: linear-gradient(135deg, rgba(244, 248, 252, 0.82), rgba(255, 255, 255, 0.92));
+}
+
+.decision-card--lead {
+  border-color: rgba(14, 74, 125, 0.22);
+  background:
+    linear-gradient(135deg, rgba(233, 244, 253, 0.9), rgba(255, 255, 255, 0.96));
+}
+
+.decision-card__main {
+  min-width: 0;
+}
+
+.decision-card__brief {
+  max-width: 72ch;
 }
 
 .decision-card h4,
@@ -155,6 +209,8 @@
   margin: 8px 0 6px;
   color: var(--ink);
   font-size: 1rem;
+  line-height: 1.42;
+  overflow-wrap: anywhere;
 }
 
 .decision-card p,
@@ -172,6 +228,47 @@
 .department-card p,
 .battle-chain__step p {
   margin: 0;
+}
+
+.war-detail {
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+}
+
+.war-detail summary {
+  cursor: pointer;
+  user-select: none;
+  width: fit-content;
+  border-radius: 999px;
+  background: rgba(238, 244, 250, 0.9);
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 850;
+  padding: 7px 11px;
+  list-style: none;
+}
+
+.war-detail summary::-webkit-details-marker {
+  display: none;
+}
+
+.war-detail summary::after {
+  content: " +";
+  font-family: var(--font-mono);
+}
+
+.war-detail[open] summary::after {
+  content: " -";
+}
+
+.war-detail[open] summary {
+  margin-bottom: 10px;
+  background: var(--accent-soft);
+}
+
+.war-detail p {
+  color: var(--ink-soft);
+  line-height: 1.65;
 }
 
 .war-priority {
@@ -240,14 +337,17 @@
 
 .department-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 16px;
 }
 
 .department-card {
-  padding: 18px;
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  padding: 20px;
   border: 1px solid rgba(14, 74, 125, 0.14);
-  border-radius: 20px;
+  border-radius: var(--radius-lg);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(244, 248, 252, 0.78));
 }
@@ -263,19 +363,28 @@
 }
 
 .department-card__goal {
+  margin: 0;
   color: var(--ink) !important;
   font-weight: 700;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .department-card__meta {
   display: grid;
   gap: 10px;
-  margin: 14px 0;
+  margin: 0;
+}
+
+.department-card__meta--compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .department-card__meta div {
   padding: 10px 12px;
-  border-radius: 14px;
+  border-radius: var(--radius);
   background: rgba(238, 244, 250, 0.72);
 }
 
@@ -306,6 +415,11 @@
   color: var(--accent);
 }
 
+.metric-row--muted span {
+  background: rgba(238, 244, 250, 0.86);
+  color: var(--ink-soft);
+}
+
 .data-gap-pill {
   background: var(--gold-light);
   color: #765720;
@@ -316,16 +430,37 @@
 }
 
 .department-card__risk {
-  margin-top: 12px !important;
+  margin: 0 !important;
   padding: 10px 12px;
   border-left: 3px solid var(--gold);
   border-radius: 10px;
   background: rgba(246, 240, 229, 0.56);
 }
 
+.department-card__detail {
+  border-top: 1px solid rgba(164, 180, 199, 0.24);
+  padding-top: 12px;
+}
+
+.department-card__detail-body {
+  display: grid;
+  gap: 12px;
+}
+
+.department-card__detail-body section {
+  display: grid;
+  gap: 6px;
+}
+
+.department-card__detail-body section > span {
+  color: var(--accent);
+  font-size: 0.74rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
 .department-card__confidence {
   display: inline-block;
-  margin-top: 10px;
   color: var(--ink-soft);
   font-size: 0.82rem;
   font-weight: 700;
@@ -343,7 +478,7 @@
 .evidence-grid > div {
   padding: 15px;
   border: 1px solid rgba(164, 180, 199, 0.28);
-  border-radius: 18px;
+  border-radius: var(--radius-lg);
   background: rgba(255, 255, 255, 0.62);
 }
 
@@ -360,23 +495,347 @@
   font-weight: 800;
 }
 
+.war-iterations .war-panel__heading strong {
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.82rem;
+  padding: 7px 12px;
+}
+
+.war-iteration-list {
+  display: grid;
+  gap: 12px;
+}
+
+.war-iteration-card {
+  padding: 16px;
+  border: 1px solid rgba(164, 180, 199, 0.28);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.66);
+}
+
+.war-iteration-card__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.war-iteration-card__meta span {
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.war-iteration-card__meta time {
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+}
+
+.war-iteration-card h4 {
+  margin: 0 0 6px;
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+.war-iteration-card p,
+.war-iteration-card li {
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  line-height: 1.58;
+}
+
+.war-iteration-card p {
+  margin: 0 0 8px;
+}
+
+.war-iteration-card ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.project-war-room {
+  gap: 18px;
+}
+
+.war-room-subnav {
+  position: sticky;
+  top: 86px;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid rgba(164, 180, 199, 0.32);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(16px);
+}
+
+.war-room-subnav__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 48px;
+  border: 1px solid transparent;
+  border-radius: 18px;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+  padding: 10px 12px;
+  text-align: left;
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+
+.war-room-subnav__item:hover {
+  border-color: rgba(14, 74, 125, 0.18);
+  background: rgba(230, 242, 252, 0.72);
+  color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.war-room-subnav__item.is-active {
+  border-color: rgba(14, 74, 125, 0.22);
+  background:
+    linear-gradient(135deg, rgba(14, 74, 125, 0.1), rgba(255, 255, 255, 0.72));
+  color: var(--accent);
+}
+
+.war-room-subnav__item span {
+  font-size: 0.86rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.war-room-subnav__item strong {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: rgba(14, 74, 125, 0.08);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+}
+
+.war-room-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.42fr);
+  gap: 18px;
+}
+
+.war-room-overview__main,
+.war-room-overview__focus,
+.war-room-next-action {
+  border: 1px solid rgba(164, 180, 199, 0.34);
+  border-radius: var(--radius-xl);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: var(--shadow-sm);
+}
+
+.war-room-overview__main {
+  padding: clamp(24px, 3.2vw, 34px);
+}
+
+.war-room-overview__kicker,
+.war-room-overview__focus > span,
+.war-room-next-action span,
+.war-room-module-card span {
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.war-room-overview__main h3 {
+  max-width: 760px;
+  margin: 10px 0 10px;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: clamp(1.45rem, 2.6vw, 2.3rem);
+  line-height: 1.12;
+  letter-spacing: -0.035em;
+}
+
+.war-room-overview__main p,
+.war-room-overview__focus p,
+.war-room-next-action p,
+.war-room-module-card small {
+  color: var(--ink-soft);
+  font-size: 0.94rem;
+  line-height: 1.68;
+}
+
+.war-room-overview__main p {
+  max-width: 780px;
+  margin: 0;
+}
+
+.war-room-overview__stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.war-room-overview__stats article {
+  padding: 14px 15px;
+  border: 1px solid rgba(14, 74, 125, 0.1);
+  border-radius: var(--radius);
+  background: rgba(244, 248, 252, 0.8);
+}
+
+.war-room-overview__stats span {
+  display: block;
+  color: var(--ink-soft);
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.war-room-overview__stats strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+}
+
+.war-room-overview__focus {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  padding: clamp(22px, 3vw, 30px);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(179, 139, 77, 0.14), transparent 34%),
+    rgba(255, 255, 255, 0.86);
+}
+
+.war-room-overview__focus h4,
+.war-room-next-action h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1.12rem;
+  line-height: 1.35;
+}
+
+.war-room-overview__focus p,
+.war-room-next-action p {
+  margin: 0;
+}
+
+.war-room-module-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.war-room-module-card {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  gap: 8px;
+  min-height: 178px;
+  border: 1px solid rgba(164, 180, 199, 0.32);
+  border-radius: var(--radius-xl);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(238, 244, 250, 0.72));
+  box-shadow: var(--shadow-sm);
+  color: var(--ink);
+  cursor: pointer;
+  padding: 22px;
+  text-align: left;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.war-room-module-card::after {
+  content: "";
+  position: absolute;
+  right: -32px;
+  bottom: -42px;
+  width: 128px;
+  height: 128px;
+  border-radius: 999px;
+  background: rgba(14, 74, 125, 0.06);
+}
+
+.war-room-module-card:hover {
+  border-color: rgba(14, 74, 125, 0.24);
+  box-shadow: var(--shadow);
+  transform: translateY(-2px);
+}
+
+.war-room-module-card strong {
+  position: relative;
+  z-index: 1;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 1.22rem;
+  letter-spacing: -0.02em;
+}
+
+.war-room-module-card small {
+  position: relative;
+  z-index: 1;
+  display: block;
+}
+
+.war-room-module-card em {
+  position: relative;
+  z-index: 1;
+  align-self: end;
+  color: var(--accent);
+  font-size: 0.86rem;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.war-room-next-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 22px 24px;
+}
+
 @media (max-width: 900px) {
   .war-room__brief,
   .war-room__top-grid,
   .war-room__bottom-grid,
   .priority-board,
-  .evidence-grid {
+  .evidence-grid,
+  .war-room-overview,
+  .war-room-module-grid {
     grid-template-columns: 1fr;
+  }
+
+  .war-room-subnav {
+    position: static;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 620px) {
   .war-room__brief-metrics,
-  .department-grid {
+  .department-grid,
+  .war-room-overview__stats,
+  .war-room-subnav {
     grid-template-columns: 1fr;
   }
 
   .war-panel__heading {
     display: block;
+  }
+
+  .war-room-next-action {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }

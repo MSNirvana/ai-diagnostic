@@ -44,7 +44,7 @@ describe("ModuleCard", () => {
     expect(screen.getByText("推广账号与广告平台")).toBeTruthy();
     expect(screen.getByText("置信度：82%")).toBeTruthy();
     expect(screen.getByText(/AI Diagnostic benchmark stub/)).toBeTruthy();
-    expect(screen.getByText(/skill fallback/)).toBeTruthy();
+    expect(screen.getByText(/方法版本 fallback/)).toBeTruthy();
   });
 
   it("hides feedback area for anonymous (no recordId)", () => {
@@ -56,7 +56,7 @@ describe("ModuleCard", () => {
     render(<ModuleCard result={result} recordId="rec-1" skillVersionId="sv-1" />);
     expect(screen.getByText("这个诊断对你有帮助吗？")).toBeTruthy();
     expect(screen.queryByText("提交")).toBeNull();
-    fireEvent.click(screen.getByText("👍 有帮助"));
+    fireEvent.click(screen.getByText("有帮助"));
     expect(screen.getByText("提交")).toBeTruthy();
   });
 });

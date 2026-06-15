@@ -7,6 +7,7 @@ SALES_CONFIG = ExpertConfig(
     method="funnel-evidence",
     label="销售与增长",
     fallback_prompt=SALES_DIAGNOSIS,
+    scenarios=("live_commerce", "ecommerce_retail", "b2b_solution", "saas_subscription", "local_service"),
     data_requirements=(
         DataRequirement(
             key="sales_funnel",
@@ -21,6 +22,14 @@ SALES_CONFIG = ExpertConfig(
             reason="需要把获客与成交打通，识别是渠道质量、跟进效率还是成交策略问题。",
             source_hint="连接 CRM，或上传客户跟进、成交、丢单原因和销售阶段明细。",
             keywords=("CRM", "跟进", "成交明细", "丢单", "销售阶段", "商机"),
+        ),
+        DataRequirement(
+            key="rep_followup",
+            label="销售跟进节奏",
+            reason="只看结果看不出卡点，需要销售动作频率、跟进时效和响应时长。",
+            source_hint="上传首次响应时间、跟进间隔、未跟进商机和关键丢单节点。",
+            keywords=("响应时间", "跟进间隔", "跟进时效", "商机阶段", "首响"),
+            required=False,
         ),
         DataRequirement(
             key="channel_performance",

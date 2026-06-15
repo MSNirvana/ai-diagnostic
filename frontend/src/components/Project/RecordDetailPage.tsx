@@ -5,6 +5,7 @@ import { AppShell } from "../Layout/AppShell";
 import { Dashboard } from "../Dashboard/Dashboard";
 import { WarRoomPage } from "../WarRoom/WarRoomPage";
 import type { DiagnosisDetail } from "../../types";
+import "../../App.css";
 
 export function RecordDetailPage() {
   const { id, recordId, projectId } = useParams<{
@@ -51,8 +52,8 @@ export function RecordDetailPage() {
         </>
       }
     >
-      {error && <p style={{ color: "var(--signal-red)" }}>{error}</p>}
-      {!detail && !error && <p style={{ color: "var(--ink-soft)" }}>加载中…</p>}
+      {error && <p className="state-note state-note--error">{error}</p>}
+      {!detail && !error && <p className="state-note">加载中…</p>}
 
       {detail && (
         <>

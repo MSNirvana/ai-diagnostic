@@ -60,6 +60,8 @@ class GenericModuleSkill(Skill):
         skill_ver = await get_active_skill_version(session, self.module)
         system_prompt = skill_ver.system_prompt if skill_ver else fallback_prompt(self.module)
         version_id = skill_ver.id if skill_ver else "fallback"
+        evidence_skill_ver = await get_active_skill_version(session, "evidence_confidence")
+        evidence_skill_version_id = evidence_skill_ver.id if evidence_skill_ver else "fallback"
 
         benchmark = await fetch_industry_benchmark(self.module, answer.pains)
         prompt = json.dumps(
@@ -93,6 +95,7 @@ class GenericModuleSkill(Skill):
                     citations=evidence,
                     actions=actions,
                     skill_version_id=version_id,
+                    evidence_skill_version_id=evidence_skill_version_id,
                 ),
             ),
             version_id,

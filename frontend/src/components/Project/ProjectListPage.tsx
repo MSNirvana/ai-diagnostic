@@ -34,6 +34,10 @@ export function ProjectListPage() {
   };
 
   const fmt = (iso: string) => new Date(iso).toLocaleString("zh-CN");
+  const memoryPreview = (summary: string) => {
+    const latest = summary.split("\n").filter(Boolean).slice(-1)[0] ?? "";
+    return latest.length > 128 ? `${latest.slice(0, 128)}...` : latest;
+  };
 
   return (
     <AppShell
@@ -109,7 +113,8 @@ export function ProjectListPage() {
               <span className="proj-card__meta">更新于 {fmt(p.updated_at)}</span>
               {p.memory_summary ? (
                 <span className="proj-card__memory">
-                  {p.memory_summary.split("\n").slice(-1)[0]}
+                  <strong>最新档案</strong>
+                  {memoryPreview(p.memory_summary)}
                 </span>
               ) : (
                 <span className="proj-card__memory proj-card__memory--empty">

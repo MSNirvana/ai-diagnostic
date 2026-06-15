@@ -4,7 +4,7 @@ import { DrillDown } from "../DrillDown/DrillDown";
 import { submitFeedback } from "../../api/client";
 import "./ModuleCard.css";
 
-const SIGNAL_LABEL: Record<string, string> = { red: "需关注", yellow: "观察", green: "健康" };
+const SIGNAL_LABEL: Record<string, string> = { red: "高优先级", yellow: "需跟进", green: "运行稳定" };
 
 type FeedbackState = "idle" | "thumbup" | "thumbdown" | "submitted";
 
@@ -22,6 +22,9 @@ export function ModuleCard({ result, recordId, skillVersionId }: ModuleCardProps
   const showFeedback = Boolean(recordId && skillVersionId);
   const evidencePackage = result.evidence_package;
   const dataRequests = result.data_requests ?? [];
+  const confidence = evidencePackage
+    ? `${Math.round(evidencePackage.confidence * 100)}%`
+    : "待补证据";
 
   const handleSubmitFeedback = async () => {
     if (!recordId || !skillVersionId) return;
@@ -33,17 +36,25 @@ export function ModuleCard({ result, recordId, skillVersionId }: ModuleCardProps
 
   return (
     <div className="module-card">
-      <div className={`signal signal--${result.signal}`}>
-        <span className="signal__dot" />
-        <span className="signal__label">{SIGNAL_LABEL[result.signal]}</span>
-        <span className="module-card__name">{result.module}</span>
+      <div className="module-card__header">
+        <div>
+          <div className={`signal signal--${result.signal}`}>
+            <span className="signal__dot" />
+            <span className="signal__label">{SIGNAL_LABEL[result.signal]}</span>
+          </div>
+          <h3 className="module-card__name">{result.module}</h3>
+        </div>
+        <span className="module-card__confidence">证据置信度 {confidence}</span>
       </div>
       <p className="module-card__conclusion">{result.conclusion}</p>
-      <ul className="module-card__evidence">
-        {result.evidence.map((e, i) => <li key={i}>{e.text}</li>)}
-      </ul>
+      <div className="module-card__evidence-block">
+        <span className="module-card__section-label">关键依据</span>
+        <ul className="module-card__evidence">
+          {result.evidence.map((e, i) => <li key={i}>{e.text}</li>)}
+        </ul>
+      </div>
       <div className="module-card__actions">
-        <span className="module-card__actions-label">建议</span>
+        <span className="module-card__section-label">建议动作</span>
         <ul>{result.actions.map((a, i) => <li key={i}>{a}</li>)}</ul>
       </div>
       {(result.drilldown || evidencePackage) && (
@@ -108,7 +119,7 @@ export function ModuleCard({ result, recordId, skillVersionId }: ModuleCardProps
 
               <h5>审计轨迹</h5>
               <p className="evidence-pack__audit">
-                skill {evidencePackage.audit_trail.skill_version_id}
+                方法版本 {evidencePackage.audit_trail.skill_version_id}
                 {evidencePackage.audit_trail.input_modules.length > 0
                   ? ` · 输入模块：${evidencePackage.audit_trail.input_modules.join("、")}`
                   : ""}
@@ -137,14 +148,14 @@ export function ModuleCard({ result, recordId, skillVersionId }: ModuleCardProps
                   className={`fb-btn${feedbackState === "thumbup" ? " fb-btn--active" : ""}`}
                   onClick={() => setFeedbackState("thumbup")}
                 >
-                  👍 有帮助
+                  有帮助
                 </button>
                 <button
                   type="button"
                   className={`fb-btn${feedbackState === "thumbdown" ? " fb-btn--active" : ""}`}
                   onClick={() => setFeedbackState("thumbdown")}
                 >
-                  👎 待改进
+                  待改进
                 </button>
               </div>
               {(feedbackState === "thumbup" || feedbackState === "thumbdown") && (

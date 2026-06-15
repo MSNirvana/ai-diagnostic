@@ -1,4 +1,6 @@
 from typing import Literal
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 from app.models.result import DataRequest
@@ -37,6 +39,7 @@ class DepartmentAction(BaseModel):
     metrics: list[ActionMetric] = Field(default_factory=list)
     risk_note: str = ""
     confidence: float | None = None
+    confidence_reason: str = ""
     evidence_refs: list[str] = Field(default_factory=list)
 
 
@@ -59,10 +62,23 @@ class PriorityBoard(BaseModel):
     later: list[str] = Field(default_factory=list)
 
 
+class WarRoomIteration(BaseModel):
+    record_id: str
+    created_at: datetime
+    summary: str
+    primary_battlefield: str
+    objective: str
+    confidence: float = Field(default=0, ge=0, le=1)
+    changes: list[str] = Field(default_factory=list)
+
+
 class WarRoomPlan(BaseModel):
     id: str
     record_id: str | None = None
     project_id: str | None = None
+    source_record_ids: list[str] = Field(default_factory=list)
+    iteration_count: int = 0
+    iterations: list[WarRoomIteration] = Field(default_factory=list)
     summary: str
     primary_battlefield: str
     secondary_battlefield: str = ""

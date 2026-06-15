@@ -34,9 +34,27 @@ _VALID = {
     ]
 }
 
+_VALID_B = {
+    "modules": [
+        {
+            "key": "market",
+            "label": "市场与客户",
+            "subtitle": "核心问题深挖",
+            "fields": [
+                {"key": "f2", "label": "问题发生时间", "placeholder": "如 近2个月", "accept_file": False},
+                {"key": "f3", "label": "异常样本", "placeholder": "如 3个异常项目", "accept_file": True},
+            ],
+            "pains": ["核心问题原因不清", "已尝试动作无效"],
+            "free_text_label": "补充你最怀疑的成因",
+        }
+    ]
+}
+
 
 class ValidLLM:
     async def complete(self, system: str, prompt: str) -> str:
+        if "painpoint" in prompt or "核心问题" in prompt:
+            return json.dumps(_VALID_B, ensure_ascii=False)
         return json.dumps(_VALID, ensure_ascii=False)
 
 
@@ -59,6 +77,7 @@ def test_generate_ab_returns_two_options(db_session):
     body = resp.json()
     assert body["option_a"]["modules"][0]["key"] == "market"
     assert body["option_b"]["modules"][0]["key"] == "market"
+    assert body["option_a"]["modules"][0]["fields"][0]["label"] != body["option_b"]["modules"][0]["fields"][0]["label"]
 
 
 def test_generate_ab_falls_back_when_one_broken(db_session):

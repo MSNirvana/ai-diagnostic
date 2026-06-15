@@ -30,10 +30,15 @@ async def init_db() -> None:
 
 
 async def _ensure_sqlite_columns(conn) -> None:
-    result = await conn.execute(text("PRAGMA table_info(diagnosisrecord)"))
-    columns = {row[1] for row in result.fetchall()}
-    if "war_room_plan_json" not in columns:
+    diagnosis_result = await conn.execute(text("PRAGMA table_info(diagnosisrecord)"))
+    diagnosis_columns = {row[1] for row in diagnosis_result.fetchall()}
+    if "war_room_plan_json" not in diagnosis_columns:
         await conn.execute(text("ALTER TABLE diagnosisrecord ADD COLUMN war_room_plan_json TEXT"))
+
+    project_result = await conn.execute(text("PRAGMA table_info(project)"))
+    project_columns = {row[1] for row in project_result.fetchall()}
+    if "war_room_plan_json" not in project_columns:
+        await conn.execute(text("ALTER TABLE project ADD COLUMN war_room_plan_json TEXT"))
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:

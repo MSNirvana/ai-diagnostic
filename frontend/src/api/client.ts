@@ -16,6 +16,8 @@ import type {
   SessionDetail,
   ProjectSummary,
   ProjectDetail,
+  WarRoomPlan,
+  SkillRegistryItem,
   SkillVersionOut,
   LLMConfigOut,
   UploadedFileOut,
@@ -27,6 +29,16 @@ const BASE = import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8000";
 function authHeaders(): Record<string, string> {
   const token = getToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+async function errorMessage(resp: Response, fallback: string): Promise<string> {
+  try {
+    const body = await resp.json();
+    if (typeof body?.detail === "string") return body.detail;
+  } catch {
+    // ignore non-JSON error bodies
+  }
+  return `${fallback}: ${resp.status}`;
 }
 
 export async function runDiagnose(
@@ -230,7 +242,7 @@ export async function sessionChat(
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ message }),
   });
-  if (!resp.ok) throw new Error(`对话失败: ${resp.status}`);
+  if (!resp.ok) throw new Error(await errorMessage(resp, "对话失败"));
   return (await resp.json()) as ChatTurnResponse;
 }
 
@@ -276,6 +288,12 @@ export async function getProject(id: string): Promise<ProjectDetail> {
   return (await resp.json()) as ProjectDetail;
 }
 
+export async function getProjectWarRoom(id: string): Promise<WarRoomPlan> {
+  const resp = await fetch(`${BASE}/project/${id}/war-room`, { headers: { ...authHeaders() } });
+  if (!resp.ok) throw new Error(`获取项目作战室失败: ${resp.status}`);
+  return (await resp.json()) as WarRoomPlan;
+}
+
 export async function patchProject(
   id: string,
   body: { name?: string; status?: string }
@@ -296,6 +314,12 @@ export async function listActiveSkills(): Promise<SkillVersionOut[]> {
   return (await resp.json()) as SkillVersionOut[];
 }
 
+export async function listSkillRegistry(): Promise<SkillRegistryItem[]> {
+  const resp = await fetch(`${BASE}/admin/skills/registry`, { headers: { ...authHeaders() } });
+  if (!resp.ok) throw new Error(`获取 skill 网络失败: ${resp.status}`);
+  return (await resp.json()) as SkillRegistryItem[];
+}
+
 export async function listSkillVersions(module: string): Promise<SkillVersionOut[]> {
   const resp = await fetch(`${BASE}/admin/skills/${module}/versions`, { headers: { ...authHeaders() } });
   if (!resp.ok) throw new Error(`获取版本失败: ${resp.status}`);
@@ -305,12 +329,20 @@ export async function listSkillVersions(module: string): Promise<SkillVersionOut
 export async function addSkillVersion(
   module: string,
   systemPrompt: string,
-  changeReason: string
+  changeReason: string,
+  options?: { method?: string; skill_type?: string; change_category?: string }
 ): Promise<SkillVersionOut> {
   const resp = await fetch(`${BASE}/admin/skills/${module}/versions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify({ system_prompt: systemPrompt, change_reason: changeReason, activate: true }),
+    body: JSON.stringify({
+      system_prompt: systemPrompt,
+      change_reason: changeReason,
+      method: options?.method,
+      skill_type: options?.skill_type,
+      change_category: options?.change_category,
+      activate: true,
+    }),
   });
   if (!resp.ok) throw new Error(`新增版本失败: ${resp.status}`);
   return (await resp.json()) as SkillVersionOut;

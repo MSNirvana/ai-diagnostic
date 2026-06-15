@@ -146,6 +146,7 @@ def test_compose_war_room_plan_maps_actions_gaps_priorities_and_checkpoints():
     assert plan.department_actions[0].priority == "now"
     assert plan.department_actions[0].required_data[0].key == "ad_account"
     assert plan.department_actions[0].risk_note
+    assert plan.department_actions[0].confidence_reason == "样本覆盖核心链路"
     assert "拉取近 30 天推广账号数据" in plan.priority_board.now
     assert "设置两周投放预算红线" in plan.priority_board.soon
     assert "保持交付排期周检查" in plan.priority_board.later

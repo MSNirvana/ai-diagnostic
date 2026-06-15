@@ -7,6 +7,7 @@ ORG_CONFIG = ExpertConfig(
     method="organization-evidence",
     label="组织与人才",
     fallback_prompt=ORG_DIAGNOSIS,
+    scenarios=("saas_subscription", "b2b_solution", "local_service", "manufacturing", "general_business"),
     data_requirements=(
         DataRequirement(
             key="org_structure",
@@ -21,6 +22,14 @@ ORG_CONFIG = ExpertConfig(
             reason="需要判断问题来自能力、目标、激励还是协作机制。",
             source_hint="上传绩效指标、奖金方案、目标达成率、离职和招聘数据。",
             keywords=("绩效", "激励", "奖金", "目标达成", "离职", "招聘"),
+            required=False,
+        ),
+        DataRequirement(
+            key="role_accountability",
+            label="岗位职责与协作分工",
+            reason="很多组织问题来自职责重叠或无人负责，不是单纯人不够。",
+            source_hint="上传职责边界、汇报链、跨部门协作流程或 RACI。",
+            keywords=("职责", "边界", "协作", "RACI", "跨部门", "无人负责"),
             required=False,
         ),
     ),

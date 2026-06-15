@@ -7,6 +7,7 @@ FINANCE_CONFIG = ExpertConfig(
     method="finance-evidence",
     label="财务与资本",
     fallback_prompt=FINANCE_DIAGNOSIS,
+    scenarios=("live_commerce", "ecommerce_retail", "b2b_solution", "saas_subscription", "manufacturing"),
     data_requirements=(
         DataRequirement(
             key="financial_statements",
@@ -21,6 +22,14 @@ FINANCE_CONFIG = ExpertConfig(
             reason="增长或运营建议必须经过现金流和营运资金约束校验。",
             source_hint="上传应收应付、账期、回款、库存金额和资金计划。",
             keywords=("回款", "应收", "应付", "账期", "库存金额", "资金计划"),
+            required=False,
+        ),
+        DataRequirement(
+            key="unit_economics",
+            label="单客/单单经济模型",
+            reason="很多增长问题本质是单位经济模型不成立，必须拆到单客、单单、单渠道。",
+            source_hint="上传客单毛利、履约成本、渠道扣点、退款损失或单客户生命周期价值。",
+            keywords=("客单毛利", "履约成本", "渠道扣点", "退款损失", "LTV", "单位经济"),
             required=False,
         ),
     ),

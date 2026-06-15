@@ -5,7 +5,7 @@
 .proj-panel-kicker {
   color: var(--accent);
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 900;
   letter-spacing: 0.16em;
   text-transform: uppercase;
 }
@@ -13,9 +13,10 @@
 .proj-create-panel,
 .portfolio-board {
   border: 1px solid rgba(151, 164, 184, 0.22);
-  border-radius: 26px;
+  border-radius: var(--radius-xl);
   background: var(--surface-glass);
   box-shadow: var(--shadow);
+  backdrop-filter: blur(16px);
 }
 
 .proj-create-panel {
@@ -24,7 +25,7 @@
   gap: 24px;
   align-items: end;
   margin-bottom: 22px;
-  padding: 24px;
+  padding: clamp(22px, 3vw, 30px);
 }
 
 .proj-create-panel h2,
@@ -32,7 +33,7 @@
   margin: 4px 0 6px;
   color: var(--ink);
   font-family: var(--font-display);
-  font-size: 1.35rem;
+  font-size: 1.45rem;
   letter-spacing: -0.02em;
 }
 
@@ -52,18 +53,17 @@
   flex: 1;
   min-width: 0;
   padding: 12px 15px;
-  border: 1px solid var(--line);
+  border: 1px solid rgba(151, 164, 184, 0.28);
   border-radius: 999px;
-  background: #fff;
+  background: var(--surface-raised);
   color: var(--ink);
   font-size: 0.95rem;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 .proj-create-input:focus {
-  outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 4px rgba(14, 74, 125, 0.1);
+  box-shadow: var(--focus-ring);
 }
 
 .proj-cancel-btn {
@@ -75,7 +75,7 @@
 }
 
 .portfolio-board {
-  padding: 24px;
+  padding: clamp(22px, 3vw, 30px);
 }
 
 .portfolio-board__head {
@@ -96,23 +96,23 @@
 .proj-list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 16px;
+  gap: 18px;
 }
 
 .proj-card {
   position: relative;
   display: flex;
-  min-height: 220px;
+  min-height: 236px;
   flex-direction: column;
   gap: 9px;
   overflow: hidden;
   text-align: left;
   background:
     linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(240, 247, 253, 0.88)),
-    var(--surface);
+    var(--surface-raised);
   border: 1px solid rgba(151, 164, 184, 0.22);
-  border-radius: 22px;
-  padding: 22px;
+  border-radius: var(--radius-lg);
+  padding: 24px;
   cursor: pointer;
   transition: border-color 0.18s, box-shadow 0.18s, transform 0.18s;
 }
@@ -131,7 +131,7 @@
 .proj-card:hover {
   border-color: rgba(14, 74, 125, 0.34);
   box-shadow: var(--shadow-lg);
-  transform: translateY(-2px);
+  transform: translateY(-3px);
 }
 
 .proj-card__index {
@@ -144,7 +144,7 @@
 .proj-card__name {
   color: var(--ink);
   font-family: var(--font-display);
-  font-size: 1.28rem;
+  font-size: 1.34rem;
   font-weight: 700;
   letter-spacing: -0.02em;
 }
@@ -155,12 +155,26 @@
 }
 
 .proj-card__memory {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
   margin-top: auto;
   padding-top: 12px;
   border-top: 1px solid var(--line);
   color: var(--ink-soft);
   font-size: 0.86rem;
   line-height: 1.55;
+}
+
+.proj-card__memory strong {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .proj-card__memory--empty {
@@ -170,7 +184,8 @@
 .proj-card__arrow {
   color: var(--accent);
   font-size: 0.84rem;
-  font-weight: 700;
+  font-weight: 900;
+  letter-spacing: 0.02em;
 }
 
 .proj-empty,
@@ -180,9 +195,9 @@
 
 .proj-empty-card {
   grid-column: 1 / -1;
-  padding: 34px;
+  padding: 38px;
   border: 1px dashed rgba(14, 74, 125, 0.28);
-  border-radius: 22px;
+  border-radius: var(--radius-lg);
   background: rgba(230, 242, 252, 0.55);
 }
 

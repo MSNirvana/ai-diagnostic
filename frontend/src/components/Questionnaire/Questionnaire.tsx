@@ -11,7 +11,7 @@ import type {
 } from "../../types";
 import { generateABFromSummary, recordPreference, getSessionDetail, saveSessionDraft, uploadSessionFile, listSessionFiles, deleteSessionFile } from "../../api/client";
 import { useAuth } from "../../auth/useAuth";
-import { saveDraft, loadDraft, clearDraft } from "../../utils/draft";
+import { saveDraft, loadDraft, clearDraft, clearLegacyDraft } from "../../utils/draft";
 import type { DraftState } from "../../utils/draft";
 import { StepIndicator } from "./StepIndicator";
 import { ChatStep } from "./ChatStep";
@@ -109,7 +109,8 @@ export function Questionnaire({ onSubmit, projectId, resumeSessionId: resumeFrom
   // 挂载时读草稿（续聊场景不弹草稿）
   useEffect(() => {
     if (resumeFromNav) return;
-    const draft = loadDraft(userId);
+    clearLegacyDraft(userId);
+    const draft = loadDraft(userId, projectId);
     if (draft && (draft.messages.length > 0 || draft.activeModules.length > 0)) {
       setPendingDraft(draft);
     }
@@ -141,7 +142,7 @@ export function Questionnaire({ onSubmit, projectId, resumeSessionId: resumeFrom
         fileNames,
       };
       // 本地兜底（离线也不丢）
-      saveDraft(userId, snapshot);
+      saveDraft(userId, snapshot, projectId);
       // 主存后端：进入填写阶段(ready)且有 sessionId 时，跨设备可恢复
       if (mode === "ready" && storedSessionId) {
         const draftJson = JSON.stringify({
@@ -155,7 +156,7 @@ export function Questionnaire({ onSubmit, projectId, resumeSessionId: resumeFrom
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
-  }, [mode, chatMessages, storedSummary, storedProblemMap, storedSessionId, activeModules, current, facts, pains, freeText, files, userId]);
+  }, [mode, chatMessages, storedSummary, storedProblemMap, storedSessionId, activeModules, current, facts, pains, freeText, files, userId, projectId]);
 
   const resumeDraft = () => {
     const d = pendingDraft;
@@ -175,7 +176,7 @@ export function Questionnaire({ onSubmit, projectId, resumeSessionId: resumeFrom
   };
 
   const discardDraft = () => {
-    clearDraft(userId);
+    clearDraft(userId, projectId);
     setPendingDraft(null);
   };
 
@@ -319,7 +320,7 @@ export function Questionnaire({ onSubmit, projectId, resumeSessionId: resumeFrom
       });
     }
     // 提交即视为完成，清掉草稿
-    clearDraft(userId);
+    clearDraft(userId, projectId);
     onSubmit(
       answers,
       files,

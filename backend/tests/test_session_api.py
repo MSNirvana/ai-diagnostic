@@ -49,15 +49,39 @@ def test_session_start_and_chat_persists(db_session):
     app.dependency_overrides.pop(get_llm_client, None)
 
 
-def test_session_list_shows_own(db_session):
+def test_session_list_hides_empty_click_only_sessions(db_session):
     app.dependency_overrides[get_llm_client] = lambda: IntakeLLM()
     token = _register("sesslist@b.com")
     auth = {"Authorization": f"Bearer {token}"}
-    client.post("/session/start", headers=auth)
-    client.post("/session/start", headers=auth)
+    empty_sid = client.post("/session/start", headers=auth).json()["session_id"]
+    active_sid = client.post("/session/start", headers=auth).json()["session_id"]
+    client.post(
+        f"/session/{active_sid}/chat",
+        json={"message": "获客成本越来越高"},
+        headers=auth,
+    )
+
     rows = client.get("/session/", headers=auth).json()
     app.dependency_overrides.pop(get_llm_client, None)
-    assert len(rows) == 2
+    assert [r["id"] for r in rows] == [active_sid]
+    assert empty_sid not in [r["id"] for r in rows]
+
+
+def test_session_list_keeps_draft_progress(db_session):
+    app.dependency_overrides[get_llm_client] = lambda: IntakeLLM()
+    token = _register("sessdraftlist@b.com")
+    auth = {"Authorization": f"Bearer {token}"}
+    client.post("/session/start", headers=auth)
+    draft_sid = client.post("/session/start", headers=auth).json()["session_id"]
+    client.patch(
+        f"/session/{draft_sid}/draft",
+        json={"draft_json": '{"current":1}'},
+        headers=auth,
+    )
+
+    rows = client.get("/session/", headers=auth).json()
+    app.dependency_overrides.pop(get_llm_client, None)
+    assert [r["id"] for r in rows] == [draft_sid]
 
 
 def test_session_continue_appends_history(db_session):

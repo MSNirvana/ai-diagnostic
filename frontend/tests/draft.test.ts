@@ -77,10 +77,29 @@ describe("draft persistence", () => {
     expect(loadDraft("user2")).toBeNull();
   });
 
+  it("不同 projectId 互相隔离，避免新项目捡到旧项目草稿", () => {
+    saveDraft("user1", { ...baseState, current: 1 }, "project-a");
+    saveDraft("user1", { ...baseState, current: 3 }, "project-b");
+
+    expect(loadDraft("user1", "project-a")!.current).toBe(1);
+    expect(loadDraft("user1", "project-b")!.current).toBe(3);
+    expect(loadDraft("user1", "project-c")).toBeNull();
+  });
+
   it("clearDraft 后返回 null", () => {
     saveDraft("user1", baseState);
     clearDraft("user1");
     expect(loadDraft("user1")).toBeNull();
+  });
+
+  it("clearDraft 只清理指定项目草稿", () => {
+    saveDraft("user1", { ...baseState, current: 1 }, "project-a");
+    saveDraft("user1", { ...baseState, current: 3 }, "project-b");
+
+    clearDraft("user1", "project-a");
+
+    expect(loadDraft("user1", "project-a")).toBeNull();
+    expect(loadDraft("user1", "project-b")!.current).toBe(3);
   });
 
   it("版本不匹配返回 null", () => {

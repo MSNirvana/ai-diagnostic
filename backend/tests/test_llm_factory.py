@@ -17,6 +17,7 @@ def test_subclass_must_implement_complete():
 from app.llm.factory import make_llm_client
 from app.llm.anthropic_client import AnthropicClient
 from app.llm.openai_client import OpenAIClient
+from app.llm.base_url import normalize_anthropic_base_url, normalize_openai_base_url
 
 
 def test_factory_returns_anthropic():
@@ -32,3 +33,11 @@ def test_factory_returns_openai():
 def test_factory_rejects_unknown():
     with pytest.raises(ValueError):
         make_llm_client(provider="nope", api_key="x", model="m")
+
+
+def test_gateway_base_url_is_provider_aware():
+    gateway = "https://api.tooken.ai/v1"
+
+    assert normalize_anthropic_base_url(gateway) == "https://api.tooken.ai"
+    assert normalize_openai_base_url(gateway) == "https://api.tooken.ai/v1"
+    assert normalize_openai_base_url("https://api.tooken.ai") == "https://api.tooken.ai/v1"

@@ -6,6 +6,8 @@ from app.models.questionnaire import Questionnaire, ModuleAnswer
 class FakeLLM:
     async def complete(self, system: str, prompt: str) -> str:
         if '"module": "sales"' in prompt:
+            if "获客成本翻倍但销售转化没有提升" in prompt:
+                assert '"core_problem": "获客成本翻倍但销售转化没有提升"' in prompt
             signal = "red"
             conclusion = "销售转化漏斗断点是当前最优先问题"
             actions = ["先复盘近30天销售漏斗"]
@@ -55,9 +57,14 @@ async def test_dispatcher_routes_problem_map_focus_to_expert():
 
     outcome = await diagnose_all(q, llm=FakeLLM())
 
-    assert [r.module for r in outcome.results] == ["sales", "market", "finance"]
+    # 核心三模块的相对顺序必须正确（focus=sales 优先）。
+    # 用子序列断言而非全等：configs/ 下的行业 skill（如 dtc_ads）也可能被
+    # "获客成本"等关键词正确召回，不应让本测试（验证核心路由逻辑）失败。
+    core_order = [m for m in (r.module for r in outcome.results) if m in {"sales", "market", "finance"}]
+    assert core_order == ["sales", "market", "finance"]
     assert outcome.triage.primary_module == "sales"
-    assert [route.module for route in outcome.triage.selected_experts] == [
+    expert_core = [m for m in (route.module for route in outcome.triage.selected_experts) if m in {"sales", "market", "finance"}]
+    assert expert_core == [
         "sales",
         "market",
         "finance",
@@ -86,3 +93,23 @@ async def test_dispatcher_flags_cross_expert_conflicts():
     assert outcome.triage.conflicts
     assert "销售" in outcome.triage.conflicts[0].description
     assert "财务" in outcome.triage.conflicts[0].description
+
+
+async def test_dispatcher_routes_professional_skills_from_problem_map():
+    q = Questionnaire(
+        answers=[],
+        problem_map={
+            "core_problem": "招商加盟投放转化不错，但广告合规、加盟协议和税务发票链路都没有核清",
+            "sub_problems": ["宣传素材可能涉及禁限词", "加盟合同责任边界不清", "服务费开票口径不一致"],
+            "diagnosis_focus": "法务合规",
+        },
+    )
+
+    outcome = await diagnose_all(q, llm=FakeLLM())
+
+    modules = [result.module for result in outcome.results]
+    assert modules[0] == "legal_compliance"
+    assert "tax" in modules
+    assert "channel_franchise" in modules
+    assert any(route.label == "法务合规" for route in outcome.triage.selected_experts)
+    assert any("合规" in dependency for dependency in outcome.triage.dependencies)

@@ -20,6 +20,7 @@ from app.db.database import get_session
 from app.db.models import User, DiagnosisSession, Project
 from app.llm.base import LLMClient
 from app.memory.project_memory import append_problem_map_memory
+from app.memory.session_visibility import is_meaningful_session
 from app.models.conversation import ChatMessage, ChatResponse
 
 router = APIRouter(prefix="/session")
@@ -152,7 +153,7 @@ async def list_sessions(
             id=r.id, created_at=r.created_at, updated_at=r.updated_at,
             title=r.title or "未命名会话", status=r.status,
         )
-        for r in rows
+        for r in rows if is_meaningful_session(r)
     ]
 
 

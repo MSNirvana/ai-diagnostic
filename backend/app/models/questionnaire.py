@@ -6,6 +6,7 @@ class ModuleAnswer(BaseModel):
     facts: dict[str, str] = Field(default_factory=dict)
     pains: list[str] = Field(default_factory=list)
     uploaded_files: list[str] = Field(default_factory=list)
+    context: dict[str, str] = Field(default_factory=dict)
 
 
 class Questionnaire(BaseModel):

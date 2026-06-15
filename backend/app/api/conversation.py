@@ -27,6 +27,11 @@ from app.db.database import get_session
 
 router = APIRouter(prefix="/conversation")
 
+LLM_UNAVAILABLE_MESSAGE = (
+    "模型通道暂时不可用。请先在后台「模型通道」配置可用 API Key，"
+    "或检查当前模型服务连接后再继续对话。"
+)
+
 
 def _format_history(req: ChatRequest) -> str:
     if not req.messages:
@@ -67,25 +72,27 @@ async def run_chat_turn(
 
     prompt = _format_history(ChatRequest(messages=messages))
 
-    # LLM 网关偶尔抖动（超时/返回非 JSON），重试一次；仍失败则降级追问，
-    # 不让单次抖动中断整个对话。
+    # LLM 网关偶尔抖动（超时/返回非 JSON），重试一次。
+    # 如果仍失败，返回明确错误，不再伪装成“没听懂用户的话”。
     data: dict | None = None
+    last_error: Exception | None = None
     for _ in range(2):
         try:
             raw = await llm.complete(system=system, prompt=prompt)
             data = parse_json_object(raw)
             break
-        except Exception:
+        except Exception as exc:
+            last_error = exc
             data = None
             continue
 
     if data is None:
-        # 降级：返回一句通用追问，让用户能继续聊（而不是卡死）
-        return ChatResponse(
-            message="抱歉，刚才没接住你的话。能再说一下你当前最头疼的问题，或补充点细节吗？",
-            done=False,
-            phase="intake",
-            problem_map=None,
+        detail = LLM_UNAVAILABLE_MESSAGE
+        if last_error:
+            detail = f"{detail}（错误类型：{last_error.__class__.__name__}）"
+        raise HTTPException(
+            status_code=503,
+            detail=detail,
         )
 
     phase = data.get("phase")

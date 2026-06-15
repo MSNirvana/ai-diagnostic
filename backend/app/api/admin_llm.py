@@ -87,6 +87,8 @@ async def patch_config(
     if c is None:
         raise HTTPException(status_code=404, detail="配置不存在")
     data = body.model_dump(exclude_none=True)
+    if data.get("api_key") == "":
+        data.pop("api_key")
     for k, v in data.items():
         setattr(c, k, v)
     session.add(c)

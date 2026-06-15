@@ -8,6 +8,113 @@ const OPENING =
   "你好，我是你的诊断顾问。先告诉我，当前最让你头疼的一个问题是什么？";
 
 type Phase = "intake" | "confirm" | "done";
+type ChatBlockKind = "paragraph" | "question";
+
+interface ChatBlock {
+  kind: ChatBlockKind;
+  text: string;
+}
+
+const READABLE_BREAK_PATTERN =
+  /([。！？!?])\s*(?=(这里|所以|否则|那|不过|但是|同时|比如|另外|接下来|如果|而|这|30天|首先|其次|最后|我想|你更|我们先))/g;
+const LIST_BREAK_PATTERN =
+  /([；;])\s*(?=(一条|另一条|第三|首先|其次|另外|最后))/g;
+
+function splitLongSentence(text: string): string[] {
+  if (text.length <= 120) return [text];
+  const parts = text.match(/[^；;，,]+[；;，,]?/g) ?? [text];
+  const chunks: string[] = [];
+  let current = "";
+
+  for (const part of parts) {
+    const next = part.trim();
+    if (!next) continue;
+    if (current && `${current}${next}`.length > 96) {
+      chunks.push(current);
+      current = next;
+    } else {
+      current = current ? `${current}${next}` : next;
+    }
+  }
+  if (current) chunks.push(current);
+  return chunks.length > 0 ? chunks : [text];
+}
+
+function splitReadableText(text: string): string[] {
+  const prepared = text
+    .replace(READABLE_BREAK_PATTERN, "$1\n")
+    .replace(LIST_BREAK_PATTERN, "$1\n");
+  const chunks: string[] = [];
+
+  for (const section of prepared.split(/\n+/)) {
+    const clean = section.trim();
+    if (!clean) continue;
+    const sentences = clean.match(/[^。！？!?]+[。！？!?]?/g) ?? [clean];
+    let current = "";
+
+    for (const sentence of sentences) {
+      const item = sentence.trim();
+      if (!item) continue;
+      if (item.length > 120) {
+        if (current) {
+          chunks.push(current);
+          current = "";
+        }
+        chunks.push(...splitLongSentence(item));
+        continue;
+      }
+      if (current && `${current}${item}`.length > 132) {
+        chunks.push(current);
+        current = item;
+      } else {
+        current = current ? `${current}${item}` : item;
+      }
+    }
+    if (current) chunks.push(current);
+  }
+
+  return chunks;
+}
+
+export function formatChatBlocks(content: string, role: ChatMessage["role"]): ChatBlock[] {
+  const normalized = content.replace(/\r\n/g, "\n").replace(/[ \t]+/g, " ").trim();
+  if (!normalized) return [];
+  const rawBlocks =
+    role === "assistant"
+      ? splitReadableText(normalized)
+      : normalized.split(/\n+/).map((item) => item.trim()).filter(Boolean);
+
+  return rawBlocks.map((text) => ({
+    kind: role === "assistant" && /[？?]\s*$/.test(text) ? "question" : "paragraph",
+    text,
+  }));
+}
+
+function ChatMessageContent({
+  content,
+  role,
+}: {
+  content: string;
+  role: ChatMessage["role"];
+}) {
+  const blocks = formatChatBlocks(content, role);
+  return (
+    <div className="chat-bubble__content">
+      {blocks.map((block, index) => (
+        <p
+          className={
+            block.kind === "question"
+              ? "chat-bubble__paragraph chat-bubble__question"
+              : "chat-bubble__paragraph"
+          }
+          key={`${block.kind}-${index}`}
+        >
+          {block.text}
+        </p>
+      ))}
+    </div>
+  );
+}
 
 interface ChatStepProps {
   onComplete: (problemMap: ProblemMap, sessionId: string) => void;
@@ -39,17 +146,13 @@ export function ChatStep({
   const scrollRef = useRef<HTMLDivElement>(null);
   const startedRef = useRef(false);
 
-  // 挂载时：续聊用已有 session（绝不新建），否则创建新 session
+  // 续聊用已有 session；新诊断不在挂载时建空会话，避免用户只点进页面就污染历史。
   useEffect(() => {
     if (startedRef.current) return;
     startedRef.current = true;
     if (resumeSessionId) {
       setSessionId(resumeSessionId);
-      return;
     }
-    startSession(projectId)
-      .then((id) => setSessionId(id))
-      .catch(() => setError("无法开始会话，请刷新重试。"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -60,22 +163,24 @@ export function ChatStep({
 
   const send = async () => {
     const text = draft.trim();
-    if (!text || loading || !sessionId) return;
+    if (!text || loading) return;
     const next: ChatMessage[] = [...messages, { role: "user", content: text }];
     setMessages(next);
     setDraft("");
     setError(null);
     setLoading(true);
     try {
-      const resp = await sessionChat(sessionId, text);
+      const activeSessionId = sessionId ?? await startSession(projectId);
+      if (!sessionId) setSessionId(activeSessionId);
+      const resp = await sessionChat(activeSessionId, text);
       setMessages([...next, { role: "assistant", content: resp.message }]);
       setPhase(resp.phase);
       if (resp.problem_map) setProblemMap(resp.problem_map);
       if (resp.phase === "done" && resp.problem_map) {
-        onComplete(resp.problem_map, sessionId);
+        onComplete(resp.problem_map, activeSessionId);
       }
-    } catch {
-      setError("对话出了点问题，请重试。");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "对话出了点问题，请重试。");
       setMessages(messages);
       setDraft(text);
     } finally {
@@ -120,7 +225,7 @@ export function ChatStep({
                   m.role === "user" ? "chat-bubble chat-bubble--user" : "chat-bubble chat-bubble--ai"
                 }
               >
-                {m.content}
+                <ChatMessageContent content={m.content} role={m.role} />
               </div>
             </div>
           ))}
@@ -161,13 +266,13 @@ export function ChatStep({
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={onKeyDown}
-            disabled={loading || !sessionId}
+            disabled={loading}
           />
           <button
             type="button"
             className="btn-primary chat-send"
             onClick={() => void send()}
-            disabled={loading || !sessionId || draft.trim() === ""}
+            disabled={loading || draft.trim() === ""}
           >
             发送
           </button>

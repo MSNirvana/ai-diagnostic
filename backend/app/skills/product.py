@@ -7,6 +7,7 @@ PRODUCT_CONFIG = ExpertConfig(
     method="product-evidence",
     label="产品与服务",
     fallback_prompt=PRODUCT_DIAGNOSIS,
+    scenarios=("saas_subscription", "ecommerce_retail", "manufacturing", "b2b_solution", "local_service"),
     data_requirements=(
         DataRequirement(
             key="usage_retention",
@@ -21,6 +22,14 @@ PRODUCT_CONFIG = ExpertConfig(
             reason="需要区分产品价值不足、体验问题和交付承诺偏差。",
             source_hint="上传客户访谈、工单、评价、需求池或售后问题分类。",
             keywords=("工单", "评价", "访谈", "需求", "售后", "投诉", "反馈"),
+            required=False,
+        ),
+        DataRequirement(
+            key="delivery_quality",
+            label="交付质量与服务兑现",
+            reason="很多产品问题不是功能本身，而是承诺落地、服务质量和交付节奏失控。",
+            source_hint="上传交付里程碑、延期率、返工率、客户验收或客诉明细。",
+            keywords=("交付", "延期", "返工", "验收", "客诉", "服务质量"),
             required=False,
         ),
     ),

@@ -10,6 +10,7 @@ from app.models.result import DataRequest, ModuleResult
 from app.skills.base import Skill
 from app.skills.evidence import build_evidence_package
 from app.skills.parsing import parse_json_object, to_actions, to_drilldown, to_evidence
+from app.skills.scenario_catalog import detect_business_scenario, render_problem_text
 from app.skills.store import get_active_skill_version
 
 
@@ -30,6 +31,9 @@ class ExpertConfig:
     label: str
     fallback_prompt: str
     data_requirements: tuple[DataRequirement, ...] = ()
+    scenarios: tuple[str, ...] = ()
+    scenario_notes: dict[str, str] = None  # type: ignore[assignment]
+    additional_fields: tuple[str, ...] = ()
 
 
 class ConfiguredExpertSkill(Skill):
@@ -49,14 +53,36 @@ class ConfiguredExpertSkill(Skill):
         skill_ver = await get_active_skill_version(session, self.module)
         system_prompt = skill_ver.system_prompt if skill_ver else self.config.fallback_prompt
         version_id = skill_ver.id if skill_ver else "fallback"
+        evidence_skill_ver = await get_active_skill_version(session, "evidence_confidence")
+        evidence_skill_version_id = evidence_skill_ver.id if evidence_skill_ver else "fallback"
 
-        benchmark = await fetch_industry_benchmark(self.module, answer.pains)
+        scenario = detect_business_scenario(
+            industry=answer.facts.get("行业", "") or answer.context.get("industry", ""),
+            main_business=answer.facts.get("主营业务", "") or answer.context.get("main_business", ""),
+            business_model=answer.facts.get("商业模式", "") or answer.context.get("business_model", ""),
+            extra_text=render_problem_text(answer.context) + " " + " ".join(answer.pains),
+        )
+        benchmark = await fetch_industry_benchmark(
+            self.module,
+            answer.pains,
+            scenario_key=scenario.key,
+            scenario_label=scenario.label,
+            evidence_lens=list(scenario.evidence_lens),
+        )
         data_requests = missing_data_requests(answer, self.config.data_requirements)
         prompt = json.dumps(
             {
                 "module": self.module,
+                "scenario": {
+                    "key": scenario.key,
+                    "label": scenario.label,
+                    "evidence_lens": list(scenario.evidence_lens),
+                    "benchmark_keywords": list(scenario.benchmark_keywords),
+                },
                 "facts": answer.facts,
                 "pains": answer.pains,
+                "context": answer.context,
+                "problem_map": answer.context,
                 "benchmark": benchmark,
                 "data_requirements": [
                     {
@@ -94,6 +120,7 @@ class ConfiguredExpertSkill(Skill):
                     citations=evidence,
                     actions=actions,
                     skill_version_id=version_id,
+                    evidence_skill_version_id=evidence_skill_version_id,
                     data_requests=data_requests,
                 ),
                 data_requests=data_requests,
@@ -109,9 +136,11 @@ def missing_data_requests(
     rendered_facts = "\n".join(
         f"{key}: {value}" for key, value in answer.facts.items() if str(value).strip()
     )
+    uploaded_haystack = " ".join(answer.uploaded_files)
+    haystack = f"{rendered_facts}\n{uploaded_haystack}"
     missing: list[DataRequest] = []
     for req in requirements:
-        if not any(keyword in rendered_facts for keyword in req.keywords):
+        if not any(keyword in haystack for keyword in req.keywords):
             missing.append(
                 DataRequest(
                     key=req.key,

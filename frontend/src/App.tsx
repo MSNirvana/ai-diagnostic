@@ -8,6 +8,7 @@ import { ProtectedRoute } from "./components/Auth/ProtectedRoute";
 import { HistoryPage } from "./components/History/HistoryPage";
 import { ProjectListPage } from "./components/Project/ProjectListPage";
 import { ProjectDetailPage } from "./components/Project/ProjectDetailPage";
+import { ProjectWarRoomPage } from "./components/Project/ProjectWarRoomPage";
 import { RecordDetailPage } from "./components/Project/RecordDetailPage";
 import { AdminPage } from "./components/Admin/AdminPage";
 import { AppShell } from "./components/Layout/AppShell";
@@ -42,10 +43,8 @@ function ProjectDiagnoseView() {
         ? await runDiagnoseWithFiles(answers, files, sessionId, pid, problemMap)
         : await runDiagnose(answers, sessionId, pid, problemMap);
       const diagnosedProjectId = pid ?? projectId;
-      if (data.war_room_plan && data.record_id && diagnosedProjectId) {
-        navigate(
-          `/projects/${diagnosedProjectId}/war-room/${data.record_id}`
-        );
+      if (data.war_room_plan && diagnosedProjectId) {
+        navigate(`/projects/${diagnosedProjectId}/war-room`);
         return;
       }
       setDiagnoseResult(data);
@@ -162,6 +161,22 @@ export default function App() {
         element={
           <ProtectedRoute>
             <ProjectDiagnoseView />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/projects/:projectId/war-room"
+        element={
+          <ProtectedRoute>
+            <ProjectWarRoomPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/projects/:projectId/war-room/view/:section"
+        element={
+          <ProtectedRoute>
+            <ProjectWarRoomPage />
           </ProtectedRoute>
         }
       />

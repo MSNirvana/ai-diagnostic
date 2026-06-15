@@ -6,7 +6,9 @@ import {
   listSessions,
   getSessionDetail,
 } from "../../api/client";
+import { AppShell } from "../Layout/AppShell";
 import { Dashboard } from "../Dashboard/Dashboard";
+import { WarRoomPage } from "../WarRoom/WarRoomPage";
 import type {
   DiagnosisSummary,
   DiagnosisDetail,
@@ -58,36 +60,29 @@ export function HistoryPage() {
   const fmt = (iso: string) => new Date(iso).toLocaleString("zh-CN");
 
   return (
-    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "40px 24px" }}>
-      <header
-        style={{
-          marginBottom: 28,
-          borderBottom: "1px solid var(--line)",
-          paddingBottom: 20,
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}
-      >
-        <h1 style={{ fontFamily: "var(--font-serif)", fontSize: "2rem", margin: 0 }}>
-          诊断历史
-        </h1>
-        <Link to="/projects" style={{ color: "var(--accent)", textDecoration: "none" }}>
-          ← 返回项目中心
+    <AppShell
+      eyebrow="Engagement Archive"
+      title="历史记录"
+      description="回看过往诊断、对话和问题地图；正式项目建议从项目工作台进入对应作战室。"
+      actions={
+        <Link to="/projects" className="btn-ghost">
+          返回项目中心
         </Link>
-      </header>
-
-      {error && <p style={{ color: "var(--signal-red)" }}>{error}</p>}
+      }
+    >
+      {error && <p className="history-error">{error}</p>}
 
       {/* 会话详情视图 */}
       {sessionDetail ? (
         <>
           <button type="button" onClick={() => setSessionDetail(null)} className="history-back-btn">
-            ← 返回列表
+            返回列表
           </button>
-          <h2 style={{ fontFamily: "var(--font-serif)", marginTop: 16 }}>
-            {sessionDetail.title || "诊断对话"}
-          </h2>
+          <section className="history-panel">
+            <div className="history-panel__head">
+              <span>Conversation Memory</span>
+              <h2>{sessionDetail.title || "诊断对话"}</h2>
+            </div>
           <div className="history-chat">
             {sessionDetail.messages.map((m, i) => (
               <div key={i} className={m.role === "user" ? "history-chat__user" : "history-chat__ai"}>
@@ -106,10 +101,10 @@ export function HistoryPage() {
               )}
             </div>
           )}
+          </section>
           <button
             type="button"
             className="btn-primary"
-            style={{ marginTop: 16 }}
             onClick={() => navigate("/projects")}
           >
             前往项目工作台继续
@@ -118,21 +113,29 @@ export function HistoryPage() {
       ) : detail ? (
         <>
           <button type="button" onClick={() => setDetail(null)} className="history-back-btn">
-            ← 返回列表
+            返回列表
           </button>
-          <p style={{ color: "var(--ink-soft)", margin: "8px 0 20px" }}>
-            诊断时间：{fmt(detail.created_at)}
-          </p>
-          <Dashboard results={detail.results} />
+          <section className="history-panel">
+            <div className="history-panel__head">
+              <span>Diagnostic Record</span>
+              <h2>诊断时间：{fmt(detail.created_at)}</h2>
+            </div>
+            {detail.war_room_plan ? (
+              <WarRoomPage plan={detail.war_room_plan} />
+            ) : (
+              <Dashboard results={detail.results} />
+            )}
+          </section>
         </>
       ) : (
         <>
           {/* 诊断对话（记忆）区 */}
           {sessions && sessions.length > 0 && (
-            <section style={{ marginBottom: 32 }}>
-              <h2 style={{ fontFamily: "var(--font-serif)", fontSize: "1.2rem", marginBottom: 12 }}>
-                诊断对话
-              </h2>
+            <section className="history-panel">
+              <div className="history-panel__head">
+                <span>Conversation Threads</span>
+                <h2>诊断对话</h2>
+              </div>
               <div className="history-list">
                 {sessions.map((s) => (
                   <div key={s.id} className="history-item history-item--session">
@@ -141,7 +144,7 @@ export function HistoryPage() {
                       <span className="history-item__count">{fmt(s.updated_at)} · {s.status}</span>
                     </button>
                     <button type="button" className="history-item__continue" onClick={() => navigate("/projects")}>
-                      到项目继续 →
+                      到项目继续
                     </button>
                   </div>
                 ))}
@@ -150,26 +153,29 @@ export function HistoryPage() {
           )}
 
           {/* 诊断结果区 */}
-          <h2 style={{ fontFamily: "var(--font-serif)", fontSize: "1.2rem", marginBottom: 12 }}>
-            诊断结果
-          </h2>
-          <div className="history-list">
-            {list === null && !error && <p style={{ color: "var(--ink-soft)" }}>加载中…</p>}
+          <section className="history-panel">
+            <div className="history-panel__head">
+              <span>Deliverables</span>
+              <h2>诊断结果</h2>
+            </div>
+            <div className="history-list">
+            {list === null && !error && <p className="history-empty">加载中…</p>}
             {list && list.length === 0 && (
-              <p style={{ color: "var(--ink-soft)" }}>
-                还没有诊断记录。<Link to="/projects" style={{ color: "var(--accent)" }}>去项目中心创建诊断</Link>
+              <p className="history-empty">
+                还没有诊断记录。<Link to="/projects">去项目中心创建诊断</Link>
               </p>
             )}
             {list?.map((item) => (
               <button key={item.id} type="button" className="history-item" onClick={() => openDetail(item.id)}>
                 <span className="history-item__date">{fmt(item.created_at)}</span>
                 <span className="history-item__count">{item.module_count} 个模块</span>
-                <span className="history-item__arrow">查看 →</span>
+                <span className="history-item__arrow">查看</span>
               </button>
             ))}
-          </div>
+            </div>
+          </section>
         </>
       )}
-    </div>
+    </AppShell>
   );
 }

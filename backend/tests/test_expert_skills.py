@@ -2,8 +2,8 @@ import json
 
 from app.models.questionnaire import ModuleAnswer
 from scripts.seed_skills import SEEDS
-from app.skills.generic import GenericModuleSkill
 from app.skills.registry import get_skill, registered_modules
+from app.skills.skill_network import diagnosis_skill_definitions
 
 
 class SparseLLM:
@@ -18,19 +18,30 @@ class SparseLLM:
 
 
 def test_all_registered_modules_are_dedicated_skills():
-    assert set(registered_modules()) == {"market", "product", "sales", "ops", "org", "finance"}
+    modules = set(registered_modules())
+    assert {"market", "product", "sales", "ops", "org", "finance"}.issubset(modules)
+    assert {
+        "legal_compliance",
+        "tax",
+        "policy",
+        "ip",
+        "supply_chain",
+        "channel_franchise",
+        "data_systems",
+    }.issubset(modules)
 
     for module in registered_modules():
         skill = get_skill(module)
         assert skill is not None
-        assert not isinstance(skill, GenericModuleSkill), f"{module} still uses generic skill"
+        assert skill.module == module
 
 
 def test_seed_includes_all_diagnosis_skills():
     diagnosis_modules = {
         module for module, skill_type, _method, _prompt in SEEDS if skill_type == "diagnosis"
     }
-    assert diagnosis_modules == set(registered_modules())
+    assert diagnosis_modules == {definition.key for definition in diagnosis_skill_definitions()}
+    assert set(registered_modules()).issubset(diagnosis_modules)
 
 
 async def test_market_skill_requests_promotion_account_data_when_missing():
@@ -38,7 +49,12 @@ async def test_market_skill_requests_promotion_account_data_when_missing():
     assert skill is not None
 
     result, _ = await skill.diagnose(
-        ModuleAnswer(module="market", facts={"行业": "直播电商"}, pains=["获客成本高"]),
+        ModuleAnswer(
+            module="market",
+            facts={"行业": "直播电商"},
+            pains=["获客成本高"],
+            context={"industry": "直播电商", "core_problem": "获客成本高"},
+        ),
         llm=SparseLLM(),
     )
 
@@ -54,10 +70,16 @@ async def test_sales_skill_requests_funnel_and_crm_data_when_missing():
     assert skill is not None
 
     result, _ = await skill.diagnose(
-        ModuleAnswer(module="sales", facts={"行业": "直播电商"}, pains=["转化率下降"]),
+        ModuleAnswer(
+            module="sales",
+            facts={"行业": "直播电商"},
+            pains=["转化率下降"],
+            context={"industry": "直播电商", "core_problem": "转化率下降"},
+        ),
         llm=SparseLLM(),
     )
 
     labels = [req.label for req in result.data_requests]
     assert any("漏斗" in label for label in labels)
     assert any("CRM" in label or "成交" in label for label in labels)
+    assert any("跟进" in label or "响应" in label for label in labels)

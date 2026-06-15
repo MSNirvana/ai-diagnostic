@@ -32,6 +32,21 @@ def test_patch_config(db_session):
     assert resp.json()["priority"] == 2
 
 
+def test_patch_config_blank_key_keeps_existing_key(db_session):
+    cid = client.post("/admin/llm-configs/", json={
+        "name": "主力", "provider": "openai", "model": "gpt-4o", "api_key": "old-secret-1234",
+    }).json()["id"]
+
+    blank = client.patch(f"/admin/llm-configs/{cid}", json={"api_key": "", "model": "gpt-5"})
+    assert blank.status_code == 200
+    assert blank.json()["model"] == "gpt-5"
+    assert blank.json()["api_key_masked"] == "****1234"
+
+    replaced = client.patch(f"/admin/llm-configs/{cid}", json={"api_key": "new-secret-5678"})
+    assert replaced.status_code == 200
+    assert replaced.json()["api_key_masked"] == "****5678"
+
+
 def test_delete_config(db_session):
     cid = client.post("/admin/llm-configs/", json={
         "name": "待删", "provider": "openai", "model": "gpt-4o", "api_key": "k1234",
