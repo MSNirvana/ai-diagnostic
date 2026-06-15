@@ -1,11 +1,11 @@
 {
   "skill_key": "fb_franchise",
   "case_count": 20,
-  "error_count": 0,
-  "signal_accuracy": 0.75,
-  "l1_all_pass": true,
-  "l2_overall_rate": 0.966,
-  "machine_verdict": "pass",
+  "error_count": 13,
+  "signal_accuracy": 0.35,
+  "l1_all_pass": false,
+  "l2_overall_rate": 0.33,
+  "machine_verdict": "fail",
   "cases": [
     {
       "case_id": "red-1",
@@ -50,124 +50,131 @@
     {
       "case_id": "red-5",
       "expected_signal": "red",
-      "got_signal": "red",
-      "signal_match": true,
-      "l1_passed": true,
-      "l2_pass_rate": 1.0,
-      "failures": []
+      "got_signal": "ERROR",
+      "l1_passed": false,
+      "l2_pass_rate": 0.0,
+      "failures": [
+        "诊断/解析异常: APITimeoutError: Request timed out or interrupted. This could be due to a network timeout, dropped connection, or request cancellation. See https://docs.anthropic.com/en/api/err"
+      ]
     },
     {
       "case_id": "yellow-1",
       "expected_signal": "yellow",
-      "got_signal": "yellow",
-      "signal_match": true,
-      "l1_passed": true,
-      "l2_pass_rate": 1.0,
-      "failures": []
+      "got_signal": "ERROR",
+      "l1_passed": false,
+      "l2_pass_rate": 0.0,
+      "failures": [
+        "诊断/解析异常: APITimeoutError: Request timed out or interrupted. This could be due to a network timeout, dropped connection, or request cancellation. See https://docs.anthropic.com/en/api/err"
+      ]
     },
     {
       "case_id": "yellow-2",
       "expected_signal": "yellow",
-      "got_signal": "yellow",
-      "signal_match": true,
-      "l1_passed": true,
-      "l2_pass_rate": 1.0,
-      "failures": []
+      "got_signal": "ERROR",
+      "l1_passed": false,
+      "l2_pass_rate": 0.0,
+      "failures": [
+        "诊断/解析异常: APITimeoutError: Request timed out or interrupted. This could be due to a network timeout, dropped connection, or request cancellation. See https://docs.anthropic.com/en/api/err"
+      ]
     },
     {
       "case_id": "yellow-3",
       "expected_signal": "yellow",
-      "got_signal": "yellow",
-      "signal_match": true,
-      "l1_passed": true,
-      "l2_pass_rate": 1.0,
-      "failures": []
+      "got_signal": "ERROR",
+      "l1_passed": false,
+      "l2_pass_rate": 0.0,
+      "failures": [
+        "诊断/解析异常: APITimeoutError: Request timed out or interrupted. This could be due to a network timeout, dropped connection, or request cancellation. See https://docs.anthropic.com/en/api/err"
+      ]
     },
     {
       "case_id": "yellow-4",
       "expected_signal": "yellow",
-      "got_signal": "yellow",
-      "signal_match": true,
-      "l1_passed": true,
-      "l2_pass_rate": 1.0,
-      "failures": []
+      "got_signal": "ERROR",
+      "l1_passed": false,
+      "l2_pass_rate": 0.0,
+      "failures": [
+        "诊断/解析异常: APITimeoutError: Request timed out or interrupted. This could be due to a network timeout, dropped connection, or request cancellation. See https://docs.anthropic.com/en/api/err"
+      ]
     },
     {
       "case_id": "yellow-5",
       "expected_signal": "yellow",
-      "got_signal": "yellow",
-      "signal_match": true,
-      "l1_passed": true,
-      "l2_pass_rate": 1.0,
-      "failures": []
+      "got_signal": "ERROR",
+      "l1_passed": false,
+      "l2_pass_rate": 0.0,
+      "failures": [
+        "诊断/解析异常: APITimeoutError: Request timed out or interrupted. This could be due to a network timeout, dropped connection, or request cancellation. See https://docs.anthropic.com/en/api/err"
+      ]
     },
     {
       "case_id": "green-1",
       "expected_signal": "green",
-      "got_signal": "yellow",
-      "signal_match": false,
-      "l1_passed": true,
-      "l2_pass_rate": 1.0,
-      "failures": []
+      "got_signal": "ERROR",
+      "l1_passed": false,
+      "l2_pass_rate": 0.0,
+      "failures": [
+        "诊断/解析异常: APITimeoutError: Request timed out or interrupted. This could be due to a network timeout, dropped connection, or request cancellation. See https://docs.anthropic.com/en/api/err"
+      ]
     },
     {
       "case_id": "green-2",
       "expected_signal": "green",
-      "got_signal": "yellow",
-      "signal_match": false,
-      "l1_passed": true,
-      "l2_pass_rate": 0.86,
+      "got_signal": "ERROR",
+      "l1_passed": false,
+      "l2_pass_rate": 0.0,
       "failures": [
-        "C2: 疑似编造数字：62%"
+        "诊断/解析异常: APITimeoutError: Request timed out or interrupted. This could be due to a network timeout, dropped connection, or request cancellation. See https://docs.anthropic.com/en/api/err"
       ]
     },
     {
       "case_id": "green-3",
       "expected_signal": "green",
-      "got_signal": "yellow",
-      "signal_match": false,
-      "l1_passed": true,
-      "l2_pass_rate": 1.0,
-      "failures": []
+      "got_signal": "ERROR",
+      "l1_passed": false,
+      "l2_pass_rate": 0.0,
+      "failures": [
+        "诊断/解析异常: APITimeoutError: Request timed out or interrupted. This could be due to a network timeout, dropped connection, or request cancellation. See https://docs.anthropic.com/en/api/err"
+      ]
     },
     {
       "case_id": "green-4",
       "expected_signal": "green",
-      "got_signal": "yellow",
-      "signal_match": false,
-      "l1_passed": true,
-      "l2_pass_rate": 0.86,
+      "got_signal": "ERROR",
+      "l1_passed": false,
+      "l2_pass_rate": 0.0,
       "failures": [
-        "C3: 存在不可执行的行动：暂缓加大招商投放——在存活率与单店食材/人力/房租成本结构未验证前，扩张重点先不下结论，避免招商越猛死得越快"
+        "诊断/解析异常: APITimeoutError: Request timed out or interrupted. This could be due to a network timeout, dropped connection, or request cancellation. See https://docs.anthropic.com/en/api/err"
       ]
     },
     {
       "case_id": "green-5",
       "expected_signal": "green",
-      "got_signal": "yellow",
-      "signal_match": false,
-      "l1_passed": true,
-      "l2_pass_rate": 1.0,
-      "failures": []
+      "got_signal": "ERROR",
+      "l1_passed": false,
+      "l2_pass_rate": 0.0,
+      "failures": [
+        "诊断/解析异常: APITimeoutError: Request timed out or interrupted. This could be due to a network timeout, dropped connection, or request cancellation. See https://docs.anthropic.com/en/api/err"
+      ]
     },
     {
       "case_id": "missing-1",
       "expected_signal": "yellow",
-      "got_signal": "yellow",
-      "signal_match": true,
-      "l1_passed": true,
-      "l2_pass_rate": 1.0,
-      "failures": []
+      "got_signal": "ERROR",
+      "l1_passed": false,
+      "l2_pass_rate": 0.0,
+      "failures": [
+        "诊断/解析异常: APIConnectionError: Connection error."
+      ]
     },
     {
       "case_id": "missing-2",
       "expected_signal": "yellow",
-      "got_signal": "yellow",
-      "signal_match": true,
-      "l1_passed": true,
-      "l2_pass_rate": 0.86,
+      "got_signal": "ERROR",
+      "l1_passed": false,
+      "l2_pass_rate": 0.0,
       "failures": [
-        "C1: 证据均无具体数字（全是形容词判断）"
+        "诊断/解析异常: APIConnectionError: Connection error."
       ]
     },
     {
@@ -194,8 +201,10 @@
       "got_signal": "yellow",
       "signal_match": true,
       "l1_passed": true,
-      "l2_pass_rate": 1.0,
-      "failures": []
+      "l2_pass_rate": 0.86,
+      "failures": [
+        "C1: 证据均无具体数字（全是形容词判断）"
+      ]
     }
   ]
 }

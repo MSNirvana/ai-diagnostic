@@ -21,6 +21,10 @@ import type {
   SkillVersionOut,
   LLMConfigOut,
   UploadedFileOut,
+  L1Stats,
+  L2Stats,
+  L3Stats,
+  L4Stats,
 } from "../types";
 import { getToken } from "../auth/authStore";
 
@@ -157,12 +161,13 @@ export async function fetchRecord(id: string): Promise<DiagnosisDetail> {
 }
 
 export async function generateQuestionnaire(
-  profile: BusinessProfile
+  profile: BusinessProfile,
+  projectId?: string
 ): Promise<GeneratedModule[]> {
   const resp = await fetch(`${BASE}/questionnaire/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify({ profile }),
+    body: JSON.stringify({ profile, project_id: projectId ?? null }),
   });
   if (!resp.ok) throw new Error(`生成失败: ${resp.status}`);
   const body = await resp.json();
@@ -170,12 +175,13 @@ export async function generateQuestionnaire(
 }
 
 export async function generateABQuestionnaire(
-  profile: BusinessProfile
+  profile: BusinessProfile,
+  projectId?: string
 ): Promise<ABQuestionnaire> {
   const resp = await fetch(`${BASE}/questionnaire/generate-ab`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify({ profile }),
+    body: JSON.stringify({ profile, project_id: projectId ?? null }),
   });
   if (!resp.ok) throw new Error(`生成失败: ${resp.status}`);
   return (await resp.json()) as ABQuestionnaire;
@@ -194,12 +200,13 @@ export async function sendChatMessage(
 }
 
 export async function generateABFromSummary(
-  summary: ProblemSummary
+  summary: ProblemSummary,
+  projectId?: string
 ): Promise<ABQuestionnaire> {
   const resp = await fetch(`${BASE}/questionnaire/generate-ab`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify({ summary }),
+    body: JSON.stringify({ summary, project_id: projectId ?? null }),
   });
   if (!resp.ok) throw new Error(`生成失败: ${resp.status}`);
   return (await resp.json()) as ABQuestionnaire;
@@ -425,4 +432,30 @@ export async function listSessionFiles(sessionId: string): Promise<UploadedFileO
 
 export async function deleteSessionFile(fileId: string): Promise<void> {
   await fetch(`${BASE}/files/${fileId}`, { method: "DELETE", headers: { ...authHeaders() } });
+}
+
+// ── Loop 治理 API ─────────────────────────────────────────────────────────────
+
+export async function fetchL1Stats(): Promise<L1Stats> {
+  const resp = await fetch(`${BASE}/admin/loops/l1`, { headers: { ...authHeaders() } });
+  if (!resp.ok) throw new Error(`L1 stats failed: ${resp.status}`);
+  return resp.json();
+}
+
+export async function fetchL2Stats(): Promise<L2Stats> {
+  const resp = await fetch(`${BASE}/admin/loops/l2`, { headers: { ...authHeaders() } });
+  if (!resp.ok) throw new Error(`L2 stats failed: ${resp.status}`);
+  return resp.json();
+}
+
+export async function fetchL3Stats(): Promise<L3Stats> {
+  const resp = await fetch(`${BASE}/admin/loops/l3`, { headers: { ...authHeaders() } });
+  if (!resp.ok) throw new Error(`L3 stats failed: ${resp.status}`);
+  return resp.json();
+}
+
+export async function fetchL4Stats(): Promise<L4Stats> {
+  const resp = await fetch(`${BASE}/admin/loops/l4`, { headers: { ...authHeaders() } });
+  if (!resp.ok) throw new Error(`L4 stats failed: ${resp.status}`);
+  return resp.json();
 }

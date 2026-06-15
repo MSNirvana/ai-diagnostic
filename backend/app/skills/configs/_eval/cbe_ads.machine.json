@@ -1,0 +1,211 @@
+{
+  "skill_key": "cbe_ads",
+  "case_count": 20,
+  "error_count": 1,
+  "signal_accuracy": 0.85,
+  "l1_all_pass": false,
+  "l2_overall_rate": 0.882,
+  "machine_verdict": "fail",
+  "cases": [
+    {
+      "case_id": "red-1",
+      "expected_signal": "red",
+      "got_signal": "red",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    },
+    {
+      "case_id": "red-2",
+      "expected_signal": "red",
+      "got_signal": "red",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    },
+    {
+      "case_id": "red-3",
+      "expected_signal": "red",
+      "got_signal": "red",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 0.88,
+      "failures": [
+        "C2: 疑似编造数字：0.48、2.08、0.67"
+      ]
+    },
+    {
+      "case_id": "red-4",
+      "expected_signal": "red",
+      "got_signal": "red",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 0.75,
+      "failures": [
+        "C2: 疑似编造数字：2.22、0.45",
+        "C3: 存在不可执行的行动：拆查承接环节：调出两平台落地页/商品页CVR与CTR，若CVR过低则问题在承接而非投放，优先重建详情页/主图，避免靠加竞价继续烧钱。"
+      ]
+    },
+    {
+      "case_id": "red-5",
+      "expected_signal": "red",
+      "got_signal": "red",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    },
+    {
+      "case_id": "yellow-1",
+      "expected_signal": "yellow",
+      "got_signal": "yellow",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 0.86,
+      "failures": [
+        "C2: 疑似编造数字：37.8%、4.8"
+      ]
+    },
+    {
+      "case_id": "yellow-2",
+      "expected_signal": "yellow",
+      "got_signal": "yellow",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 0.86,
+      "failures": [
+        "C3: 存在不可执行的行动：补P&L核算单量经济：用总销售额、广告销售额算TACOS与自然单占比，确认ROAS 2.3扣完退货/物流/平台费后是否仍为正利润，再决定加投或收口"
+      ]
+    },
+    {
+      "case_id": "yellow-3",
+      "expected_signal": "yellow",
+      "got_signal": "yellow",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    },
+    {
+      "case_id": "yellow-4",
+      "expected_signal": "yellow",
+      "got_signal": "yellow",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 0.86,
+      "failures": [
+        "C2: 疑似编造数字：0.52、1.508"
+      ]
+    },
+    {
+      "case_id": "yellow-5",
+      "expected_signal": "yellow",
+      "got_signal": "yellow",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    },
+    {
+      "case_id": "green-1",
+      "expected_signal": "green",
+      "got_signal": "green",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    },
+    {
+      "case_id": "green-2",
+      "expected_signal": "green",
+      "got_signal": "yellow",
+      "signal_match": false,
+      "l1_passed": true,
+      "l2_pass_rate": 0.86,
+      "failures": [
+        "C2: 疑似编造数字：1.82、0.55"
+      ]
+    },
+    {
+      "case_id": "green-3",
+      "expected_signal": "green",
+      "got_signal": "yellow",
+      "signal_match": false,
+      "l1_passed": true,
+      "l2_pass_rate": 0.86,
+      "failures": [
+        "C2: 疑似编造数字：0.53、1.9"
+      ]
+    },
+    {
+      "case_id": "green-4",
+      "expected_signal": "green",
+      "got_signal": "green",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 0.88,
+      "failures": [
+        "C2: 疑似编造数字：39.6%"
+      ]
+    },
+    {
+      "case_id": "green-5",
+      "expected_signal": "green",
+      "got_signal": "ERROR",
+      "l1_passed": false,
+      "l2_pass_rate": 0.0,
+      "failures": [
+        "诊断/解析异常: JSONDecodeError: Expecting ',' delimiter: line 1 column 1346 (char 1345)"
+      ]
+    },
+    {
+      "case_id": "missing-1",
+      "expected_signal": "yellow",
+      "got_signal": "yellow",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    },
+    {
+      "case_id": "missing-2",
+      "expected_signal": "yellow",
+      "got_signal": "yellow",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    },
+    {
+      "case_id": "missing-3",
+      "expected_signal": "yellow",
+      "got_signal": "yellow",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    },
+    {
+      "case_id": "missing-4",
+      "expected_signal": "yellow",
+      "got_signal": "yellow",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 0.86,
+      "failures": [
+        "C3: 存在不可执行的行动：统一归因口径：登记GA4/Triple Whale/Northbeam及各平台归因窗口与币种换算，剔除订单双算，再做多平台ROAS横向对比与P&L终极校验。"
+      ]
+    },
+    {
+      "case_id": "missing-5",
+      "expected_signal": "yellow",
+      "got_signal": "yellow",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    }
+  ]
+}

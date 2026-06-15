@@ -784,3 +784,137 @@
     flex-direction: column;
   }
 }
+
+/* ── Loop 治理 Tab 通用样式 ─────────────────────────────────────── */
+
+.admin-tab-divider {
+  width: 1px;
+  background: var(--border, #e5e7eb);
+  margin: 0 4px;
+  align-self: stretch;
+}
+
+.loop-tab {
+  padding: 24px 0;
+}
+
+.loop-tab__title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary, #111);
+  margin: 0 0 4px;
+}
+
+.loop-tab__subtitle {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary, #555);
+  margin: 20px 0 8px;
+}
+
+.loop-tab__desc {
+  font-size: 0.82rem;
+  color: var(--text-tertiary, #888);
+  margin: 0 0 20px;
+}
+
+.loop-stats-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+
+.loop-stat {
+  background: var(--surface, #f9fafb);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 8px;
+  padding: 12px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 100px;
+}
+
+.loop-stat--ok  { border-color: #22c55e; background: #f0fdf4; }
+.loop-stat--warn{ border-color: #f59e0b; background: #fffbeb; }
+.loop-stat--err { border-color: #ef4444; background: #fef2f2; }
+
+.loop-stat__num {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary, #111);
+  line-height: 1.2;
+}
+
+.loop-stat__label {
+  font-size: 0.72rem;
+  color: var(--text-tertiary, #888);
+  margin-top: 2px;
+  text-align: center;
+}
+
+.loop-alert {
+  background: #fffbeb;
+  border: 1px solid #f59e0b;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 0.82rem;
+  color: #92400e;
+  margin-bottom: 16px;
+}
+
+.loop-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.loop-table th {
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 2px solid var(--border, #e5e7eb);
+  color: var(--text-secondary, #555);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.loop-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border, #f0f0f0);
+  vertical-align: top;
+}
+
+.loop-table__row--warn td { background: #fffbeb; }
+.loop-table__row--err  td { background: #fef2f2; }
+
+.badge-err {
+  background: #fee2e2;
+  color: #dc2626;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.source-badge {
+  display: inline-block;
+  background: var(--surface, #f3f4f6);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 0.72rem;
+  margin-right: 4px;
+  color: var(--text-secondary, #555);
+}
+
+.loop-two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+@media (max-width: 768px) {
+  .loop-two-col { grid-template-columns: 1fr; }
+  .loop-stats-row { gap: 8px; }
+  .loop-stat { min-width: 80px; padding: 10px 12px; }
+}

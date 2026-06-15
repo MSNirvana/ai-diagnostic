@@ -1,0 +1,217 @@
+{
+  "skill_key": "kitchen_channel",
+  "case_count": 20,
+  "error_count": 0,
+  "signal_accuracy": 0.85,
+  "l1_all_pass": true,
+  "l2_overall_rate": 0.899,
+  "machine_verdict": "redo",
+  "cases": [
+    {
+      "case_id": "red-1",
+      "expected_signal": "red",
+      "got_signal": "red",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 0.88,
+      "failures": [
+        "C2: 疑似编造数字：186"
+      ]
+    },
+    {
+      "case_id": "red-2",
+      "expected_signal": "red",
+      "got_signal": "red",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 0.88,
+      "failures": [
+        "C2: 疑似编造数字：40%"
+      ]
+    },
+    {
+      "case_id": "red-3",
+      "expected_signal": "red",
+      "got_signal": "red",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    },
+    {
+      "case_id": "red-4",
+      "expected_signal": "red",
+      "got_signal": "red",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 0.88,
+      "failures": [
+        "C3: 存在不可执行的行动：重建去库存与回款方案：对135天周转的积压库存做分级清理（换货/调拨/限时折让），优先抢回头部活跃经销商的现金流，避免压货款变坏账。"
+      ]
+    },
+    {
+      "case_id": "red-5",
+      "expected_signal": "red",
+      "got_signal": "red",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 0.88,
+      "failures": [
+        "C2: 疑似编造数字：220"
+      ]
+    },
+    {
+      "case_id": "yellow-1",
+      "expected_signal": "yellow",
+      "got_signal": "yellow",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    },
+    {
+      "case_id": "yellow-2",
+      "expected_signal": "yellow",
+      "got_signal": "yellow",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    },
+    {
+      "case_id": "yellow-3",
+      "expected_signal": "yellow",
+      "got_signal": "yellow",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 0.86,
+      "failures": [
+        "C2: 疑似编造数字：15"
+      ]
+    },
+    {
+      "case_id": "yellow-4",
+      "expected_signal": "yellow",
+      "got_signal": "yellow",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 0.71,
+      "failures": [
+        "C2: 疑似编造数字：37、100",
+        "C3: 存在不可执行的行动：盯死库存周转：对库存周转超90天的经销商先冻结压货式铺货，改按动销补货，防止周转从85天滑入120天现金流受损区"
+      ]
+    },
+    {
+      "case_id": "yellow-5",
+      "expected_signal": "yellow",
+      "got_signal": "yellow",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 0.86,
+      "failures": [
+        "C3: 存在不可执行的行动：清点退网经销商退出原因：逐条记录近期退网/收缩经销商的真实原因（价格倒挂/任务过重/支持不足），这是诊断渠道政策问题最直接的证据。"
+      ]
+    },
+    {
+      "case_id": "green-1",
+      "expected_signal": "green",
+      "got_signal": "green",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 0.88,
+      "failures": [
+        "C8: 绿灯但结论充满负面词"
+      ]
+    },
+    {
+      "case_id": "green-2",
+      "expected_signal": "green",
+      "got_signal": "yellow",
+      "signal_match": false,
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    },
+    {
+      "case_id": "green-3",
+      "expected_signal": "green",
+      "got_signal": "yellow",
+      "signal_match": false,
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    },
+    {
+      "case_id": "green-4",
+      "expected_signal": "green",
+      "got_signal": "green",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 0.75,
+      "failures": [
+        "C2: 疑似编造数字：25",
+        "C8: 绿灯但结论充满负面词"
+      ]
+    },
+    {
+      "case_id": "green-5",
+      "expected_signal": "green",
+      "got_signal": "yellow",
+      "signal_match": false,
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    },
+    {
+      "case_id": "missing-1",
+      "expected_signal": "yellow",
+      "got_signal": "yellow",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 0.86,
+      "failures": [
+        "C6: 未命中任何行业KPI"
+      ]
+    },
+    {
+      "case_id": "missing-2",
+      "expected_signal": "yellow",
+      "got_signal": "yellow",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 0.57,
+      "failures": [
+        "C1: 证据均无具体数字（全是形容词判断）",
+        "C3: 存在不可执行的行动：提交现行招商合同与政策条款：首批进货金额、年度任务额、返利、保证金、区域保护，用于判断是否存在弱招商（首批<5万）或任务过高导致招不到实力商。",
+        "C6: 未命中任何行业KPI"
+      ]
+    },
+    {
+      "case_id": "missing-3",
+      "expected_signal": "yellow",
+      "got_signal": "yellow",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    },
+    {
+      "case_id": "missing-4",
+      "expected_signal": "yellow",
+      "got_signal": "yellow",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    },
+    {
+      "case_id": "missing-5",
+      "expected_signal": "yellow",
+      "got_signal": "yellow",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    }
+  ]
+}

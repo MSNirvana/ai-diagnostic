@@ -1,0 +1,213 @@
+{
+  "skill_key": "saas_sales",
+  "case_count": 20,
+  "error_count": 0,
+  "signal_accuracy": 0.75,
+  "l1_all_pass": true,
+  "l2_overall_rate": 0.92,
+  "machine_verdict": "pass",
+  "cases": [
+    {
+      "case_id": "red-1",
+      "expected_signal": "red",
+      "got_signal": "red",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 0.88,
+      "failures": [
+        "C2: 疑似编造数字：67%"
+      ]
+    },
+    {
+      "case_id": "red-2",
+      "expected_signal": "red",
+      "got_signal": "red",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 0.88,
+      "failures": [
+        "C2: 疑似编造数字：11"
+      ]
+    },
+    {
+      "case_id": "red-3",
+      "expected_signal": "red",
+      "got_signal": "red",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 0.88,
+      "failures": [
+        "C3: 存在不可执行的行动：重建漏斗转化看板，导出 MQL→SQL→机会→成单各环数量与转化率，定位卡点环节——是 MQL→SQL（线索质量/定义）还是 SQL Win Rate（销售执行），不同卡点优化方向相反"
+      ]
+    },
+    {
+      "case_id": "red-4",
+      "expected_signal": "red",
+      "got_signal": "red",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    },
+    {
+      "case_id": "red-5",
+      "expected_signal": "red",
+      "got_signal": "red",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    },
+    {
+      "case_id": "yellow-1",
+      "expected_signal": "yellow",
+      "got_signal": "red",
+      "signal_match": false,
+      "l1_passed": true,
+      "l2_pass_rate": 0.75,
+      "failures": [
+        "C2: 疑似编造数字：2.16%",
+        "C3: 存在不可执行的行动：重审 SQL 入口标准：用 BANT/MEDDIC 抽查近 6-12 个月输单的 SQL，分类输单原因（无预算/无决策权/竞争/价格），判断 18% Win Rate 是入口质量还是销售执行问题。"
+      ]
+    },
+    {
+      "case_id": "yellow-2",
+      "expected_signal": "yellow",
+      "got_signal": "yellow",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    },
+    {
+      "case_id": "yellow-3",
+      "expected_signal": "yellow",
+      "got_signal": "yellow",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 0.71,
+      "failures": [
+        "C2: 疑似编造数字：135、22%",
+        "C3: 存在不可执行的行动：重定延迟归因口径：把每单延迟标注为「客户侧延迟」或「内部审批延迟（法务/IT/采购合规）」两类，两类优化方向相反，先分类再动作。"
+      ]
+    },
+    {
+      "case_id": "yellow-4",
+      "expected_signal": "yellow",
+      "got_signal": "yellow",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    },
+    {
+      "case_id": "yellow-5",
+      "expected_signal": "yellow",
+      "got_signal": "yellow",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    },
+    {
+      "case_id": "green-1",
+      "expected_signal": "green",
+      "got_signal": "green",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 0.88,
+      "failures": [
+        "C8: 绿灯但结论充满负面词"
+      ]
+    },
+    {
+      "case_id": "green-2",
+      "expected_signal": "green",
+      "got_signal": "yellow",
+      "signal_match": false,
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    },
+    {
+      "case_id": "green-3",
+      "expected_signal": "green",
+      "got_signal": "yellow",
+      "signal_match": false,
+      "l1_passed": true,
+      "l2_pass_rate": 0.86,
+      "failures": [
+        "C2: 疑似编造数字：135"
+      ]
+    },
+    {
+      "case_id": "green-4",
+      "expected_signal": "green",
+      "got_signal": "yellow",
+      "signal_match": false,
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    },
+    {
+      "case_id": "green-5",
+      "expected_signal": "green",
+      "got_signal": "yellow",
+      "signal_match": false,
+      "l1_passed": true,
+      "l2_pass_rate": 0.86,
+      "failures": [
+        "C3: 存在不可执行的行动：重审销售个体 Win Rate 分布：现有整体 26% 可能由头部少数人拉高，扩张招人前须确认 26% 是流程可复制还是个体能力，否则新人摊薄后达成不及预期"
+      ]
+    },
+    {
+      "case_id": "missing-1",
+      "expected_signal": "yellow",
+      "got_signal": "yellow",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    },
+    {
+      "case_id": "missing-2",
+      "expected_signal": "yellow",
+      "got_signal": "yellow",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    },
+    {
+      "case_id": "missing-3",
+      "expected_signal": "yellow",
+      "got_signal": "yellow",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 0.86,
+      "failures": [
+        "C3: 存在不可执行的行动：重整 8 名销售的个体 Win Rate / 人均 ARR / 配额达成率分布，避免用整体均值掩盖头部与长尾差异（整体可能由少数人拉高）。"
+      ]
+    },
+    {
+      "case_id": "missing-4",
+      "expected_signal": "yellow",
+      "got_signal": "yellow",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    },
+    {
+      "case_id": "missing-5",
+      "expected_signal": "yellow",
+      "got_signal": "yellow",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 0.86,
+      "failures": [
+        "C1: 证据均无具体数字（全是形容词判断）"
+      ]
+    }
+  ]
+}

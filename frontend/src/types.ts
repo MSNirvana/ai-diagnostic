@@ -178,6 +178,8 @@ export interface GeneratedField {
   placeholder: string;
   hint?: string;
   accept_file: boolean;
+  prefilled_value?: string | null;
+  known_source?: string | null;
 }
 export interface GeneratedModule {
   key: string;
@@ -369,3 +371,69 @@ export interface UploadedFileOut {
   field_key: string;
   original_name: string;
 }
+
+// ── Loop 治理类型 ─────────────────────────────────────────────────────────────
+
+export interface SkillCandidateItem {
+  key: string;
+  label: string | null;
+  verdict: "pass" | "redo" | "fail" | "unknown";
+  l1_passed: boolean;
+  l2_rate: number;
+  signal_accuracy: number;
+  error_count: number;
+  review_status: "pending_human" | "approved" | "rejected" | "not_ready" | "no_eval";
+  review_notes: string | null;
+}
+
+export interface L1Stats {
+  total_configs: number;
+  pending_review: number;
+  approved: number;
+  failed: number;
+  candidates: SkillCandidateItem[];
+}
+
+export interface SkillRecallItem {
+  module: string;
+  recall_count: number;
+  source_breakdown: Record<string, number>;
+}
+
+export interface L2Stats {
+  total_samples: number;
+  missed_recall_rate: number;
+  samples_with_missed: number;
+  keyword_false_positive_rate: number;
+  keyword_recalls: number;
+  keyword_false_positives: number;
+  skill_recall_frequency: SkillRecallItem[];
+  recent_missed: string[];
+}
+
+export interface CaseIndustryItem {
+  industry: string;
+  count: number;
+}
+
+export interface RecentCaseItem {
+  id: string;
+  industry: string;
+  company_profile: string;
+  skills_used: string[];
+  created_at: string;
+}
+
+export interface L3Stats {
+  total_cases: number;
+  industry_distribution: CaseIndustryItem[];
+  recent_cases: RecentCaseItem[];
+}
+
+export interface L4Stats {
+  total_diagnoses: number;
+  recent_feedback_count: number;
+  avg_rating: number | null;
+  useful_rate: number | null;
+}
+

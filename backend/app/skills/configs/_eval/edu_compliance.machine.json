@@ -1,0 +1,223 @@
+{
+  "skill_key": "edu_compliance",
+  "case_count": 20,
+  "error_count": 1,
+  "signal_accuracy": 0.5,
+  "l1_all_pass": false,
+  "l2_overall_rate": 0.834,
+  "machine_verdict": "fail",
+  "cases": [
+    {
+      "case_id": "red-1",
+      "expected_signal": "red",
+      "got_signal": "red",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 0.88,
+      "failures": [
+        "C3: 存在不可执行的行动：限期补存资金至监管专用账户，使账户余额覆盖未消课时对应金额9万元，补平资金缺口，并停止从存管账户转出用于运营。"
+      ]
+    },
+    {
+      "case_id": "red-2",
+      "expected_signal": "red",
+      "got_signal": "red",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 0.88,
+      "failures": [
+        "C3: 存在不可执行的行动：启动办学许可证审批/重新登记：按当地要求补办小学数学/语文学科类办学许可，同步将营业执照经营范围变更覆盖实际培训业务，无证经营期间不得再宣称合规。"
+      ]
+    },
+    {
+      "case_id": "red-3",
+      "expected_signal": "red",
+      "got_signal": "red",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 0.75,
+      "failures": [
+        "C6: 未命中任何行业KPI",
+        "C8: 红灯但结论无负面判断词"
+      ]
+    },
+    {
+      "case_id": "red-4",
+      "expected_signal": "red",
+      "got_signal": "red",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 0.88,
+      "failures": [
+        "C2: 疑似编造数字：33%、70%"
+      ]
+    },
+    {
+      "case_id": "red-5",
+      "expected_signal": "red",
+      "got_signal": "red",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 0.75,
+      "failures": [
+        "C2: 疑似编造数字：80%",
+        "C3: 存在不可执行的行动：补交预收费台账、监管账户流水、办学许可证与批准科目、课程实际教学内容，用于核算单次收费是否超3个月/60课时、存管账户余额能否覆盖未消课时金额，确认是否存在资金缺口与无证办学。"
+      ]
+    },
+    {
+      "case_id": "yellow-1",
+      "expected_signal": "yellow",
+      "got_signal": "yellow",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    },
+    {
+      "case_id": "yellow-2",
+      "expected_signal": "yellow",
+      "got_signal": "red",
+      "signal_match": false,
+      "l1_passed": true,
+      "l2_pass_rate": 0.88,
+      "failures": [
+        "C2: 疑似编造数字：0%"
+      ]
+    },
+    {
+      "case_id": "yellow-3",
+      "expected_signal": "yellow",
+      "got_signal": "red",
+      "signal_match": false,
+      "l1_passed": true,
+      "l2_pass_rate": 0.75,
+      "failures": [
+        "C2: 疑似编造数字：62.5%",
+        "C3: 存在不可执行的行动：立即补存：将不少于3万元资金回补至监管专用账户，使存管余额覆盖8万元未消课时金额，覆盖率补到100%，并停止从存管账户向运营账户转出。"
+      ]
+    },
+    {
+      "case_id": "yellow-4",
+      "expected_signal": "yellow",
+      "got_signal": "red",
+      "signal_match": false,
+      "l1_passed": true,
+      "l2_pass_rate": 0.75,
+      "failures": [
+        "C2: 疑似编造数字：33%、20",
+        "C6: 未命中任何行业KPI"
+      ]
+    },
+    {
+      "case_id": "yellow-5",
+      "expected_signal": "yellow",
+      "got_signal": "red",
+      "signal_match": false,
+      "l1_passed": true,
+      "l2_pass_rate": 0.75,
+      "failures": [
+        "C2: 疑似编造数字：25、100%",
+        "C3: 存在不可执行的行动：补交预收费台账、监管账户流水与办学许可证、课程实际内容材料，据此核算单次收费是否超3个月/60课时、存管账户余额能否覆盖未消课时、是否构成无证或学科类违规。"
+      ]
+    },
+    {
+      "case_id": "green-1",
+      "expected_signal": "green",
+      "got_signal": "yellow",
+      "signal_match": false,
+      "l1_passed": true,
+      "l2_pass_rate": 0.86,
+      "failures": [
+        "C3: 存在不可执行的行动：维持并存档现有收费与存管台账：保持单次≤48课时、存管100%、余额覆盖率≥110%，每月核对未消课时金额与账户余额差额，留痕备查"
+      ]
+    },
+    {
+      "case_id": "green-2",
+      "expected_signal": "green",
+      "got_signal": "yellow",
+      "signal_match": false,
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    },
+    {
+      "case_id": "green-3",
+      "expected_signal": "green",
+      "got_signal": "yellow",
+      "signal_match": false,
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    },
+    {
+      "case_id": "green-4",
+      "expected_signal": "green",
+      "got_signal": "yellow",
+      "signal_match": false,
+      "l1_passed": true,
+      "l2_pass_rate": 0.86,
+      "failures": [
+        "C3: 存在不可执行的行动：补全存管账户流水与已收/已消课时记录，计算资金存管账户余额覆盖率；若账户余额不能覆盖未消课时对应金额，立即补存差额至监管专用账户，禁止再从存管账户转出用于运营。"
+      ]
+    },
+    {
+      "case_id": "green-5",
+      "expected_signal": "green",
+      "got_signal": "yellow",
+      "signal_match": false,
+      "l1_passed": true,
+      "l2_pass_rate": 0.86,
+      "failures": [
+        "C3: 存在不可执行的行动：补交预收费台账与监管账户流水：上传每笔收费金额/日期/收费周期、已收与已消课时、存管账户余额，核算单次收费课时数与资金存管账户余额覆盖率，这是定级的核心数据。"
+      ]
+    },
+    {
+      "case_id": "missing-1",
+      "expected_signal": "yellow",
+      "got_signal": "yellow",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    },
+    {
+      "case_id": "missing-2",
+      "expected_signal": "yellow",
+      "got_signal": "yellow",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    },
+    {
+      "case_id": "missing-3",
+      "expected_signal": "yellow",
+      "got_signal": "ERROR",
+      "l1_passed": false,
+      "l2_pass_rate": 0.0,
+      "failures": [
+        "诊断/解析异常: ValidationError: 1 validation error for ModuleAnswer\nfacts.pains_only\n  Input should be a valid string [type=string_type, input_value=True, input_type=bool]\n    For further info"
+      ]
+    },
+    {
+      "case_id": "missing-4",
+      "expected_signal": "yellow",
+      "got_signal": "yellow",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 0.86,
+      "failures": [
+        "C3: 存在不可执行的行动：补交预收费台账与监管专用账户流水（每笔金额/日期/收费周期、已收课时、已消课时、账户实时余额），以便核算余额覆盖率与资金缺口。"
+      ]
+    },
+    {
+      "case_id": "missing-5",
+      "expected_signal": "yellow",
+      "got_signal": "yellow",
+      "signal_match": true,
+      "l1_passed": true,
+      "l2_pass_rate": 1.0,
+      "failures": []
+    }
+  ]
+}

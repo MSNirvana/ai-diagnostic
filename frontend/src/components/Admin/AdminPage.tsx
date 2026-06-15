@@ -9,12 +9,24 @@ import {
   createLLMConfig,
   deleteLLMConfig,
   patchLLMConfig,
+  fetchL1Stats,
+  fetchL2Stats,
+  fetchL3Stats,
+  fetchL4Stats,
 } from "../../api/client";
-import type { SkillRegistryItem, SkillVersionOut, LLMConfigOut } from "../../types";
+import type {
+  SkillRegistryItem,
+  SkillVersionOut,
+  LLMConfigOut,
+  L1Stats,
+  L2Stats,
+  L3Stats,
+  L4Stats,
+} from "../../types";
 import { AppShell } from "../Layout/AppShell";
 import "./AdminPage.css";
 
-type Tab = "skills" | "models";
+type Tab = "skills" | "models" | "l1" | "l2" | "l3" | "l4";
 
 type SkillGroupKey = "intake" | "questionnaire" | "core" | "professional" | "industry" | "delivery" | "other";
 type SkillFilterKey = SkillGroupKey | "all";
@@ -102,23 +114,21 @@ export function AdminPage() {
     >
       <section className="admin-shell">
         <div className="admin-tabs" aria-label="后台模块切换">
-          <button
-            type="button"
-            className={tab === "skills" ? "admin-tab admin-tab--on" : "admin-tab"}
-            onClick={() => setTab("skills")}
-          >
-            专家方法库
-          </button>
-          <button
-            type="button"
-            className={tab === "models" ? "admin-tab admin-tab--on" : "admin-tab"}
-            onClick={() => setTab("models")}
-          >
-            模型通道
-          </button>
+          <button type="button" className={tab === "skills" ? "admin-tab admin-tab--on" : "admin-tab"} onClick={() => setTab("skills")}>专家方法库</button>
+          <button type="button" className={tab === "models" ? "admin-tab admin-tab--on" : "admin-tab"} onClick={() => setTab("models")}>模型通道</button>
+          <span className="admin-tab-divider" />
+          <button type="button" className={tab === "l1" ? "admin-tab admin-tab--on" : "admin-tab"} onClick={() => setTab("l1")}>L1 Skill 生产</button>
+          <button type="button" className={tab === "l2" ? "admin-tab admin-tab--on" : "admin-tab"} onClick={() => setTab("l2")}>L2 Router 健康</button>
+          <button type="button" className={tab === "l3" ? "admin-tab admin-tab--on" : "admin-tab"} onClick={() => setTab("l3")}>L3 案例飞轮</button>
+          <button type="button" className={tab === "l4" ? "admin-tab admin-tab--on" : "admin-tab"} onClick={() => setTab("l4")}>L4 Composer</button>
         </div>
 
-        {tab === "skills" ? <SkillsTab /> : <ModelsTab />}
+        {tab === "skills" && <SkillsTab />}
+        {tab === "models" && <ModelsTab />}
+        {tab === "l1" && <L1Tab />}
+        {tab === "l2" && <L2Tab />}
+        {tab === "l3" && <L3Tab />}
+        {tab === "l4" && <L4Tab />}
       </section>
     </AppShell>
   );
@@ -657,6 +667,205 @@ function ModelsTab() {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ── L1 Skill 生产线 ──────────────────────────────────────────────────────────
+
+function L1Tab() {
+  const [stats, setStats] = useState<L1Stats | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => { fetchL1Stats().then(setStats).catch(e => setErr(String(e))); }, []);
+
+  if (err) return <div className="admin-empty">加载失败：{err}</div>;
+  if (!stats) return <div className="admin-empty">加载中…</div>;
+
+  const VERDICT_LABEL: Record<string, string> = { pass: "✅ 通过", redo: "🔄 重做", fail: "❌ 失败", unknown: "—" };
+  const STATUS_LABEL: Record<string, string> = {
+    pending_human: "⏳ 待人审",
+    approved: "✅ 已上线",
+    rejected: "❌ 已拒绝",
+    not_ready: "🔴 未就绪",
+    no_eval: "—",
+  };
+
+  return (
+    <div className="loop-tab">
+      <h3 className="loop-tab__title">Skill 生产线状态</h3>
+      <div className="loop-stats-row">
+        <div className="loop-stat"><span className="loop-stat__num">{stats.total_configs}</span><span className="loop-stat__label">配置文件总数</span></div>
+        <div className="loop-stat loop-stat--warn"><span className="loop-stat__num">{stats.pending_review}</span><span className="loop-stat__label">待人审候选</span></div>
+        <div className="loop-stat loop-stat--ok"><span className="loop-stat__num">{stats.approved}</span><span className="loop-stat__label">已上线</span></div>
+        <div className="loop-stat loop-stat--err"><span className="loop-stat__num">{stats.failed}</span><span className="loop-stat__label">机器淘汰</span></div>
+      </div>
+      <h4 className="loop-tab__subtitle">候选详情</h4>
+      {stats.candidates.length === 0
+        ? <p className="admin-empty">暂无评测记录——先运行 /factory 生产候选</p>
+        : (
+          <table className="loop-table">
+            <thead>
+              <tr><th>Skill</th><th>机器判定</th><th>L1</th><th>L2通过率</th><th>信号准确率</th><th>异常</th><th>人审状态</th><th>人审备注</th></tr>
+            </thead>
+            <tbody>
+              {stats.candidates.map(c => (
+                <tr key={c.key} className={c.verdict === "fail" ? "loop-table__row--err" : c.review_status === "pending_human" ? "loop-table__row--warn" : ""}>
+                  <td><code>{c.key}</code><br /><small>{c.label ?? ""}</small></td>
+                  <td>{VERDICT_LABEL[c.verdict] ?? c.verdict}</td>
+                  <td>{c.l1_passed ? "✅" : "❌"}</td>
+                  <td>{(c.l2_rate * 100).toFixed(0)}%</td>
+                  <td>{(c.signal_accuracy * 100).toFixed(0)}%</td>
+                  <td>{c.error_count > 0 ? <span className="badge-err">{c.error_count}</span> : "—"}</td>
+                  <td>{STATUS_LABEL[c.review_status] ?? c.review_status}</td>
+                  <td><small>{c.review_notes ?? "—"}</small></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+    </div>
+  );
+}
+
+// ── L2 Router 健康 ────────────────────────────────────────────────────────────
+
+function L2Tab() {
+  const [stats, setStats] = useState<L2Stats | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => { fetchL2Stats().then(setStats).catch(e => setErr(String(e))); }, []);
+
+  if (err) return <div className="admin-empty">加载失败：{err}</div>;
+  if (!stats) return <div className="admin-empty">加载中…</div>;
+
+  const fpRate = (stats.keyword_false_positive_rate * 100).toFixed(0);
+  const missRate = (stats.missed_recall_rate * 100).toFixed(0);
+
+  return (
+    <div className="loop-tab">
+      <h3 className="loop-tab__title">Router 召回健康</h3>
+      <p className="loop-tab__desc">收集器在每次诊断后自动记录召回决策。样本攒够 50 条后可离线重训关键词权重。</p>
+      <div className="loop-stats-row">
+        <div className="loop-stat"><span className="loop-stat__num">{stats.total_samples}</span><span className="loop-stat__label">样本总数</span></div>
+        <div className={`loop-stat ${parseFloat(missRate) > 10 ? "loop-stat--err" : "loop-stat--ok"}`}>
+          <span className="loop-stat__num">{missRate}%</span><span className="loop-stat__label">漏召回率</span>
+        </div>
+        <div className={`loop-stat ${parseFloat(fpRate) > 30 ? "loop-stat--warn" : "loop-stat--ok"}`}>
+          <span className="loop-stat__num">{fpRate}%</span><span className="loop-stat__label">关键词假阳性率</span>
+        </div>
+        <div className="loop-stat"><span className="loop-stat__num">{stats.keyword_recalls}</span><span className="loop-stat__label">关键词召回次数</span></div>
+      </div>
+      {stats.recent_missed.length > 0 && (
+        <div className="loop-alert">⚠️ 近期漏召回模块：{stats.recent_missed.join("、")}</div>
+      )}
+      <h4 className="loop-tab__subtitle">各 Skill 召回频次</h4>
+      <table className="loop-table">
+        <thead><tr><th>Skill</th><th>召回次数</th><th>来源分布</th></tr></thead>
+        <tbody>
+          {stats.skill_recall_frequency.map(s => (
+            <tr key={s.module}>
+              <td><code>{s.module}</code></td>
+              <td>{s.recall_count}</td>
+              <td>
+                {Object.entries(s.source_breakdown).map(([src, cnt]) => (
+                  <span key={src} className="source-badge">{src}:{cnt}</span>
+                ))}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ── L3 案例飞轮 ───────────────────────────────────────────────────────────────
+
+function L3Tab() {
+  const [stats, setStats] = useState<L3Stats | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => { fetchL3Stats().then(setStats).catch(e => setErr(String(e))); }, []);
+
+  if (err) return <div className="admin-empty">加载失败：{err}</div>;
+  if (!stats) return <div className="admin-empty">加载中…</div>;
+
+  return (
+    <div className="loop-tab">
+      <h3 className="loop-tab__title">案例飞轮资产</h3>
+      <p className="loop-tab__desc">每次诊断完成后自动脱敏归档。案例越多，系统对各行业理解越深——这是真护城河。</p>
+      <div className="loop-stats-row">
+        <div className="loop-stat"><span className="loop-stat__num">{stats.total_cases}</span><span className="loop-stat__label">脱敏案例总数</span></div>
+        <div className="loop-stat"><span className="loop-stat__num">{stats.industry_distribution.length}</span><span className="loop-stat__label">覆盖行业数</span></div>
+      </div>
+      <div className="loop-two-col">
+        <div>
+          <h4 className="loop-tab__subtitle">行业分布</h4>
+          {stats.industry_distribution.length === 0
+            ? <p className="admin-empty">暂无案例</p>
+            : (
+              <table className="loop-table">
+                <thead><tr><th>行业</th><th>案例数</th></tr></thead>
+                <tbody>
+                  {stats.industry_distribution.map(d => (
+                    <tr key={d.industry}><td>{d.industry}</td><td>{d.count}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+        </div>
+        <div>
+          <h4 className="loop-tab__subtitle">最近归档</h4>
+          {stats.recent_cases.length === 0
+            ? <p className="admin-empty">暂无归档</p>
+            : (
+              <table className="loop-table">
+                <thead><tr><th>行业</th><th>业务描述</th><th>召回 Skill</th><th>归档时间</th></tr></thead>
+                <tbody>
+                  {stats.recent_cases.map(c => (
+                    <tr key={c.id}>
+                      <td>{c.industry}</td>
+                      <td><small>{c.company_profile || "—"}</small></td>
+                      <td><small>{c.skills_used.join("、") || "—"}</small></td>
+                      <td><small>{c.created_at.slice(0, 16)}</small></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── L4 Composer 质量 ─────────────────────────────────────────────────────────
+
+function L4Tab() {
+  const [stats, setStats] = useState<L4Stats | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => { fetchL4Stats().then(setStats).catch(e => setErr(String(e))); }, []);
+
+  if (err) return <div className="admin-empty">加载失败：{err}</div>;
+  if (!stats) return <div className="admin-empty">加载中…</div>;
+
+  return (
+    <div className="loop-tab">
+      <h3 className="loop-tab__title">Composer / 作战方案质量</h3>
+      <p className="loop-tab__desc">Composer 三层架构（骨架→LLM叙事改写→critic回退）的运行指标与用户反馈。</p>
+      <div className="loop-stats-row">
+        <div className="loop-stat"><span className="loop-stat__num">{stats.total_diagnoses}</span><span className="loop-stat__label">总诊断次数</span></div>
+        <div className="loop-stat"><span className="loop-stat__num">{stats.recent_feedback_count}</span><span className="loop-stat__label">近期反馈数</span></div>
+        <div className={`loop-stat ${(stats.avg_rating ?? 0) >= 4 ? "loop-stat--ok" : stats.avg_rating !== null ? "loop-stat--warn" : ""}`}>
+          <span className="loop-stat__num">{stats.avg_rating !== null ? stats.avg_rating.toFixed(1) : "—"}</span>
+          <span className="loop-stat__label">平均评分（/5）</span>
+        </div>
+        <div className={`loop-stat ${(stats.useful_rate ?? 0) >= 0.7 ? "loop-stat--ok" : stats.useful_rate !== null ? "loop-stat--warn" : ""}`}>
+          <span className="loop-stat__num">{stats.useful_rate !== null ? `${(stats.useful_rate * 100).toFixed(0)}%` : "—"}</span>
+          <span className="loop-stat__label">有用率（👍）</span>
+        </div>
+      </div>
+      {stats.recent_feedback_count === 0 && (
+        <p className="admin-empty">暂无反馈——用户完成诊断并评分后这里会出现数据。</p>
+      )}
     </div>
   );
 }
