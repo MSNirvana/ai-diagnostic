@@ -35,6 +35,19 @@ async def _ensure_sqlite_columns(conn) -> None:
     if "war_room_plan_json" not in diagnosis_columns:
         await conn.execute(text("ALTER TABLE diagnosisrecord ADD COLUMN war_room_plan_json TEXT"))
 
+    # 顾问审核流新增列（诊断流水线 v2）。已有库 create_all 不会 ALTER 旧表，需手动补列。
+    review_columns = {
+        "review_status": "TEXT DEFAULT 'approved'",  # 旧记录视为已通过，不卡住历史
+        "assigned_to": "TEXT",
+        "reviewed_by": "TEXT",
+        "reviewed_at": "TIMESTAMP",
+        "consultant_notes_json": "TEXT",
+        "primary_module": "TEXT DEFAULT ''",
+    }
+    for col, col_type in review_columns.items():
+        if col not in diagnosis_columns:
+            await conn.execute(text(f"ALTER TABLE diagnosisrecord ADD COLUMN {col} {col_type}"))
+
     project_result = await conn.execute(text("PRAGMA table_info(project)"))
     project_columns = {row[1] for row in project_result.fetchall()}
     if "war_room_plan_json" not in project_columns:

@@ -145,6 +145,9 @@ export function ChatStep({
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const startedRef = useRef(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const composingRef = useRef(false);   // 输入法合成中（拼音/英文候选未上屏）
+  const prevLoadingRef = useRef(false);
 
   // 续聊用已有 session；新诊断不在挂载时建空会话，避免用户只点进页面就污染历史。
   useEffect(() => {
@@ -160,6 +163,14 @@ export function ChatStep({
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, loading, phase, problemMap]);
+
+  // 发送结束（loading 由 true 变 false）后自动把焦点送回输入框，免去再点一次
+  useEffect(() => {
+    if (prevLoadingRef.current && !loading && phase !== "done") {
+      textareaRef.current?.focus();
+    }
+    prevLoadingRef.current = loading;
+  }, [loading, phase]);
 
   const send = async () => {
     const text = draft.trim();
@@ -189,7 +200,12 @@ export function ChatStep({
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // 输入法合成中（拼音选词、英文候选）回车只用于确认候选，不发送。
+    // e.nativeEvent.isComposing 覆盖大部分浏览器；composingRef 兜底（部分输入法不触发 isComposing）。
     if (e.key === "Enter" && !e.shiftKey) {
+      if (composingRef.current || e.nativeEvent.isComposing || e.keyCode === 229) {
+        return;
+      }
       e.preventDefault();
       void send();
     }
@@ -260,13 +276,17 @@ export function ChatStep({
 
         <div className="chat-input-bar">
           <textarea
+            ref={textareaRef}
             className="chat-input"
             rows={2}
             placeholder={inputPlaceholder}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={onKeyDown}
+            onCompositionStart={() => { composingRef.current = true; }}
+            onCompositionEnd={() => { composingRef.current = false; }}
             disabled={loading}
+            autoFocus
           />
           <button
             type="button"
