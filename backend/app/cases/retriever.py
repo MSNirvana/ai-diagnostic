@@ -24,6 +24,11 @@ from app.db.models import CaseAsset
 MAX_CASES = 3
 # 候选池上限：先按标签粗筛拿一批，再在内存里精排，避免全表扫描。
 CANDIDATE_POOL = 50
+# 最小相似度门槛：低于此分不注入。宁可返回 0 条，也不拿弱相关案例当"先例"稀释判断。
+# 打分见 _score：同模块+4 / 同场景+3 / 同行业+2 / skills命中+1。
+# 设 3 = 至少要"同场景"或"同模块"级别的强相关；光"同行业"(2) 不够格，
+# 必须再叠加 skills 命中(+1) 等信号才进。
+MIN_SCORE = 3
 
 
 def _score(case: CaseAsset, module: str, industry: str, scenario_key: str) -> int:
@@ -122,7 +127,7 @@ async def retrieve_similar_cases(
             if exclude_record_id and case.source_record_id == exclude_record_id:
                 continue
             s = _score(case, module, industry, scenario_key)
-            if s <= 0:
+            if s < MIN_SCORE:   # 弱相关（如仅同行业）直接丢弃，不硬凑 top-K
                 continue
             scored.append((s, case))
 

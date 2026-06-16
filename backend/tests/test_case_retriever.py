@@ -76,13 +76,15 @@ def test_to_brief_extracts_module_finding():
 @pytest.mark.asyncio
 async def test_retrieve_ranks_by_similarity(db_session):
     async with db_session() as session:
-        # 强相关：同行业同场景同主战场
+        # 强相关：同行业同场景同主战场（10分）
         session.add(_case(industry="新能源厨电", scenario_key="channel_franchise",
                           primary_module="channel_franchise", skills_used=["channel_franchise"],
                           summary={"channel_franchise": {"signal": "red", "conclusion": "招商慢"}}))
-        # 弱相关：只同行业
-        session.add(_case(industry="新能源厨电", scenario_key="dtc", primary_module="market"))
-        # 不相关：完全不同
+        # 中相关：同行业同场景但主战场不同（场景3+行业2=5分，过门槛）
+        session.add(_case(industry="新能源厨电", scenario_key="channel_franchise", primary_module="market"))
+        # 弱相关：只同行业（2分，低于门槛被丢）
+        session.add(_case(industry="新能源厨电", scenario_key="dtc", primary_module="finance"))
+        # 不相关：完全不同（0分）
         session.add(_case(industry="教育", scenario_key="edu", primary_module="finance"))
         await session.commit()
 
@@ -90,10 +92,36 @@ async def test_retrieve_ranks_by_similarity(db_session):
             session, module="channel_franchise",
             industry="新能源厨电", scenario_key="channel_franchise",
         )
-        assert len(cases) == 2  # 不相关的那条得分0被过滤
+        assert len(cases) == 2  # 仅同行业(2分)和不相关(0分)都被门槛挡掉
         # 最相似的排第一
         assert cases[0]["primary_module"] == "channel_franchise"
         assert cases[0]["module_finding"]["signal"] == "red"
+
+
+@pytest.mark.asyncio
+async def test_retrieve_drops_below_threshold(db_session):
+    """只同行业（弱相关，2分 < MIN_SCORE）不应被当作先例注入——宁缺毋滥。"""
+    async with db_session() as session:
+        # 同行业，但模块和场景都不同：仅 +2 分
+        session.add(_case(industry="餐饮", scenario_key="dtc", primary_module="market"))
+        await session.commit()
+        cases = await retrieve_similar_cases(
+            session, module="channel_franchise", industry="餐饮", scenario_key="channel_franchise",
+        )
+        assert cases == []  # 低于门槛，宁可返回空也不硬凑
+
+
+@pytest.mark.asyncio
+async def test_retrieve_industry_plus_skill_passes_threshold(db_session):
+    """同行业(+2) + skills命中(+1) = 3 分，刚好达门槛，应被召回。"""
+    async with db_session() as session:
+        session.add(_case(industry="餐饮", scenario_key="dtc", primary_module="market",
+                          skills_used=["channel_franchise"]))
+        await session.commit()
+        cases = await retrieve_similar_cases(
+            session, module="channel_franchise", industry="餐饮", scenario_key="channel_franchise",
+        )
+        assert len(cases) == 1
 
 
 @pytest.mark.asyncio
