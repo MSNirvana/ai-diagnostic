@@ -18,6 +18,7 @@ class HistorySummary(BaseModel):
     id: str
     created_at: datetime
     module_count: int
+    review_status: str = "approved"   # 老板侧据此显示"待审核/已出报告"
 
 
 class HistoryDetail(BaseModel):
@@ -27,6 +28,8 @@ class HistoryDetail(BaseModel):
     results: list
     war_room_plan: dict | None = None
     profile: dict | None = None
+    review_status: str = "approved"
+    consultant_notes: list[str] = []
 
 
 @router.get("/", response_model=list[HistorySummary])
@@ -45,7 +48,12 @@ async def list_history(
         answers = json.loads(r.answers_json)
         module_count = len(answers.get("answers", []))
         summaries.append(
-            HistorySummary(id=r.id, created_at=r.created_at, module_count=module_count)
+            HistorySummary(
+                id=r.id,
+                created_at=r.created_at,
+                module_count=module_count,
+                review_status=r.review_status,
+            )
         )
     return summaries
 
@@ -60,6 +68,12 @@ async def get_history(
     if record is None or record.user_id != user.id:
         raise HTTPException(status_code=404, detail="记录不存在")
     war_room_plan = await get_or_build_war_room_plan(session, record)
+    notes = []
+    if record.consultant_notes_json:
+        try:
+            notes = json.loads(record.consultant_notes_json)
+        except Exception:
+            notes = []
     return HistoryDetail(
         id=record.id,
         created_at=record.created_at,
@@ -67,4 +81,6 @@ async def get_history(
         results=json.loads(record.results_json),
         war_room_plan=war_room_plan.model_dump() if war_room_plan else None,
         profile=json.loads(record.profile_json) if record.profile_json else None,
+        review_status=record.review_status,
+        consultant_notes=notes,
     )

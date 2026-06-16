@@ -50,7 +50,12 @@ export function ModuleCard({ result, recordId, skillVersionId }: ModuleCardProps
       <div className="module-card__evidence-block">
         <span className="module-card__section-label">关键依据</span>
         <ul className="module-card__evidence">
-          {result.evidence.map((e, i) => <li key={i}>{e.text}</li>)}
+          {result.evidence.map((e, i) => (
+            <li key={i}>
+              {e.text}
+              {e.source && <span className="evidence-source">来源：{e.source}</span>}
+            </li>
+          ))}
         </ul>
       </div>
       <div className="module-card__actions">

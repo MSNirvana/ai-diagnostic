@@ -141,6 +141,7 @@ export interface DiagnoseResult {
   skill_version_ids: Record<string, string>;
   triage: TriageSummary;
   war_room_plan?: WarRoomPlan;
+  review_status?: string;   // pending_review | approved | rejected | anonymous
 }
 export interface ModuleAnswer {
   module: string;
@@ -153,6 +154,7 @@ export interface DiagnosisSummary {
   id: string;
   created_at: string;
   module_count: number;
+  review_status?: string;
 }
 
 export interface DiagnosisDetail {
@@ -162,6 +164,8 @@ export interface DiagnosisDetail {
   results: ModuleResult[];
   war_room_plan?: WarRoomPlan | null;
   profile: Record<string, string> | null;
+  review_status?: string;
+  consultant_notes?: string[];
 }
 
 export interface BusinessProfile {
@@ -435,5 +439,28 @@ export interface L4Stats {
   recent_feedback_count: number;
   avg_rating: number | null;
   useful_rate: number | null;
+}
+
+// ── 顾问审核队列类型 ──────────────────────────────────────────────────────────
+
+export interface ReviewQueueItem {
+  record_id: string;
+  user_id: string;
+  primary_module: string;
+  created_at: string;
+  sla_deadline: string;
+  hours_remaining: number;
+  overdue: boolean;
+  assigned_to: string | null;
+}
+
+export interface ReviewDetail {
+  record_id: string;
+  review_status: string;
+  primary_module: string;
+  results: ModuleResult[];
+  war_room_plan: WarRoomPlan | null;
+  consultant_notes: string[];
+  created_at: string;
 }
 

@@ -34,7 +34,7 @@ class DiagnoseResponse(BaseModel):
     skill_version_ids: dict[str, str] = Field(default_factory=dict)
     triage: TriageSummary = Field(default_factory=TriageSummary)
     war_room_plan: WarRoomPlan
-
+    review_status: str = "pending_review"   # 老板侧据此显示"待审核/已出报告"
 
 async def _merge_stored_files(
     session: AsyncSession, questionnaire: Questionnaire
@@ -86,6 +86,8 @@ async def _save_history(
         profile_json=profile_json,
         session_id=sid,
         project_id=questionnaire.project_id,
+        review_status="pending_review",            # 伪异步：机器诊断完成即待审核
+        primary_module=triage.primary_module or "",  # 用于审核分派
     )
     war_room_plan.record_id = record.id
     record.war_room_plan_json = war_room_plan.model_dump_json()
@@ -170,6 +172,8 @@ async def diagnose(
         skill_version_ids=outcome.skill_version_ids,
         triage=outcome.triage,
         war_room_plan=war_room_plan,
+        # 登录用户走审核流（pending_review）；匿名无记录，直接视为已出（无审核）
+        review_status="pending_review" if record_id else "anonymous",
     )
 
 
@@ -242,6 +246,8 @@ async def diagnose_with_upload(
         skill_version_ids=outcome.skill_version_ids,
         triage=outcome.triage,
         war_room_plan=war_room_plan,
+        # 登录用户走审核流（pending_review）；匿名无记录，直接视为已出（无审核）
+        review_status="pending_review" if record_id else "anonymous",
     )
 
 

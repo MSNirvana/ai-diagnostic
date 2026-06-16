@@ -65,6 +65,14 @@ class DiagnosisRecord(SQLModel, table=True):
     session_id: str | None = Field(default=None, index=True)
     # 所属项目，可空（兼容旧数据）
     project_id: str | None = Field(default=None, index=True)
+    # —— 顾问审核流（诊断流水线阶段4，伪异步）——
+    # 机器诊断同步跑完即 pending_review；顾问审核通过才 approved，老板才看到完整报告。
+    review_status: str = Field(default="pending_review", index=True)  # pending_review|approved|rejected
+    assigned_to: str | None = Field(default=None, index=True)  # 分派给哪个顾问（user_id/邮箱）
+    reviewed_by: str | None = None
+    reviewed_at: datetime | None = None
+    consultant_notes_json: str | None = None  # 顾问补充/修改的判断
+    primary_module: str = ""                   # 主战场，用于审核分派
 
 
 class DiagnosisSession(SQLModel, table=True):
@@ -217,3 +225,27 @@ class CaseAsset(SQLModel, table=True):
     # —— 复盘回填字段（7/14/30 天后），唯一可信的 PMF 信号，不可自动 ——
     effectiveness_score: float | None = None          # 老板执行后 KPI 是否改善
     consultant_notes_json: str | None = None          # 顾问标注：哪些洞察真有用
+
+
+class IndustryBenchmark(SQLModel, table=True):
+    """外部行业基准知识库——"抓取即沉淀"的载体（诊断流水线阶段2）。
+
+    每次诊断需要外部基准时，先查这张表：同 scenario+module+data_type 且未过期则直接用，
+    未命中才实时抓（LLM 估算 / 联网检索），抓到后写回这里。库越用越厚，抓取成本越来越低。
+
+    过期分级（expires_at 由 data_type 决定）：
+    - benchmark（行业基准）：30 天
+    - competitor（竞品数据）：7 天
+    - policy（政策监管）：1 天
+    """
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    created_at: datetime = Field(default_factory=_now)
+    scenario_key: str = Field(default="", index=True)
+    module: str = Field(default="", index=True)
+    data_type: str = Field(default="benchmark", index=True)  # benchmark|competitor|policy
+    keywords_json: str = "[]"               # 抓取时用的关键词
+    payload_json: str = "{}"                # 结构化基准数据
+    source: str = ""                        # llm_estimate | web_search | manual
+    needs_verification: bool = False        # LLM 估算未联网核实 = True
+    fetched_at: datetime = Field(default_factory=_now)
+    expires_at: datetime = Field(index=True)

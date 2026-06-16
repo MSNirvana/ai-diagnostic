@@ -13,6 +13,9 @@ import {
   fetchL2Stats,
   fetchL3Stats,
   fetchL4Stats,
+  fetchReviewQueue,
+  fetchReviewDetail,
+  submitReview,
 } from "../../api/client";
 import type {
   SkillRegistryItem,
@@ -22,11 +25,13 @@ import type {
   L2Stats,
   L3Stats,
   L4Stats,
+  ReviewQueueItem,
+  ReviewDetail,
 } from "../../types";
 import { AppShell } from "../Layout/AppShell";
 import "./AdminPage.css";
 
-type Tab = "skills" | "models" | "l1" | "l2" | "l3" | "l4";
+type Tab = "skills" | "models" | "review" | "l1" | "l2" | "l3" | "l4";
 
 type SkillGroupKey = "intake" | "questionnaire" | "core" | "professional" | "industry" | "delivery" | "other";
 type SkillFilterKey = SkillGroupKey | "all";
@@ -114,6 +119,7 @@ export function AdminPage() {
     >
       <section className="admin-shell">
         <div className="admin-tabs" aria-label="后台模块切换">
+          <button type="button" className={tab === "review" ? "admin-tab admin-tab--on" : "admin-tab"} onClick={() => setTab("review")}>审核队列</button>
           <button type="button" className={tab === "skills" ? "admin-tab admin-tab--on" : "admin-tab"} onClick={() => setTab("skills")}>专家方法库</button>
           <button type="button" className={tab === "models" ? "admin-tab admin-tab--on" : "admin-tab"} onClick={() => setTab("models")}>模型通道</button>
           <span className="admin-tab-divider" />
@@ -123,6 +129,7 @@ export function AdminPage() {
           <button type="button" className={tab === "l4" ? "admin-tab admin-tab--on" : "admin-tab"} onClick={() => setTab("l4")}>L4 Composer</button>
         </div>
 
+        {tab === "review" && <ReviewTab />}
         {tab === "skills" && <SkillsTab />}
         {tab === "models" && <ModelsTab />}
         {tab === "l1" && <L1Tab />}
@@ -666,6 +673,153 @@ function ModelsTab() {
             )}
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// ── 顾问审核队列 ──────────────────────────────────────────────────────────────
+
+const SIGNAL_LABEL: Record<string, string> = { red: "🔴 红灯", yellow: "🟡 黄灯", green: "🟢 绿灯" };
+
+function ReviewTab() {
+  const [queue, setQueue] = useState<ReviewQueueItem[] | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [detail, setDetail] = useState<ReviewDetail | null>(null);
+  const [noteDraft, setNoteDraft] = useState("");
+  const [reviewer, setReviewer] = useState("");
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  function reload() {
+    fetchReviewQueue().then(setQueue).catch((e) => setErr(String(e)));
+  }
+  useEffect(reload, []);
+
+  function open(recordId: string) {
+    setSelected(recordId);
+    setDetail(null);
+    setMsg(null);
+    fetchReviewDetail(recordId).then(setDetail).catch((e) => setErr(String(e)));
+  }
+
+  async function act(action: "approve" | "reject" | "annotate") {
+    if (!selected) return;
+    const notes = noteDraft.trim() ? [noteDraft.trim()] : [];
+    try {
+      const updated = await submitReview(selected, { action, notes, reviewer: reviewer.trim() || undefined });
+      setDetail(updated);
+      setNoteDraft("");
+      setMsg(action === "approve" ? "已通过，老板可见报告" : action === "reject" ? "已打回" : "注释已保存");
+      reload();
+    } catch (e) {
+      setErr(String(e));
+    }
+  }
+
+  if (err) return <div className="admin-empty">出错：{err}</div>;
+
+  return (
+    <div className="review-tab">
+      <div className="review-layout">
+        <aside className="review-queue">
+          <h3 className="loop-tab__title">待审核队列（24h SLA）</h3>
+          {queue === null
+            ? <p className="admin-empty">加载中…</p>
+            : queue.length === 0
+              ? <p className="admin-empty">队列已清空 🎉</p>
+              : (
+                <ul className="review-queue__list">
+                  {queue.map((item) => (
+                    <li key={item.record_id}>
+                      <button
+                        type="button"
+                        className={`review-queue__item ${selected === item.record_id ? "review-queue__item--on" : ""} ${item.overdue ? "review-queue__item--overdue" : ""}`}
+                        onClick={() => open(item.record_id)}
+                      >
+                        <span className="review-queue__module">{item.primary_module || "通用"}</span>
+                        <span className={`review-queue__sla ${item.overdue ? "is-overdue" : item.hours_remaining < 6 ? "is-urgent" : ""}`}>
+                          {item.overdue ? `超期 ${Math.abs(item.hours_remaining).toFixed(0)}h` : `剩 ${item.hours_remaining.toFixed(0)}h`}
+                        </span>
+                        <span className="review-queue__time">{item.created_at.slice(0, 16)}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+        </aside>
+
+        <section className="review-detail">
+          {!selected
+            ? <p className="admin-empty">从左侧选一条诊断开始审核</p>
+            : detail === null
+              ? <p className="admin-empty">加载诊断内容…</p>
+              : (
+                <>
+                  <div className="review-detail__head">
+                    <h3 className="loop-tab__title">诊断草稿 · {detail.primary_module || "通用"}</h3>
+                    <span className={`review-status-badge review-status-badge--${detail.review_status}`}>
+                      {detail.review_status === "approved" ? "已通过" : detail.review_status === "rejected" ? "已打回" : "待审核"}
+                    </span>
+                  </div>
+
+                  {detail.results.map((r, i) => (
+                    <div key={i} className="review-result">
+                      <div className="review-result__head">
+                        <code>{r.module}</code>
+                        <span>{SIGNAL_LABEL[r.signal] ?? r.signal}</span>
+                      </div>
+                      <p className="review-result__conclusion">{r.conclusion}</p>
+                      {r.evidence.length > 0 && (
+                        <ul className="review-result__evidence">
+                          {r.evidence.map((ev, j) => (
+                            <li key={j}>
+                              {ev.text}
+                              {ev.source && <span className="source-badge">来源：{ev.source}</span>}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {r.actions.length > 0 && (
+                        <div className="review-result__actions">
+                          <strong>建议行动：</strong>{r.actions.join("；")}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+
+                  {detail.consultant_notes.length > 0 && (
+                    <div className="review-notes">
+                      <strong>顾问补充意见：</strong>
+                      <ul>{detail.consultant_notes.map((n, i) => <li key={i}>{n}</li>)}</ul>
+                    </div>
+                  )}
+
+                  {detail.review_status === "pending_review" && (
+                    <div className="review-actions">
+                      <input
+                        className="review-actions__reviewer"
+                        placeholder="审核人（选填）"
+                        value={reviewer}
+                        onChange={(e) => setReviewer(e.target.value)}
+                      />
+                      <textarea
+                        className="review-actions__note"
+                        placeholder="补充判断 / 修改意见（选填）"
+                        value={noteDraft}
+                        onChange={(e) => setNoteDraft(e.target.value)}
+                      />
+                      <div className="review-actions__btns">
+                        <button type="button" className="btn-primary" onClick={() => act("approve")}>通过并交付</button>
+                        <button type="button" className="btn-ghost" onClick={() => act("annotate")} disabled={!noteDraft.trim()}>仅保存注释</button>
+                        <button type="button" className="btn-danger" onClick={() => act("reject")}>打回</button>
+                      </div>
+                    </div>
+                  )}
+                  {msg && <p className="review-msg">{msg}</p>}
+                </>
+              )}
+        </section>
       </div>
     </div>
   );

@@ -120,6 +120,24 @@ export function HistoryPage() {
               <span>Diagnostic Record</span>
               <h2>诊断时间：{fmt(detail.created_at)}</h2>
             </div>
+            {detail.review_status === "pending_review" && (
+              <div className="review-banner review-banner--pending">
+                <strong>顾问审核中</strong>
+                <span>诊断已生成，正由专业顾问复核，24 小时内出具最终报告。以下为初步结果。</span>
+              </div>
+            )}
+            {detail.review_status === "approved" && (
+              <div className="review-banner review-banner--approved">
+                <strong>✅ 顾问已审核</strong>
+                <span>本报告已经专业顾问复核确认。</span>
+              </div>
+            )}
+            {detail.consultant_notes && detail.consultant_notes.length > 0 && (
+              <div className="review-banner review-banner--notes">
+                <strong>顾问补充意见</strong>
+                <ul>{detail.consultant_notes.map((n, i) => <li key={i}>{n}</li>)}</ul>
+              </div>
+            )}
             {detail.war_room_plan ? (
               <WarRoomPage plan={detail.war_room_plan} />
             ) : (
@@ -169,6 +187,12 @@ export function HistoryPage() {
               <button key={item.id} type="button" className="history-item" onClick={() => openDetail(item.id)}>
                 <span className="history-item__date">{fmt(item.created_at)}</span>
                 <span className="history-item__count">{item.module_count} 个模块</span>
+                {item.review_status === "pending_review" && (
+                  <span className="history-item__status history-item__status--pending">审核中</span>
+                )}
+                {item.review_status === "approved" && (
+                  <span className="history-item__status history-item__status--approved">已审核</span>
+                )}
                 <span className="history-item__arrow">查看</span>
               </button>
             ))}

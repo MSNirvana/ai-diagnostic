@@ -68,6 +68,8 @@ class ConfiguredExpertSkill(Skill):
             scenario_key=scenario.key,
             scenario_label=scenario.label,
             evidence_lens=list(scenario.evidence_lens),
+            llm=llm,
+            session=session,
         )
         data_requests = missing_data_requests(answer, self.config.data_requirements)
         prompt = json.dumps(

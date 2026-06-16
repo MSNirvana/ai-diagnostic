@@ -25,6 +25,8 @@ import type {
   L2Stats,
   L3Stats,
   L4Stats,
+  ReviewQueueItem,
+  ReviewDetail,
 } from "../types";
 import { getToken } from "../auth/authStore";
 
@@ -457,5 +459,32 @@ export async function fetchL3Stats(): Promise<L3Stats> {
 export async function fetchL4Stats(): Promise<L4Stats> {
   const resp = await fetch(`${BASE}/admin/loops/l4`, { headers: { ...authHeaders() } });
   if (!resp.ok) throw new Error(`L4 stats failed: ${resp.status}`);
+  return resp.json();
+}
+
+// ── 顾问审核 API ──────────────────────────────────────────────────────────────
+
+export async function fetchReviewQueue(): Promise<ReviewQueueItem[]> {
+  const resp = await fetch(`${BASE}/admin/review/queue`, { headers: { ...authHeaders() } });
+  if (!resp.ok) throw new Error(`审核队列加载失败: ${resp.status}`);
+  return resp.json();
+}
+
+export async function fetchReviewDetail(recordId: string): Promise<ReviewDetail> {
+  const resp = await fetch(`${BASE}/admin/review/${recordId}`, { headers: { ...authHeaders() } });
+  if (!resp.ok) throw new Error(`审核详情加载失败: ${resp.status}`);
+  return resp.json();
+}
+
+export async function submitReview(
+  recordId: string,
+  body: { action: "approve" | "reject" | "annotate"; notes?: string[]; reviewer?: string },
+): Promise<ReviewDetail> {
+  const resp = await fetch(`${BASE}/admin/review/${recordId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) throw new Error(`提交审核失败: ${resp.status}`);
   return resp.json();
 }

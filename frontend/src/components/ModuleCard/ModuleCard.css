@@ -383,3 +383,15 @@
     width: fit-content;
   }
 }
+
+/* 证据来源徽章 —— 全透明交付：每条依据标注出处 */
+.evidence-source {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 0.72rem;
+  color: #6366f1;
+  background: #eef2ff;
+  border-radius: 4px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}

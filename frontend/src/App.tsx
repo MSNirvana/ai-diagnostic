@@ -80,6 +80,12 @@ function ProjectDiagnoseView() {
 
       {diagnoseResult ? (
         <>
+          {diagnoseResult.review_status === "pending_review" && (
+            <div className="result-review-banner">
+              <strong>顾问审核中</strong>
+              <span>诊断已生成，正由专业顾问复核，24 小时内出具最终报告。以下为初步结果，可先行查看。</span>
+            </div>
+          )}
           <div className="result-actions">
             {diagnoseResult.war_room_plan && (
               <div className="result-view-switch" aria-label="诊断结果视图切换">
