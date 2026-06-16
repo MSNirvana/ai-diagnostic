@@ -11,3 +11,7 @@ frontend/tsconfig.tsbuildinfo
 # 运行时数据库
 backend/data/
 data/uploads/
+
+# 本地工具产物（Preview 配置、规划草稿）
+.claude/launch.json
+.claude/plans/
