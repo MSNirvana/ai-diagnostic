@@ -306,6 +306,32 @@ export interface ProjectMemoryEntry {
   source_id: string | null;
 }
 
+export interface ProfileField {
+  label: string;
+  value: string;
+}
+
+export interface ModuleFacts {
+  module: string;
+  label: string;
+  facts: ProfileField[];
+  has_data: boolean;
+}
+
+export interface ArchiveFile {
+  name: string;
+  module: string;
+  field: string;
+  uploaded_at: string;
+}
+
+export interface ProjectArchive {
+  profile: ProfileField[];
+  modules: ModuleFacts[];
+  files: ArchiveFile[];
+  last_updated: string | null;
+}
+
 export interface ProjectDetail {
   id: string;
   name: string;
@@ -316,6 +342,7 @@ export interface ProjectDetail {
   memory_entries: ProjectMemoryEntry[];
   sessions: ProjectSessionBrief[];
   records: ProjectRecordBrief[];
+  archive: ProjectArchive;
   war_room_plan?: WarRoomPlan | null;
 }
 

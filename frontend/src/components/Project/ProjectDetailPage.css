@@ -485,3 +485,249 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ── 企业事实档案（纯事实，不含信号/诊断判断）─────────────── */
+
+.workbench-hero__updated {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.pd-section__link {
+  margin-left: auto;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--accent, #4a6cf7);
+  font-weight: 600;
+}
+
+.pd-section__link:hover { text-decoration: underline; }
+
+.pd-archive-block {
+  margin-bottom: 26px;
+}
+
+.pd-archive-block:last-child { margin-bottom: 0; }
+
+.pd-archive-block__title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: 0.02em;
+}
+
+.pd-archive-block__hint {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+
+/* 企业基本盘 */
+.pd-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.pd-profile-item {
+  padding: 12px 14px;
+  border: 1px solid rgba(151, 164, 184, 0.2);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.pd-profile-item span {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+  margin-bottom: 4px;
+}
+
+.pd-profile-item p {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.45;
+}
+
+/* 经营数据档案：6 板块卡片 */
+.pd-fact-modules {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.pd-fact-card {
+  border: 1px solid rgba(151, 164, 184, 0.22);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.82);
+  padding: 14px 16px;
+}
+
+.pd-fact-card--empty {
+  background: rgba(151, 164, 184, 0.05);
+  border-style: dashed;
+}
+
+.pd-fact-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.pd-fact-card__label {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.pd-fact-card--empty .pd-fact-card__label {
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+.pd-fact-card__count {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.pd-fact-card__count--muted {
+  font-style: italic;
+}
+
+.pd-fact-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pd-fact-row {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.pd-fact-row span {
+  font-size: 12px;
+  color: var(--ink-soft);
+  line-height: 1.4;
+}
+
+.pd-fact-row p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink);
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.pd-fact-more {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--accent, #4a6cf7);
+  font-weight: 600;
+}
+
+.pd-fact-more:hover { text-decoration: underline; }
+
+/* 上传资料 */
+.pd-file-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pd-file-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid rgba(151, 164, 184, 0.2);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.pd-file-item__icon { font-size: 14px; }
+
+.pd-file-item__name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.pd-file-item__meta {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+/* 信息更新记录 */
+.pd-timeline-toggle {
+  width: 100%;
+  padding: 10px;
+  border: 1px dashed rgba(151, 164, 184, 0.4);
+  border-radius: var(--radius-md);
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--ink-soft);
+  transition: background 0.15s;
+}
+
+.pd-timeline-toggle:hover {
+  background: rgba(151, 164, 184, 0.07);
+  color: var(--ink);
+}
+
+.pd-update-list {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pd-update-item {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.pd-update-item time {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--ink-soft);
+  min-width: 130px;
+}
+
+@media (max-width: 640px) {
+  .pd-profile-grid,
+  .pd-fact-modules {
+    grid-template-columns: 1fr;
+  }
+}
