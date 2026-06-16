@@ -20,8 +20,8 @@ from app.skills.store import get_active_skill_version
 from app.skills.prompts import QUESTIONNAIRE_BASE, QUESTIONNAIRE_AB_A, QUESTIONNAIRE_AB_B
 from app.skills.scenario_catalog import detect_business_scenario, render_problem_text
 from app.skills.skill_network import (
+    default_core_skill_keys,
     diagnosis_skill_definitions,
-    questionnaire_skill_hints,
     resolve_skill_key,
     skill_definition,
     skill_label,
@@ -159,6 +159,17 @@ def _build_input(body: "GenerateRequest", mode: str) -> str:
 
 
 def _skill_context(text: str, focus: str | None = None) -> dict[str, list[dict]]:
+    """问卷生成上下文里的 skill 信息。
+
+    改1（2026-06）：砍掉关键词召回。问卷由 LLM 读问题地图直接生成，
+    skill 不再当"召回框架"限制 LLM 能问什么。
+
+    - available_skills：所有诊断 skill 的【数据契约】，作为参考清单喂给 LLM，
+      帮它把字段对齐到下游能消费的口径——这是必须保留的"普通话"，
+      砍了会让收上来的数据变成下游无法诊断的孤儿数据、且案例库字段不可比。
+    - recommended_skills：只在用户【明确指定】诊断焦点、或【完全冷启动】
+      （没有任何问题信息）时给值，作为兜底保证；不再用关键词猜。
+    """
     available_skills = [
         {
             "key": definition.key,
@@ -174,8 +185,42 @@ def _skill_context(text: str, focus: str | None = None) -> dict[str, list[dict]]
     ]
     return {
         "available_skills": available_skills,
-        "recommended_skills": questionnaire_skill_hints(text=text, focus=focus),
+        "recommended_skills": _recommended_skills(focus, cold_start=not text),
     }
+
+
+def _recommended_skills(focus: str | None, *, cold_start: bool) -> list[dict[str, object]]:
+    """只保留两种"该被保证覆盖"的 skill，不做关键词召回：
+    1) 用户在问题地图里明确点名的 diagnosis_focus
+    2) 完全冷启动（无任何问题信息）时的核心经营基线
+    其余交给 LLM 按问题自由生成。
+    """
+    selected: list[tuple[str, str]] = []
+    focus_key = resolve_skill_key(focus)
+    if focus_key:
+        selected.append((focus_key, "用户明确指定优先诊断"))
+    elif cold_start:
+        selected = [(key, "冷启动经营全景基线") for key in default_core_skill_keys()]
+
+    hints: list[dict[str, object]] = []
+    for key, reason in selected:
+        definition = skill_definition(key)
+        if definition is None:
+            continue
+        hints.append(
+            {
+                "key": definition.key,
+                "label": definition.label,
+                "category": definition.category,
+                "category_label": definition.category_label,
+                "description": definition.description,
+                "reason": reason,
+                "required_data": [
+                    requirement.label for requirement in definition.data_requirements[:4]
+                ],
+            }
+        )
+    return hints
 
 
 def _parse_questionnaire(raw: str) -> GeneratedQuestionnaire:
@@ -406,19 +451,87 @@ async def generate_questionnaire(
     llm: LLMClient = Depends(get_llm_client),
     session: AsyncSession = Depends(get_session),
 ) -> GeneratedQuestionnaire:
+    """单份动态问卷生成 + 质量把关。
+
+    把关 skill 保证产出"不比基础模板差"：模块数、字段数、痛点数、真实内容达标。
+    不达标 → 带失败原因自动重生成一次 → 仍不达标 → 422（前端报错可重试，不降级固定问卷）。
+    """
     context = _build_context(body, "coverage")
-    prompt = _build_input(body, "coverage")
+    base_prompt = _build_input(body, "coverage")
     system = await _prompt_for(session, "questionnaire_ab_a", _SYSTEM)
-    raw = await llm.complete(system=system, prompt=prompt)
     known = await collect_known_facts(session, body.project_id)
-    try:
-        data = parse_json_object(raw)
-        generated = GeneratedQuestionnaire.model_validate(data)
+
+    last_reasons: list[str] = []
+    for attempt in range(2):  # 首次 + 把关失败后重试 1 次
+        prompt = base_prompt
+        if last_reasons:
+            prompt = (
+                base_prompt
+                + "\n\n上一版问卷未达质量门，问题如下，请针对性改进后重新输出：\n- "
+                + "\n- ".join(last_reasons)
+            )
+        raw = await llm.complete(system=system, prompt=prompt)
+        try:
+            data = parse_json_object(raw)
+            generated = GeneratedQuestionnaire.model_validate(data)
+        except (ValueError, ValidationError):
+            last_reasons = ["输出不是合法问卷 JSON 结构"]
+            continue
+        # 把关在归一化之前跑——归一化会补齐字段/痛点，会掩盖 LLM 产出的单薄
+        passed, reasons = _questionnaire_quality_gate(generated)
+        if not passed:
+            last_reasons = reasons
+            continue
         normalized = _normalize_questionnaire(generated, mode="coverage", context=context)
         return _prefill_known(normalized, known)
-    except (ValueError, ValidationError):
-        # LLM 输出不合规：返回 422，前端降级到固定问卷
-        raise HTTPException(status_code=422, detail="问卷生成失败，请使用通用问卷")
+
+    raise HTTPException(
+        status_code=422,
+        detail="问卷质量未达标：" + "；".join(last_reasons or ["生成失败"]),
+    )
+
+
+# 质量门下限（对照基础模板：6 模块 / 每模块 5-6 字段 / 带痛点）。
+# 动态问卷可更聚焦，故模块数下限放宽到 4，但单模块质量不能塌。
+_GATE_MIN_MODULES = 4
+_GATE_MIN_FIELDS_PER_MODULE = 4
+_GATE_MIN_PAINS_PER_MODULE = 2
+
+
+def _questionnaire_quality_gate(
+    questionnaire: GeneratedQuestionnaire,
+) -> tuple[bool, list[str]]:
+    """问卷质量把关：检查 LLM 产出是否达到"不比基础模板差"的下限。
+
+    在归一化之前调用——归一化会补齐字段/痛点，跑在它之后就永远通过了，失去把关意义。
+    返回 (是否通过, 不通过原因列表)。
+    """
+    reasons: list[str] = []
+    modules = questionnaire.modules or []
+
+    if len(modules) < _GATE_MIN_MODULES:
+        reasons.append(
+            f"模块数 {len(modules)} 少于下限 {_GATE_MIN_MODULES}，覆盖面不足"
+        )
+
+    for module in modules:
+        label = (module.label or module.key or "未命名模块").strip()
+        # 真实字段：label 非空且不是纯占位
+        real_fields = [
+            f for f in module.fields
+            if (f.label or "").strip() and (f.key or "").strip()
+        ]
+        if len(real_fields) < _GATE_MIN_FIELDS_PER_MODULE:
+            reasons.append(
+                f"模块「{label}」有效字段仅 {len(real_fields)} 个，少于 {_GATE_MIN_FIELDS_PER_MODULE}"
+            )
+        real_pains = [p for p in module.pains if str(p).strip()]
+        if len(real_pains) < _GATE_MIN_PAINS_PER_MODULE:
+            reasons.append(
+                f"模块「{label}」痛点选项仅 {len(real_pains)} 个，少于 {_GATE_MIN_PAINS_PER_MODULE}"
+            )
+
+    return (len(reasons) == 0, reasons)
 
 
 class GenerateABResponse(BaseModel):

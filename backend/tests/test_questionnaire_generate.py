@@ -19,19 +19,40 @@ _PROFILE = {
     }
 }
 
+def _gate_module(key: str, label: str) -> dict:
+    """造一个能过质量门的模块：≥4 字段、≥2 痛点。"""
+    return {
+        "key": key,
+        "label": label,
+        "subtitle": f"{label}诊断",
+        "fields": [
+            {"key": f"{key}_f{i}", "label": f"{label}字段{i}", "placeholder": "如 xxx", "accept_file": i == 0}
+            for i in range(4)
+        ],
+        "pains": [f"{label}痛点1", f"{label}痛点2"],
+        "free_text_label": "补充说明",
+    }
+
+
 _VALID = {
     "modules": [
+        # 首个模块带 accept_file 字段，供断言；其余补足到 4 模块过质量门
         {
             "key": "market",
             "label": "市场与客户",
             "subtitle": "市场地位",
             "fields": [
                 {"key": "GMV", "label": "月GMV", "placeholder": "如 500万", "accept_file": True},
-                {"key": "gmv", "label": "月GMV重复", "placeholder": "如 600万", "accept_file": True},
+                {"key": "cac", "label": "获客成本", "placeholder": "如 200元", "accept_file": False},
+                {"key": "roi", "label": "投产比", "placeholder": "如 1.2", "accept_file": False},
+                {"key": "refund", "label": "退货率", "placeholder": "如 8%", "accept_file": False},
             ],
             "pains": ["流量见顶", "退货率高"],
             "free_text_label": "补充说明",
-        }
+        },
+        _gate_module("sales", "销售与转化"),
+        _gate_module("ops", "运营与供应链"),
+        _gate_module("finance", "财务与资本"),
     ]
 }
 
@@ -61,11 +82,17 @@ class SkillContextLLM:
                     "label": "法务合规",
                     "subtitle": "核验宣传、资质与合同风险",
                     "fields": [
-                        {"key": "ad_materials", "label": "广告素材", "placeholder": "上传近期投放素材", "accept_file": True}
+                        {"key": "ad_materials", "label": "广告素材", "placeholder": "上传近期投放素材", "accept_file": True},
+                        {"key": "license", "label": "资质认证", "placeholder": "上传资质文件", "accept_file": True},
+                        {"key": "contract", "label": "加盟合同条款", "placeholder": "关键条款", "accept_file": False},
+                        {"key": "promise", "label": "宣传承诺口径", "placeholder": "对外承诺", "accept_file": False},
                     ],
-                    "pains": ["广告合规风险"],
+                    "pains": ["广告合规风险", "合同责任不清"],
                     "free_text_label": "补充合规背景",
-                }
+                },
+                _gate_module("sales", "招商投放"),
+                _gate_module("product", "产品与交付"),
+                _gate_module("finance", "财务测算"),
             ]
         }, ensure_ascii=False)
 
@@ -102,6 +129,31 @@ def test_generate_malformed_output_returns_422(db_session):
     assert resp.status_code == 422
 
 
+class ThinLLM:
+    """总返回单薄问卷（1 模块 2 字段），应被质量门拦截。"""
+    async def complete(self, system: str, prompt: str) -> str:
+        return json.dumps({
+            "modules": [{
+                "key": "market", "label": "市场", "subtitle": "x",
+                "fields": [
+                    {"key": "a", "label": "字段A", "placeholder": "p", "accept_file": False},
+                    {"key": "b", "label": "字段B", "placeholder": "p", "accept_file": False},
+                ],
+                "pains": ["痛点1"],
+                "free_text_label": "补充",
+            }]
+        }, ensure_ascii=False)
+
+
+def test_generate_thin_output_fails_quality_gate(db_session):
+    """质量门：单薄问卷（模块少/字段少）重试后仍不达标 → 422，不降级。"""
+    app.dependency_overrides[get_llm_client] = lambda: ThinLLM()
+    resp = client.post("/questionnaire/generate", json=_PROFILE)
+    app.dependency_overrides.pop(get_llm_client, None)
+    assert resp.status_code == 422
+    assert "质量未达标" in resp.json()["detail"]
+
+
 def test_generate_injects_extensible_skill_network_context(db_session):
     app.dependency_overrides[get_llm_client] = lambda: SkillContextLLM()
     resp = client.post("/questionnaire/generate", json={**_PROFILE, "problem_map": {
@@ -124,5 +176,11 @@ def test_generate_injects_extensible_skill_network_context(db_session):
     assert resp.status_code == 200
     body = resp.json()
     keys = [module["key"] for module in body["modules"]]
+    # 改1：问卷由 LLM 主导生成，不再用关键词召回硬塞模块。
+    # 1) 用户明确指定的 diagnosis_focus 必须被保证覆盖
     assert "legal_compliance" in keys
-    assert "channel_franchise" in keys
+    # 2) skill 数据契约（available_skills/recommended_skills）仍注入 prompt 供 LLM 参考对齐字段
+    assert "available_skills" in SkillContextLLM.seen_prompt
+    assert "recommended_skills" in SkillContextLLM.seen_prompt
+    # 3) 不再出现"靠关键词从问题文本召回、但 LLM 并未生成"的模块（旧行为已移除）
+    assert "channel_franchise" not in keys

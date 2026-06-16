@@ -1,21 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { MODULES_AS_GENERATED } from "./modules";
 import type {
   ModuleAnswer,
   GeneratedModule,
-  ABQuestionnaire,
   ProblemSummary,
   ProblemMap,
   ChatMessage,
   UploadedFileOut,
 } from "../../types";
-import { generateABFromSummary, recordPreference, getSessionDetail, saveSessionDraft, uploadSessionFile, listSessionFiles, deleteSessionFile } from "../../api/client";
+import { generateFromSummary, getSessionDetail, saveSessionDraft, uploadSessionFile, listSessionFiles, deleteSessionFile } from "../../api/client";
 import { useAuth } from "../../auth/useAuth";
 import { saveDraft, loadDraft, clearDraft, clearLegacyDraft } from "../../utils/draft";
 import type { DraftState } from "../../utils/draft";
 import { StepIndicator } from "./StepIndicator";
 import { ChatStep } from "./ChatStep";
-import { ABChoicePage } from "./ABChoicePage";
 import "./Questionnaire.css";
 
 interface QuestionnaireProps {
@@ -30,7 +27,7 @@ interface QuestionnaireProps {
   resumeSessionId?: string;    // 续聊：要恢复的会话 id（从项目/历史页进入）
 }
 
-type Mode = "chatting" | "generating" | "ab_choice" | "ready";
+type Mode = "chatting" | "generating" | "ready" | "gen_error";
 
 export function Questionnaire({ onSubmit, projectId, resumeSessionId: resumeFromNav }: QuestionnaireProps) {
   const { token } = useAuth();
@@ -38,7 +35,6 @@ export function Questionnaire({ onSubmit, projectId, resumeSessionId: resumeFrom
 
   const [mode, setMode] = useState<Mode>("chatting");
   const [activeModules, setActiveModules] = useState<GeneratedModule[]>([]);
-  const [abOptions, setAbOptions] = useState<ABQuestionnaire | null>(null);
   const [storedSummary, setStoredSummary] = useState<ProblemSummary | null>(null);
   const [storedProblemMap, setStoredProblemMap] = useState<ProblemMap | null>(null);
   const [storedSessionId, setStoredSessionId] = useState<string | null>(null);
@@ -61,6 +57,7 @@ export function Questionnaire({ onSubmit, projectId, resumeSessionId: resumeFrom
   const [resumeMessages, setResumeMessages] = useState<ChatMessage[] | null>(null);
   // 续聊数据是否就绪：续聊场景下，加载完会话详情前不渲染 ChatStep（避免误建新会话）
   const [resumeReady, setResumeReady] = useState<boolean>(!resumeFromNav);
+  const [genError, setGenError] = useState<string | null>(null);
 
   // 续聊：从项目/历史页带 resumeSessionId 进来，加载会话详情后再渲染对话
   useEffect(() => {
@@ -195,8 +192,44 @@ export function Questionnaire({ onSubmit, projectId, resumeSessionId: resumeFrom
 
   const anyFilled = filled.some(Boolean);
 
-  const handleChatComplete = async (problemMap: ProblemMap, sessionId: string) => {
+  // 应用生成好的问卷模块，进入填写。二次诊断的 prefilled_value 注入 facts（不覆盖已填）。
+  const applyModules = (modules: GeneratedModule[]) => {
+    setActiveModules(modules);
+    setMode("ready");
+    setCurrent(0);
+    setFacts((prev) => {
+      const next = { ...prev };
+      for (const module of modules) {
+        for (const field of module.fields) {
+          if (field.prefilled_value && !(next[module.key]?.[field.key])) {
+            next[module.key] = { ...(next[module.key] ?? {}), [field.key]: field.prefilled_value };
+          }
+        }
+      }
+      return next;
+    });
+  };
+
+  const runGeneration = async (
+    summary: ProblemSummary,
+    problemMap: ProblemMap,
+  ) => {
     setMode("generating");
+    setGenError(null);
+    try {
+      // 单份动态问卷（后端已做质量把关，保证不比基础模板差）
+      const generated = await generateFromSummary(summary, projectId, problemMap);
+      applyModules(generated.modules);
+    } catch (e) {
+      // 不降级到固定问卷——固定模块让用户填无关字段、填了也白填。
+      // 直接报错，保留对话会话，让用户可重试生成或返回继续聊。
+      console.error("动态问卷生成失败：", e);
+      setGenError(e instanceof Error ? e.message : String(e));
+      setMode("gen_error");
+    }
+  };
+
+  const handleChatComplete = async (problemMap: ProblemMap, sessionId: string) => {
     setStoredSessionId(sessionId);
     setStoredProblemMap(problemMap);
     // ProblemMap 投影成 ProblemSummary（后端忽略多余字段）
@@ -213,51 +246,31 @@ export function Questionnaire({ onSubmit, projectId, resumeSessionId: resumeFrom
       stage: problemMap.stage,
     };
     setStoredSummary(summary);
-    try {
-      const ab = await generateABFromSummary(summary, projectId);
-      setAbOptions(ab);
-      setMode("ab_choice");
-    } catch {
-      // 降级：使用通用固定问卷
-      setActiveModules(MODULES_AS_GENERATED);
-      setMode("ready");
-      setCurrent(0);
+    await runGeneration(summary, problemMap);
+  };
+
+  // 生成失败后：重试动态生成
+  const retryGeneration = async () => {
+    if (storedSummary && storedProblemMap) {
+      await runGeneration(storedSummary, storedProblemMap);
     }
   };
 
-  const handleChoose = (chosen: "a" | "b", modules: GeneratedModule[]) => {
-    setActiveModules(modules);
-    setMode("ready");
-    setCurrent(0);
-    // 二次诊断预填：把后端带回的 prefilled_value 注入 facts，老板不必重填。
-    // 只填用户尚未填过的字段，不覆盖草稿恢复的值。
-    setFacts((prev) => {
-      const next = { ...prev };
-      for (const module of modules) {
-        for (const field of module.fields) {
-          if (field.prefilled_value && !(next[module.key]?.[field.key])) {
-            next[module.key] = { ...(next[module.key] ?? {}), [field.key]: field.prefilled_value };
-          }
-        }
+  // 生成失败后：返回继续聊（保留会话，重新载入对话历史）
+  const backToChat = async () => {
+    setGenError(null);
+    if (storedSessionId) {
+      try {
+        const detail = await getSessionDetail(storedSessionId);
+        setResumeSessionId(storedSessionId);
+        setResumeMessages(detail.messages);
+        setResumeReady(true);
+      } catch {
+        // 拉取失败也让用户回到对话（用内存里的消息兜底）
+        setResumeReady(true);
       }
-      return next;
-    });
-    if (abOptions && storedSummary) {
-      const profileLike = {
-        company_name: storedSummary.company_name,
-        industry: storedSummary.industry,
-        main_business: storedSummary.main_business,
-        business_model: storedSummary.business_model,
-        scale: storedSummary.scale,
-        stage: storedSummary.stage,
-      };
-      recordPreference(
-        profileLike,
-        abOptions.option_a,
-        abOptions.option_b,
-        chosen
-      ).catch(() => {});
     }
+    setMode("chatting");
   };
 
   const setFact = (modKey: string, fieldKey: string, value: string) => {
@@ -406,13 +419,28 @@ export function Questionnaire({ onSubmit, projectId, resumeSessionId: resumeFrom
     );
   }
 
-  if (mode === "ab_choice" && abOptions) {
+  if (mode === "gen_error") {
     return (
-      <ABChoicePage
-        optionA={abOptions.option_a}
-        optionB={abOptions.option_b}
-        onChoose={handleChoose}
-      />
+      <div className="questionnaire">
+        <div className="wizard-card gen-error-card">
+          <h2 className="gen-error-card__title">问卷生成失败</h2>
+          <p className="gen-error-card__msg">
+            没能基于你的问题生成定制问卷，可能是模型暂时不可用或网络波动。
+            你的对话记录已保留，可以直接重试，或返回继续补充对话再生成。
+          </p>
+          {genError && (
+            <p className="gen-error-card__detail">原因：{genError}</p>
+          )}
+          <div className="gen-error-card__actions">
+            <button type="button" className="btn-primary" onClick={() => void retryGeneration()}>
+              重试生成
+            </button>
+            <button type="button" className="btn-text" onClick={() => void backToChat()}>
+              返回继续聊
+            </button>
+          </div>
+        </div>
+      </div>
     );
   }
 

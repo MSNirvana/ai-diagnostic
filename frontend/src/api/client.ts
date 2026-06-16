@@ -28,7 +28,7 @@ import type {
   ReviewQueueItem,
   ReviewDetail,
 } from "../types";
-import { getToken } from "../auth/authStore";
+import { clearToken, getToken } from "../auth/authStore";
 
 const BASE = import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8000";
 
@@ -38,6 +38,9 @@ function authHeaders(): Record<string, string> {
 }
 
 async function errorMessage(resp: Response, fallback: string): Promise<string> {
+  if (resp.status === 401) {
+    clearToken();
+  }
   try {
     const body = await resp.json();
     if (typeof body?.detail === "string") return body.detail;
@@ -203,15 +206,51 @@ export async function sendChatMessage(
 
 export async function generateABFromSummary(
   summary: ProblemSummary,
-  projectId?: string
+  projectId?: string,
+  problemMap?: ProblemMap,
 ): Promise<ABQuestionnaire> {
   const resp = await fetch(`${BASE}/questionnaire/generate-ab`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify({ summary, project_id: projectId ?? null }),
+    body: JSON.stringify({
+      summary,
+      problem_map: problemMap ?? null,
+      project_id: projectId ?? null,
+    }),
   });
-  if (!resp.ok) throw new Error(`生成失败: ${resp.status}`);
+  if (!resp.ok) {
+    const detail = await resp.text().catch(() => "");
+    throw new Error(`生成失败: ${resp.status} ${detail}`.trim());
+  }
   return (await resp.json()) as ABQuestionnaire;
+}
+
+// 单份动态问卷生成（带后端质量把关）。失败抛错，前端报错可重试，不降级固定问卷。
+export async function generateFromSummary(
+  summary: ProblemSummary,
+  projectId?: string,
+  problemMap?: ProblemMap,
+): Promise<GeneratedQuestionnaire> {
+  const resp = await fetch(`${BASE}/questionnaire/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({
+      summary,
+      problem_map: problemMap ?? null,
+      project_id: projectId ?? null,
+    }),
+  });
+  if (!resp.ok) {
+    let detail = "";
+    try {
+      const body = await resp.json();
+      detail = body?.detail ?? "";
+    } catch {
+      detail = await resp.text().catch(() => "");
+    }
+    throw new Error(`${resp.status} ${detail}`.trim());
+  }
+  return (await resp.json()) as GeneratedQuestionnaire;
 }
 
 export async function recordPreference(
@@ -287,7 +326,7 @@ export async function createProject(name: string): Promise<ProjectSummary> {
 
 export async function listProjects(): Promise<ProjectSummary[]> {
   const resp = await fetch(`${BASE}/project/`, { headers: { ...authHeaders() } });
-  if (!resp.ok) throw new Error(`获取项目列表失败: ${resp.status}`);
+  if (!resp.ok) throw new Error(await errorMessage(resp, "获取项目列表失败"));
   return (await resp.json()) as ProjectSummary[];
 }
 

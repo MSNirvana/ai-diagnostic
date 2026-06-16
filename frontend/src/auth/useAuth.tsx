@@ -1,6 +1,6 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { getToken, setToken, clearToken } from "./authStore";
+import { AUTH_TOKEN_CHANGED, getToken, setToken, clearToken } from "./authStore";
 
 interface AuthContextType {
   token: string | null;
@@ -13,6 +13,16 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setTokenState] = useState<string | null>(getToken());
+
+  useEffect(() => {
+    const syncToken = () => setTokenState(getToken());
+    window.addEventListener(AUTH_TOKEN_CHANGED, syncToken);
+    window.addEventListener("storage", syncToken);
+    return () => {
+      window.removeEventListener(AUTH_TOKEN_CHANGED, syncToken);
+      window.removeEventListener("storage", syncToken);
+    };
+  }, []);
 
   const login = (t: string) => {
     setToken(t);

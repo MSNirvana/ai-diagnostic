@@ -466,3 +466,37 @@
   color: var(--ink-soft);
   margin-top: 4px;
 }
+
+/* 动态问卷生成失败卡片：不降级，提供重试 + 返回继续聊 */
+.gen-error-card {
+  text-align: center;
+}
+.gen-error-card__title {
+  font-size: 1.1rem;
+  color: var(--ink, #1a1a1a);
+  margin: 0 0 8px;
+}
+.gen-error-card__msg {
+  color: var(--ink-soft, #666);
+  font-size: 0.9rem;
+  line-height: 1.6;
+  margin: 0 auto 12px;
+  max-width: 460px;
+}
+.gen-error-card__detail {
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  color: #b91c1c;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 0.78rem;
+  margin: 0 auto 16px;
+  max-width: 460px;
+  word-break: break-all;
+}
+.gen-error-card__actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  align-items: center;
+}
