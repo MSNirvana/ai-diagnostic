@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.data.external import fetch_industry_benchmark
+from app.cases.retriever import retrieve_similar_cases
 from app.llm.base import LLMClient
 from app.models.questionnaire import ModuleAnswer
 from app.models.result import DataRequest, ModuleResult
@@ -71,6 +72,13 @@ class ConfiguredExpertSkill(Skill):
             llm=llm,
             session=session,
         )
+        # 相似历史案例（脱敏先例）注入——让积累的案例参与诊断（旁路，失败返回 []）
+        similar_cases = await retrieve_similar_cases(
+            session,
+            module=self.module,
+            industry=answer.context.get("industry", ""),
+            scenario_key=scenario.key,
+        )
         data_requests = missing_data_requests(answer, self.config.data_requirements)
         prompt = json.dumps(
             {
@@ -86,6 +94,13 @@ class ConfiguredExpertSkill(Skill):
                 "context": answer.context,
                 "problem_map": answer.context,
                 "benchmark": benchmark,
+                "similar_cases": similar_cases,
+                "similar_cases_usage": (
+                    "以上 similar_cases 是同行业/同场景的脱敏历史诊断先例，"
+                    "仅供参考典型信号与常见缺数据，不是本企业的事实。"
+                    "可借鉴判断方向，但 evidence 只能来自本企业 facts/上传数据，"
+                    "禁止把先例结论当作本企业证据引用。"
+                ) if similar_cases else "",
                 "data_requirements": [
                     {
                         "key": req.key,
