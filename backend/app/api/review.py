@@ -19,6 +19,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_session
 from app.db.models import DiagnosisRecord
+from app.db.models import Project
+from app.research.store import list_record_evidence
+from app.warroom.history import get_or_build_project_war_room_plan
 
 router = APIRouter(prefix="/admin/review")
 
@@ -48,6 +51,7 @@ class ReviewDetail(BaseModel):
     war_room_plan: dict | None
     consultant_notes: list[str]
     created_at: str
+    evidence_pack: list[dict] = []
 
 
 class ReviewAction(BaseModel):
@@ -112,6 +116,7 @@ async def review_detail(record_id: str, session: AsyncSession = Depends(get_sess
             notes = json.loads(r.consultant_notes_json)
         except Exception:
             notes = []
+    evidence_rows = await list_record_evidence(session, r.id, limit=200)
     return ReviewDetail(
         record_id=r.id,
         review_status=r.review_status,
@@ -120,6 +125,25 @@ async def review_detail(record_id: str, session: AsyncSession = Depends(get_sess
         war_room_plan=war_room,
         consultant_notes=notes,
         created_at=str(r.created_at),
+        evidence_pack=[
+            {
+                "id": row.id,
+                "job_id": row.job_id,
+                "project_id": row.project_id,
+                "record_id": row.record_id,
+                "module": row.module,
+                "source_stage": row.source_stage,
+                "provider": row.provider,
+                "query": row.query,
+                "title": row.title,
+                "url": row.url,
+                "snippet": row.snippet,
+                "source_type": row.source_type,
+                "credibility": row.credibility,
+                "retrieved_at": row.retrieved_at.isoformat(),
+            }
+            for row in evidence_rows
+        ],
     )
 
 
@@ -148,6 +172,7 @@ async def submit_review(
         r.review_status = "approved"
         r.reviewed_by = body.reviewer
         r.reviewed_at = _now()
+        await _publish_project_war_room_iteration(session, r)
     elif body.action == "reject":
         r.review_status = "rejected"
         r.reviewed_by = body.reviewer
@@ -160,3 +185,19 @@ async def submit_review(
     session.add(r)
     await session.commit()
     return await review_detail(record_id, session)
+
+
+async def _publish_project_war_room_iteration(
+    session: AsyncSession,
+    record: DiagnosisRecord,
+) -> None:
+    """审核通过后，按所有 approved 记录重建老板侧项目作战室。"""
+    if not record.project_id:
+        return
+    project = await session.get(Project, record.project_id)
+    if project is None:
+        return
+    project.war_room_plan_json = None
+    session.add(project)
+    await session.flush()
+    await get_or_build_project_war_room_plan(session, project)

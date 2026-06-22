@@ -1,0 +1,36 @@
+{
+  "module": "acquisition_efficiency",
+  "method": "acquisition-funnel-evidence",
+  "label": "获客投放效率诊断",
+  "category": "capability",
+  "description": "诊断付费获客是否健康、卡在素材点击/承接转化/单位经济哪一环。通用能力，按输入行业调整基准（DTC/跨境/本地/B2B 通吃）。",
+  "trigger_keywords": ["投放", "广告", "ROAS", "ROI", "获客成本", "CAC", "ACOS", "TACOS", "PPC", "信息流", "千川", "投流", "素材", "点击率", "转化率", "落地页", "竞价"],
+  "industry_kpis": ["ROAS", "CAC", "CTR", "CPC", "CVR", "转化率", "客单价", "毛利率", "复购率", "回本周期", "LTV"],
+  "scenarios": ["ecommerce_retail", "live_commerce", "b2b_solution", "local_service"],
+  "data_requirements": [
+    {
+      "key": "campaign_performance",
+      "label": "近30/90天投放报表",
+      "reason": "没有花费/曝光/点击/转化/CAC/ROAS的分层趋势，无法判断获客效率卡在素材、承接还是出价。",
+      "source_hint": "上传 campaign/adgroup/creative 维度的投放报表（巨量/千川/腾讯广告/亚马逊广告等导出）。",
+      "keywords": ["花费", "曝光", "点击", "CTR", "CPC", "转化", "CAC", "ROAS", "计划", "ACOS"],
+      "required": true
+    },
+    {
+      "key": "unit_economics",
+      "label": "单位经济模型",
+      "reason": "判断投放是否健康必须结合客单价、毛利、复购，否则只看ROAS会误判（高ROAS低毛利照样亏）。",
+      "source_hint": "提供客单价、毛利率、首单/复购占比、LTV、回本周期。",
+      "keywords": ["客单价", "毛利", "复购", "LTV", "首单", "回本"],
+      "required": true
+    },
+    {
+      "key": "traffic_entry",
+      "label": "投放账号与流量入口",
+      "reason": "顾问要做外部核验，需要真实数据入口而非只看老板自述。",
+      "source_hint": "提供广告投放账号、直播间链接、店铺/商品链接、落地页URL、自然/付费流量占比。",
+      "keywords": ["账号", "直播间", "店铺链接", "商品链接", "落地页", "自然流量", "付费流量"],
+      "required": false
+    }
+  ]
+}

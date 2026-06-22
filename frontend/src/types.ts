@@ -29,6 +29,7 @@ export interface DataRequest {
   reason: string;
   source_hint: string;
   required: boolean;
+  typical_owner?: string;
 }
 export type Signal = "red" | "yellow" | "green";
 export interface ModuleResult {
@@ -121,6 +122,7 @@ export interface WarRoomPlan {
   source_record_ids?: string[];
   iteration_count?: number;
   iterations?: WarRoomIteration[];
+  accumulation_note?: string;
   summary: string;
   primary_battlefield: string;
   secondary_battlefield?: string;
@@ -143,6 +145,39 @@ export interface DiagnoseResult {
   war_room_plan?: WarRoomPlan;
   review_status?: string;   // pending_review | approved | rejected | anonymous
 }
+
+export interface DiagnosisJobCreated {
+  job_id: string;
+  status: string;
+}
+
+export interface DiagnosisJobStatus {
+  id: string;
+  status: string;
+  current_step: string;
+  progress: number;
+  record_id: string | null;
+  project_id: string | null;
+  error: string | null;
+  result_summary: Record<string, unknown> | null;
+}
+
+export interface ResearchEvidenceOut {
+  id: string;
+  job_id?: string;
+  project_id?: string | null;
+  record_id?: string | null;
+  module: string;
+  source_stage: string;
+  provider: string;
+  query: string;
+  title: string;
+  url: string;
+  snippet: string;
+  source_type: string;
+  credibility: number;
+  retrieved_at: string;
+}
 export interface ModuleAnswer {
   module: string;
   facts: Record<string, string>;
@@ -155,12 +190,17 @@ export interface DiagnosisSummary {
   created_at: string;
   module_count: number;
   review_status?: string;
+  project_id?: string | null;
+  project_name?: string;
+  stage?: string;
+  primary_module?: string;
+  primary_module_label?: string;
 }
 
 export interface DiagnosisDetail {
   id: string;
   created_at: string;
-  answers: { answers: ModuleAnswer[] };
+  answers: { answers: ModuleAnswer[]; problem_map?: ProblemMap | null };
   results: ModuleResult[];
   war_room_plan?: WarRoomPlan | null;
   profile: Record<string, string> | null;
@@ -204,6 +244,7 @@ export interface ABQuestionnaire {
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+  attachments?: { id: string; name: string }[];
 }
 export interface ProblemSummary {
   core_problem: string;
@@ -221,6 +262,44 @@ export interface ChatResponse {
   message: string;
   done: boolean;
   summary: ProblemSummary | null;
+}
+
+export interface FreeChatResponse {
+  message: string;
+  brainstorm_session_id?: string | null;
+}
+
+export interface BrainstormSessionSummary {
+  id: string;
+  project_id?: string | null;
+  created_at: string;
+  updated_at: string;
+  title: string;
+  is_pinned?: boolean;
+  use_project_context?: boolean;
+}
+
+export interface BrainstormSessionDetail extends BrainstormSessionSummary {
+  messages: ChatMessage[];
+}
+
+export interface IdeaCard {
+  id?: string;
+  project_id?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  status?: string;
+  title: string;
+  one_liner: string;
+  source_context: string;
+  target_customer: string;
+  pain_point: string;
+  value_proposition: string;
+  core_assumption: string;
+  contrary_risk: string;
+  validation_action: string;
+  next_step: string;
+  confidence: string;
 }
 
 export interface ProblemMap {
@@ -260,6 +339,8 @@ export interface SessionSummary {
   updated_at: string;
   title: string;
   status: string;
+  is_pinned?: boolean;
+  memory_enabled?: boolean;
 }
 
 export interface SessionDetail {
@@ -268,6 +349,8 @@ export interface SessionDetail {
   updated_at: string;
   title: string;
   status: string;
+  is_pinned?: boolean;
+  memory_enabled?: boolean;
   messages: ChatMessage[];
   problem_map: ProblemMap | null;
   diagnosis_record_id: string | null;
@@ -288,6 +371,16 @@ export interface ProjectSessionBrief {
   title: string;
   status: string;
   updated_at: string;
+  is_pinned?: boolean;
+  memory_enabled?: boolean;
+}
+
+export interface ProjectBrainstormBrief {
+  id: string;
+  title: string;
+  updated_at: string;
+  is_pinned?: boolean;
+  use_project_context?: boolean;
 }
 
 export interface ProjectRecordBrief {
@@ -295,6 +388,7 @@ export interface ProjectRecordBrief {
   created_at: string;
   module_count: number;
   has_war_room_plan?: boolean;
+  review_status?: "pending_review" | "approved" | "rejected" | string;
 }
 
 export interface ProjectMemoryEntry {
@@ -319,10 +413,23 @@ export interface ModuleFacts {
 }
 
 export interface ArchiveFile {
+  id: string;
   name: string;
   module: string;
   field: string;
   uploaded_at: string;
+  extraction_status?: "none" | "pending_confirm" | "confirmed" | string;
+  extracted_highlights?: ProfileField[];
+}
+
+export interface ArchiveExtractionPreview {
+  file_id: string;
+  module: string;
+  field: string;
+  file_name: string;
+  highlights: ProfileField[];
+  summary: string;
+  status: "pending_confirm" | "confirmed" | string;
 }
 
 export interface ProjectArchive {
@@ -330,6 +437,14 @@ export interface ProjectArchive {
   modules: ModuleFacts[];
   files: ArchiveFile[];
   last_updated: string | null;
+}
+
+export interface ProjectDeliveryStatus {
+  state: "empty" | "pending_review" | "approved" | "rejected" | string;
+  approved_count: number;
+  pending_review_count: number;
+  rejected_count: number;
+  latest_review_status: string | null;
 }
 
 export interface ProjectDetail {
@@ -341,9 +456,11 @@ export interface ProjectDetail {
   memory_summary: string;
   memory_entries: ProjectMemoryEntry[];
   sessions: ProjectSessionBrief[];
+  brainstorm_sessions?: ProjectBrainstormBrief[];
   records: ProjectRecordBrief[];
   archive: ProjectArchive;
   war_room_plan?: WarRoomPlan | null;
+  delivery_status?: ProjectDeliveryStatus;
 }
 
 export interface SkillVersionOut {
@@ -401,6 +518,8 @@ export interface UploadedFileOut {
   module_key: string;
   field_key: string;
   original_name: string;
+  parsed_summary?: string;
+  summary_text?: string;
 }
 
 // ── Loop 治理类型 ─────────────────────────────────────────────────────────────
@@ -489,5 +608,5 @@ export interface ReviewDetail {
   war_room_plan: WarRoomPlan | null;
   consultant_notes: string[];
   created_at: string;
+  evidence_pack?: ResearchEvidenceOut[];
 }
-

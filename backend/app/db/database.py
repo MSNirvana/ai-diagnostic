@@ -48,10 +48,69 @@ async def _ensure_sqlite_columns(conn) -> None:
         if col not in diagnosis_columns:
             await conn.execute(text(f"ALTER TABLE diagnosisrecord ADD COLUMN {col} {col_type}"))
 
+    session_result = await conn.execute(text("PRAGMA table_info(diagnosissession)"))
+    session_columns = {row[1] for row in session_result.fetchall()}
+    session_extra_columns = {
+        "is_pinned": "BOOLEAN DEFAULT 0",
+        "memory_enabled": "BOOLEAN DEFAULT 1",
+        "title_is_custom": "BOOLEAN DEFAULT 0",
+        "deleted_at": "TIMESTAMP",
+    }
+    for col, col_type in session_extra_columns.items():
+        if session_columns and col not in session_columns:
+            await conn.execute(text(f"ALTER TABLE diagnosissession ADD COLUMN {col} {col_type}"))
+
     project_result = await conn.execute(text("PRAGMA table_info(project)"))
     project_columns = {row[1] for row in project_result.fetchall()}
     if "war_room_plan_json" not in project_columns:
         await conn.execute(text("ALTER TABLE project ADD COLUMN war_room_plan_json TEXT"))
+
+    job_result = await conn.execute(text("PRAGMA table_info(diagnosisjob)"))
+    job_columns = {row[1] for row in job_result.fetchall()}
+    job_extra_columns = {
+        "result_summary_json": "TEXT",
+    }
+    for col, col_type in job_extra_columns.items():
+        if job_columns and col not in job_columns:
+            await conn.execute(text(f"ALTER TABLE diagnosisjob ADD COLUMN {col} {col_type}"))
+
+    idea_result = await conn.execute(text("PRAGMA table_info(ideacard)"))
+    idea_columns = {row[1] for row in idea_result.fetchall()}
+    idea_extra_columns = {
+        "project_id": "TEXT",
+        "updated_at": "TIMESTAMP",
+        "source_context": "TEXT DEFAULT ''",
+        "confidence": "TEXT DEFAULT '待验证'",
+        "raw_card_json": "TEXT DEFAULT '{}'",
+        "messages_json": "TEXT DEFAULT '[]'",
+        "status": "TEXT DEFAULT 'saved'",
+    }
+    for col, col_type in idea_extra_columns.items():
+        if idea_columns and col not in idea_columns:
+            await conn.execute(text(f"ALTER TABLE ideacard ADD COLUMN {col} {col_type}"))
+
+    brainstorm_result = await conn.execute(text("PRAGMA table_info(brainstormsession)"))
+    brainstorm_columns = {row[1] for row in brainstorm_result.fetchall()}
+    brainstorm_extra_columns = {
+        "title_is_custom": "BOOLEAN DEFAULT 0",
+        "use_project_context": "BOOLEAN DEFAULT 1",
+        "is_pinned": "BOOLEAN DEFAULT 0",
+        "deleted_at": "TIMESTAMP",
+    }
+    for col, col_type in brainstorm_extra_columns.items():
+        if brainstorm_columns and col not in brainstorm_columns:
+            await conn.execute(text(f"ALTER TABLE brainstormsession ADD COLUMN {col} {col_type}"))
+
+    upload_result = await conn.execute(text("PRAGMA table_info(uploadedfile)"))
+    upload_columns = {row[1] for row in upload_result.fetchall()}
+    upload_extra_columns = {
+        "archive_extraction_json": "TEXT DEFAULT '{}'",
+        "archive_extraction_status": "TEXT DEFAULT 'none'",
+        "archive_extracted_at": "TIMESTAMP",
+    }
+    for col, col_type in upload_extra_columns.items():
+        if upload_columns and col not in upload_columns:
+            await conn.execute(text(f"ALTER TABLE uploadedfile ADD COLUMN {col} {col_type}"))
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:

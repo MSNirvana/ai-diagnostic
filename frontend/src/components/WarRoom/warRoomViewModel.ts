@@ -19,7 +19,7 @@ export const URGENCY_LABELS: Record<WarRoomUrgency, string> = {
 export const PRIORITY_LABELS: Record<WarRoomUrgency, string> = {
   now: "立即做",
   soon: "两周内做",
-  later: "一个月内做",
+  later: "月内做",
 };
 
 export function battlefieldLabel(module: string | undefined) {

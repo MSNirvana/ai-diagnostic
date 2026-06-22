@@ -19,7 +19,7 @@ from app.warroom.composer import compose_war_room_plan
 from app.warroom.enhancer import enhance_war_room_plan
 from app.cases.archiver import archive_case
 from app.warroom.history import apply_project_war_room_iteration
-from app.data.uploads import parse_table
+from app.data.uploads import parse_uploaded_file, render_file_summary
 from app.auth.jwt import get_optional_user
 from app.db.database import get_session
 from app.db.models import User, DiagnosisRecord, DiagnosisFeedback, DiagnosisSession, UploadedFile
@@ -209,13 +209,8 @@ async def diagnose_with_upload(
         answer = answers_by_module.get(module_key)
         if answer is None:
             continue
-        try:
-            parsed = parse_table(upload.filename, content)
-        except ValueError:
-            # 不支持的文件类型：记录文件名，跳过解析，不让整次诊断失败
-            answer.facts[facts_key] = "（无法解析的文件类型）"
-            continue
-        answer.facts[facts_key] = str(parsed)
+        parsed = parse_uploaded_file(upload.filename, content)
+        answer.facts[facts_key] = render_file_summary(upload.filename, parsed)
         answer.uploaded_files.append(upload.filename)
 
     # 合并该会话已存文件（之前即时上传的）

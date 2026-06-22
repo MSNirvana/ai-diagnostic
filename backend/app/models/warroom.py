@@ -84,6 +84,7 @@ class WarRoomPlan(BaseModel):
     secondary_battlefield: str = ""
     objective: str
     confidence: float = Field(default=0, ge=0, le=1)
+    accumulation_note: str = ""
     decision_items: list[DecisionItem] = Field(default_factory=list)
     battle_chain: list[BattleChainStep] = Field(default_factory=list)
     department_actions: list[DepartmentAction] = Field(default_factory=list)

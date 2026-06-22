@@ -5,6 +5,33 @@ import { RecordDetailPage } from "../src/components/Project/RecordDetailPage";
 import { ProjectWarRoomPage } from "../src/components/Project/ProjectWarRoomPage";
 
 vi.mock("../src/api/client", () => ({
+  listProjects: vi.fn(async () => []),
+  patchProject: vi.fn(),
+  getProject: vi.fn(async () => ({
+    id: "proj-1",
+    name: "待审核项目",
+    created_at: "2026-06-13T00:00:00Z",
+    updated_at: "2026-06-13T00:00:00Z",
+    status: "active",
+    memory_summary: "",
+    memory_entries: [],
+    sessions: [],
+    records: [],
+    archive: {
+      profile: [],
+      modules: [],
+      files: [],
+      last_updated: null,
+    },
+    delivery_status: {
+      state: "approved",
+      approved_count: 1,
+      pending_review_count: 0,
+      rejected_count: 0,
+      latest_review_status: "approved",
+    },
+    war_room_plan: null,
+  })),
   getProjectWarRoom: vi.fn(async () => ({
     id: "wr-project",
     record_id: "rec-1",
@@ -15,14 +42,14 @@ vi.mock("../src/api/client", () => ({
       {
         record_id: "rec-1",
         created_at: "2026-06-13T00:00:00Z",
-        summary: "未来 30 天优先打销售承接战。",
+        summary: "本轮经营会先围绕销售承接链路定动作。",
         primary_battlefield: "sales",
         objective: "提升高质量线索成交率",
         confidence: 0.8,
         changes: ["建立项目作战室"],
       },
     ],
-    summary: "未来 30 天优先打销售承接战。",
+    summary: "本轮经营会先围绕销售承接链路定动作。",
     primary_battlefield: "sales",
     secondary_battlefield: "",
     objective: "提升高质量线索成交率",
@@ -61,7 +88,7 @@ vi.mock("../src/api/client", () => ({
       id: "wr-1",
       record_id: "rec-1",
       project_id: "proj-1",
-      summary: "未来 30 天优先打销售承接战。",
+      summary: "本轮经营会先围绕销售承接链路定动作。",
       primary_battlefield: "sales",
       secondary_battlefield: "",
       objective: "提升高质量线索成交率",
@@ -82,6 +109,7 @@ vi.mock("../src/api/client", () => ({
       ],
     },
     profile: null,
+    review_status: "approved",
   })),
 }));
 
@@ -100,10 +128,10 @@ describe("RecordDetailPage", () => {
     );
 
     await waitFor(() =>
-      expect(screen.getAllByText("未来 30 天优先打销售承接战。").length).toBeGreaterThan(0)
+      expect(screen.getAllByText("本轮经营会先围绕销售承接链路定动作。").length).toBeGreaterThan(0)
     );
     expect(screen.getAllByText("老板作战室").length).toBeGreaterThan(0);
-    expect(screen.getByText("老板今天要拍板的事")).toBeTruthy();
+    expect(screen.getByText("先拍板的事项")).toBeTruthy();
     expect(screen.getAllByText("重分线索池").length).toBeGreaterThan(0);
   });
 
@@ -120,11 +148,13 @@ describe("RecordDetailPage", () => {
     );
 
     await waitFor(() =>
-      expect(screen.getAllByText("未来 30 天优先打销售承接战。").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("本轮经营会先围绕销售承接链路定动作。").length).toBeGreaterThan(0)
     );
     expect(screen.getAllByText("老板作战室").length).toBeGreaterThan(0);
-    expect(screen.getByText("经营会总览")).toBeTruthy();
-    expect(screen.getByText("迭代轨迹")).toBeTruthy();
+    expect(screen.getByText("当前生效版本 · V1")).toBeTruthy();
+    expect(screen.getAllByText("V1").length).toBeGreaterThan(0);
+    expect(screen.getByText("本次会议先处理")).toBeTruthy();
+    expect(screen.getByText("查看拍板事项")).toBeTruthy();
     expect(screen.queryByText("作战室迭代轨迹")).toBeNull();
   });
 
@@ -141,8 +171,9 @@ describe("RecordDetailPage", () => {
     );
 
     await waitFor(() => expect(screen.getByText("作战室迭代轨迹")).toBeTruthy());
-    expect(screen.getByText("回到作战室总览")).toBeTruthy();
-    expect(screen.getByText("未来 30 天优先打销售承接战。")).toBeTruthy();
+    expect(screen.getByText("返回作战室总览")).toBeTruthy();
+    expect(screen.getByText(/V1 · 第 1 轮 · 当前生效/)).toBeTruthy();
+    expect(screen.getByText("本轮经营会先围绕销售承接链路定动作。")).toBeTruthy();
   });
 });
 

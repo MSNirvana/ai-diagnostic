@@ -113,10 +113,12 @@ def test_admin_skill_registry_lists_extensible_network(db_session):
     assert {
         "market",
         "sales",
+        "free_chat",
         "legal_compliance",
         "tax",
         "channel_franchise",
         "evidence_confidence",
+        "archive_extraction",
     }.issubset(keys)
 
     legal = next(item for item in body if item["key"] == "legal_compliance")
@@ -133,3 +135,15 @@ def test_admin_skill_registry_lists_extensible_network(db_session):
     assert confidence["category"] == "delivery"
     assert confidence["method"] == "confidence_calibration"
     assert "禁止固定高分" in confidence["fallback_prompt"]
+
+    archive_extraction = next(item for item in body if item["key"] == "archive_extraction")
+    assert archive_extraction["category"] == "delivery"
+    assert archive_extraction["method"] == "archive_extraction"
+    assert "报告性质" in archive_extraction["fallback_prompt"]
+    assert "撰写人" in archive_extraction["fallback_prompt"]
+
+    free_chat = next(item for item in body if item["key"] == "free_chat")
+    assert free_chat["category"] == "assistant"
+    assert free_chat["method"] == "brainstorm_chat"
+    assert "头脑风暴" in free_chat["fallback_prompt"]
+    assert "默认不绑定项目" in free_chat["fallback_prompt"]

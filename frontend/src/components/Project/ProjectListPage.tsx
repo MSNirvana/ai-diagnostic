@@ -11,6 +11,7 @@ export function ProjectListPage() {
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
+  const [showArchived, setShowArchived] = useState(false);
 
   const load = () => {
     listProjects()
@@ -34,16 +35,35 @@ export function ProjectListPage() {
   };
 
   const fmt = (iso: string) => new Date(iso).toLocaleString("zh-CN");
+  const sortedProjects = projects ? [...projects].sort((a, b) => {
+    const delta = new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+    if (delta !== 0) return delta;
+    return a.name.localeCompare(b.name, "zh-CN");
+  }) : null;
+  const featuredProject = sortedProjects?.[0] ?? null;
+  const activeCount = sortedProjects?.filter((project) => project.status !== "archived").length ?? 0;
+  const archivedCount = sortedProjects?.filter((project) => project.status === "archived").length ?? 0;
+  const visibleProjects = sortedProjects?.filter((project) =>
+    showArchived ? project.status === "archived" : project.status !== "archived"
+  );
+  const featuredVisibleProject = showArchived ? null : featuredProject?.status === "archived" ? visibleProjects?.[0] ?? null : featuredProject;
   const memoryPreview = (summary: string) => {
     const latest = summary.split("\n").filter(Boolean).slice(-1)[0] ?? "";
-    return latest.length > 128 ? `${latest.slice(0, 128)}...` : latest;
+    const cleaned = latest
+      .replace(/^\[[^\]]+\]\s*/, "")
+      .replace(/^诊断[:：]\s*/, "")
+      .replace(/\b(market|sales|product|ops|org|finance)[（(][^）)]+[）)][:：]\s*/gi, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    const text = cleaned || "已有项目资料沉淀，进入项目工作台继续推进。";
+    return text.length > 96 ? `${text.slice(0, 96)}...` : text;
   };
 
   return (
     <AppShell
-      eyebrow="Client Portfolio"
-      title="项目中心"
-      description="以企业项目为单位管理诊断、对话、证据与复诊记忆。所有工作从一个项目工作台开始。"
+      eyebrow="Command Desk"
+      title="AI咨询"
+      description="先把问题说清楚，再沉淀到项目和作战室。"
       actions={
         !creating ? (
           <button type="button" className="btn-primary" onClick={() => setCreating(true)}>
@@ -54,12 +74,34 @@ export function ProjectListPage() {
     >
       {error && <p className="proj-error">{error}</p>}
 
+      <section className="command-center">
+        <div className="command-center__copy">
+          <span className="proj-panel-kicker">Projects</span>
+          <h2>先选择一个咨询项目。</h2>
+          <p>每个项目都有独立的问题入口、资料沉淀、顾问审核和作战室。进入项目后再描述本次要解决的经营问题。</p>
+          <div className="command-center__actions">
+            <button type="button" className="btn-primary" onClick={() => setCreating(true)}>
+              新建项目
+            </button>
+            {featuredVisibleProject && (
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={() => navigate(`/projects/${featuredVisibleProject.id}`)}
+              >
+                继续最近项目
+              </button>
+            )}
+          </div>
+        </div>
+      </section>
+
       {creating && (
         <section className="proj-create-panel">
           <div>
-            <span className="proj-panel-kicker">New Engagement</span>
-            <h2>建立一个企业长期档案</h2>
-            <p>建议使用企业名、业务线或咨询项目名，后续诊断和会话都会沉淀到这里。</p>
+            <span className="proj-panel-kicker">New Project</span>
+            <h2>新建项目</h2>
+            <p>建议用企业名或业务线命名，后续诊断、资料、作战室都会归到这里。</p>
           </div>
           <div className="proj-create-row">
             <input
@@ -71,7 +113,7 @@ export function ProjectListPage() {
               onKeyDown={(e) => { if (e.key === "Enter") void handleCreate(); }}
             />
             <button type="button" className="btn-primary" onClick={() => void handleCreate()}>
-              创建并进入
+              创建项目
             </button>
             <button type="button" className="proj-cancel-btn" onClick={() => setCreating(false)}>
               取消
@@ -83,11 +125,48 @@ export function ProjectListPage() {
       <section className="portfolio-board">
         <div className="portfolio-board__head">
           <div>
-            <span className="proj-panel-kicker">Active Files</span>
-            <h2>客户项目组合</h2>
+            <span className="proj-panel-kicker">Projects</span>
+            <h2>项目工作台</h2>
           </div>
-          <span>{projects?.length ?? 0} 个项目</span>
+          <div className="portfolio-board__tools">
+            <button
+              type="button"
+              className={showArchived ? "proj-filter-btn" : "proj-filter-btn proj-filter-btn--active"}
+              onClick={() => setShowArchived(false)}
+            >
+              进行中 {activeCount}
+            </button>
+            <button
+              type="button"
+              className={showArchived ? "proj-filter-btn proj-filter-btn--active" : "proj-filter-btn"}
+              onClick={() => setShowArchived(true)}
+            >
+              归档箱 {archivedCount}
+            </button>
+          </div>
         </div>
+
+        {featuredVisibleProject && (
+          <button
+            type="button"
+            className="portfolio-spotlight"
+            onClick={() => navigate(`/projects/${featuredVisibleProject.id}`)}
+          >
+            <div className="portfolio-spotlight__copy">
+              <span className="proj-panel-kicker">Recent</span>
+              <h3>{featuredVisibleProject.name}</h3>
+              <p>最近更新，适合从这里继续推进。</p>
+              <strong>更新于 {fmt(featuredVisibleProject.updated_at)}</strong>
+              {featuredVisibleProject.memory_summary ? (
+                <details className="portfolio-spotlight__detail" onClick={(event) => event.stopPropagation()}>
+                  <summary>查看最近进展</summary>
+                  <p>{memoryPreview(featuredVisibleProject.memory_summary)}</p>
+                </details>
+              ) : null}
+            </div>
+            <span className="portfolio-spotlight__action">进入</span>
+          </button>
+        )}
 
         <div className="proj-list">
           {projects === null && !error && <p className="proj-empty">加载中…</p>}
@@ -95,33 +174,48 @@ export function ProjectListPage() {
             <div className="proj-empty-card">
               <span>01</span>
               <h3>先创建一个项目</h3>
-              <p>项目会成为所有问题地图、专家会诊、证据包和反馈复诊的归档中心。</p>
+              <p>项目会承载问题定位、资料、诊断、作战室和复盘记录。</p>
               <button type="button" className="btn-primary" onClick={() => setCreating(true)}>
-                创建第一个项目
+                创建项目
               </button>
             </div>
           )}
-          {projects?.map((p, index) => (
+          {projects && projects.length > 0 && visibleProjects?.length === 0 && (
+            <div className="proj-empty-card">
+              <span>{showArchived ? "Archive" : "Active"}</span>
+              <h3>{showArchived ? "暂无归档项目" : "没有进行中的项目"}</h3>
+              <p>
+                {showArchived
+                  ? "被归档的项目会在这里集中保存，后续可以进入项目工作台恢复。"
+                  : "当前项目都已归档。需要继续推进时，可以进入归档箱恢复项目。"}
+              </p>
+              {!showArchived && archivedCount > 0 && (
+                <button type="button" className="btn-ghost" onClick={() => setShowArchived(true)}>
+                  查看归档箱
+                </button>
+              )}
+            </div>
+          )}
+          {visibleProjects?.map((p, index) => (
             <button
               key={p.id}
               type="button"
-              className="proj-card"
+              className={p.status === "archived" ? "proj-card proj-card--archived" : "proj-card"}
               onClick={() => navigate(`/projects/${p.id}`)}
             >
               <span className="proj-card__index">{String(index + 1).padStart(2, "0")}</span>
               <span className="proj-card__name">{p.name}</span>
-              <span className="proj-card__meta">更新于 {fmt(p.updated_at)}</span>
+              <span className="proj-card__meta">
+                {p.status === "archived" ? "已归档" : "更新于"} {fmt(p.updated_at)}
+              </span>
               {p.memory_summary ? (
-                <span className="proj-card__memory">
-                  <strong>最新档案</strong>
-                  {memoryPreview(p.memory_summary)}
-                </span>
+                <span className="proj-card__memory">{memoryPreview(p.memory_summary)}</span>
               ) : (
                 <span className="proj-card__memory proj-card__memory--empty">
-                  暂无档案事件，进入工作台开始诊断
+                  尚未开始诊断。
                 </span>
               )}
-              <span className="proj-card__arrow">进入工作台</span>
+              <span className="proj-card__arrow">进入</span>
             </button>
           ))}
         </div>

@@ -35,14 +35,14 @@ const result = {
 describe("ModuleCard", () => {
   it("shows conclusion, hides drilldown until clicked", () => {
     render(<ModuleCard result={result} />);
-    expect(screen.getByText("定价偏高是流失主因")).toBeTruthy();
+    expect(screen.getByText(/定价偏高是流失主因/)).toBeTruthy();
     expect(screen.queryByText(/客单价¥420/)).toBeNull();
     fireEvent.click(screen.getByText("查看更多"));
     expect(screen.getByText(/客单价¥420/)).toBeTruthy();
     expect(screen.getByText("可信证据包")).toBeTruthy();
     expect(screen.getByText("待补数据")).toBeTruthy();
     expect(screen.getByText("推广账号与广告平台")).toBeTruthy();
-    expect(screen.getByText("置信度：82%")).toBeTruthy();
+    expect(screen.getByText("证据完整度：82%")).toBeTruthy();
     expect(screen.getByText(/AI Diagnostic benchmark stub/)).toBeTruthy();
     expect(screen.getByText(/方法版本 fallback/)).toBeTruthy();
   });
@@ -58,5 +58,28 @@ describe("ModuleCard", () => {
     expect(screen.queryByText("提交")).toBeNull();
     fireEvent.click(screen.getByText("有帮助"));
     expect(screen.getByText("提交")).toBeTruthy();
+  });
+
+  it("marks low-confidence modules with missing evidence as insufficient data", () => {
+    render(
+      <ModuleCard
+        result={{
+          ...result,
+          conclusion: "应该立刻加大投放。",
+          evidence: [],
+          evidence_package: {
+            ...result.evidence_package,
+            confidence: 0.38,
+            confidence_reason: "缺少投放账号与转化数据。",
+          },
+        }}
+      />
+    );
+
+    expect(screen.getByText("低置信 / 待验证")).toBeTruthy();
+    expect(screen.getAllByText("数据不足，需补齐后才能判断").length).toBeGreaterThan(0);
+    expect(screen.getByText("暂无可验证依据，需先补齐数据。")).toBeTruthy();
+    expect(screen.getByText("推广账号与广告平台")).toBeTruthy();
+    expect(screen.queryByText(/应该立刻加大投放/)).toBeNull();
   });
 });

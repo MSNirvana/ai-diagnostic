@@ -1,4 +1,5 @@
 import type { DepartmentAction } from "../../types";
+import { cleanDisplayText, cleanSentenceText } from "../../utils/displayText";
 import { formatPercent, PRIORITY_LABELS, priorityClass } from "./warRoomViewModel";
 
 interface DepartmentActionCardProps {
@@ -7,19 +8,26 @@ interface DepartmentActionCardProps {
 
 function primaryMetric(action: DepartmentAction): string {
   const metric = action.metrics[0];
-  if (metric) return `${metric.name}：${metric.target}`;
-  return action.acceptance_rule;
+  if (metric) return cleanDisplayText(`${metric.name}：${metric.target}`);
+  return cleanDisplayText(action.acceptance_rule);
 }
 
 export function DepartmentActionCard({ action }: DepartmentActionCardProps) {
+  const title = cleanDisplayText(action.action_title, "待明确执行动作。");
+  const goal = cleanSentenceText(action.battle_goal, "待明确本动作要解决的问题。");
+  const detail = cleanSentenceText(action.action_detail, "暂无更多执行说明。");
+  const acceptance = cleanSentenceText(action.acceptance_rule, "下次复盘时提交执行记录和指标变化。");
+  const risk = action.risk_note ? cleanSentenceText(action.risk_note, "") : "";
+  const confidenceReason = action.confidence_reason ? cleanSentenceText(action.confidence_reason, "") : "";
+
   return (
     <article className="department-card">
       <div className="department-card__topline">
         <span>{action.department_label}</span>
         <span className={priorityClass(action.priority)}>{PRIORITY_LABELS[action.priority]}</span>
       </div>
-      <h4>{action.action_title}</h4>
-      <p className="department-card__goal">{action.battle_goal}</p>
+      <h4>{title}</h4>
+      <p className="department-card__goal">{goal}</p>
 
       <dl className="department-card__meta department-card__meta--compact">
         <div>
@@ -43,11 +51,11 @@ export function DepartmentActionCard({ action }: DepartmentActionCardProps) {
         <div className="department-card__detail-body">
           <section>
             <span>执行说明</span>
-            <p>{action.action_detail}</p>
+            <p>{detail}</p>
           </section>
           <section>
             <span>验收标准</span>
-            <p>{action.acceptance_rule}</p>
+            <p>{acceptance}</p>
           </section>
           {action.metrics.length > 1 && (
             <section>
@@ -55,7 +63,7 @@ export function DepartmentActionCard({ action }: DepartmentActionCardProps) {
               <div className="metric-row metric-row--muted">
                 {action.metrics.slice(1).map((metric) => (
                   <span key={`${action.id}-${metric.name}`}>
-                    {metric.name}：{metric.target}
+                    {cleanDisplayText(`${metric.name}：${metric.target}`)}
                   </span>
                 ))}
               </div>
@@ -73,23 +81,23 @@ export function DepartmentActionCard({ action }: DepartmentActionCardProps) {
               </div>
             </section>
           )}
-          {action.risk_note && (
+          {risk && (
             <section>
               <span>风险提示</span>
-              <p className="department-card__risk">{action.risk_note}</p>
+              <p className="department-card__risk">{risk}</p>
             </section>
           )}
-          {action.confidence_reason && (
+          {confidenceReason && (
             <section>
-              <span>置信度依据</span>
-              <p>{action.confidence_reason}</p>
+              <span>依据说明</span>
+              <p>{confidenceReason}</p>
             </section>
           )}
         </div>
       </details>
 
       {typeof action.confidence === "number" && (
-        <span className="department-card__confidence">证据置信度 {formatPercent(action.confidence)}</span>
+        <span className="department-card__confidence">证据完整度 {formatPercent(action.confidence)}</span>
       )}
     </article>
   );

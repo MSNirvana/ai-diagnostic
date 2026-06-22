@@ -25,12 +25,13 @@ async def diagnose_all(
     q: Questionnaire,
     llm: LLMClient,
     session: AsyncSession | None = None,
+    research_evidence: list[dict] | None = None,
 ) -> DiagnoseOutcome:
     """读问卷 -> 对每个有对应 skill 的模块并行诊断 -> 护城河过滤后汇总。
 
     同时收集每个模块用了哪个 skill 版本（供反馈关联）。
     """
-    questionnaire = _hydrate_answer_contexts(q)
+    questionnaire = _hydrate_answer_contexts(q, research_evidence=research_evidence or [])
     routes = _route_experts(questionnaire)
     modules: list[str] = []
     tasks = []
@@ -222,7 +223,11 @@ def _priority_actions(results: list[ModuleResult]) -> list[str]:
     return actions[:5]
 
 
-def _hydrate_answer_contexts(q: Questionnaire) -> Questionnaire:
+def _hydrate_answer_contexts(
+    q: Questionnaire,
+    *,
+    research_evidence: list[dict] | None = None,
+) -> Questionnaire:
     problem_map = q.problem_map or {}
     scenario = detect_business_scenario(
         industry=str(problem_map.get("industry") or ""),
@@ -249,6 +254,7 @@ def _hydrate_answer_contexts(q: Questionnaire) -> Questionnaire:
         "diagnosis_focus": str(problem_map.get("diagnosis_focus") or ""),
         "scenario_key": scenario.key,
         "scenario_label": scenario.label,
+        "research_evidence": research_evidence or [],
     }
     hydrated_answers = [
         answer.model_copy(update={"context": {**shared_context, **answer.context}})

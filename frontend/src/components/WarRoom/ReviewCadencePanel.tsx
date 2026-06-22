@@ -1,4 +1,5 @@
 import type { ReviewCheckpoint } from "../../types";
+import { cleanDisplayText } from "../../utils/displayText";
 
 interface ReviewCadencePanelProps {
   checkpoints: ReviewCheckpoint[];
@@ -15,10 +16,10 @@ export function ReviewCadencePanel({ checkpoints }: ReviewCadencePanelProps) {
         {checkpoints.map((checkpoint) => (
           <article className="checkpoint-card" key={checkpoint.window}>
             <span>{checkpoint.window}</span>
-            <h4>{checkpoint.title}</h4>
+            <h4>{cleanDisplayText(checkpoint.title, "复盘节点")}</h4>
             <ul>
               {checkpoint.checks.map((check) => (
-                <li key={check}>{check}</li>
+                <li key={check}>{cleanDisplayText(check)}</li>
               ))}
             </ul>
           </article>

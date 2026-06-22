@@ -24,6 +24,7 @@
   --font-mono: "JetBrains Mono", "Fira Code", monospace;
   --radius-xs: 10px;
   --radius: 16px;
+  --radius-md: 18px;
   --radius-lg: 24px;
   --radius-xl: 32px;
   --shadow-sm: 0 8px 22px rgba(20, 45, 82, 0.06);

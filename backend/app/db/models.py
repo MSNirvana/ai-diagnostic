@@ -46,7 +46,7 @@ class ProjectMemoryEntry(SQLModel, table=True):
     project_id: str = Field(foreign_key="project.id", index=True)
     user_id: str | None = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=_now)
-    entry_type: str = Field(index=True)     # problem_map | diagnosis | feedback
+    entry_type: str = Field(index=True)     # conversation | problem_map | diagnosis | feedback
     summary: str
     payload_json: str = "{}"
     source_id: str | None = Field(default=None, index=True)
@@ -75,6 +75,49 @@ class DiagnosisRecord(SQLModel, table=True):
     primary_module: str = ""                   # 主战场，用于审核分派
 
 
+class DiagnosisJob(SQLModel, table=True):
+    """深度尽调任务。
+
+    用户提交后立即创建 job，后台完成外部预研、多专家诊断、证据闸门和作战室草稿。
+    第一版使用应用内后台任务；表结构保持独立，后续可平滑迁到 Celery/RQ。
+    """
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    user_id: str | None = Field(default=None, index=True)
+    project_id: str | None = Field(default=None, index=True)
+    session_id: str | None = Field(default=None, index=True)
+    record_id: str | None = Field(default=None, index=True)
+    created_at: datetime = Field(default_factory=_now)
+    updated_at: datetime = Field(default_factory=_now)
+    status: str = Field(default="queued", index=True)
+    current_step: str = ""
+    progress: float = Field(default=0)
+    questionnaire_json: str
+    error: str | None = None
+    result_summary_json: str | None = None
+
+
+class ResearchEvidence(SQLModel, table=True):
+    """外部研究证据。
+
+    每条证据必须可审计：来自哪个 job、服务商、query、URL、抓取时间和适用模块。
+    """
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    job_id: str = Field(foreign_key="diagnosisjob.id", index=True)
+    project_id: str | None = Field(default=None, index=True)
+    record_id: str | None = Field(default=None, index=True)
+    module: str = Field(default="", index=True)
+    source_stage: str = Field(default="system_pre_research", index=True)
+    provider: str = ""
+    query: str = ""
+    title: str = ""
+    url: str = ""
+    snippet: str = ""
+    source_type: str = "web"
+    credibility: float = Field(default=0.5)
+    retrieved_at: datetime = Field(default_factory=_now)
+    raw_json: str = "{}"
+
+
 class DiagnosisSession(SQLModel, table=True):
     """一次完整的诊断会话——从对话到诊断结果的全程记忆文件。
 
@@ -93,9 +136,58 @@ class DiagnosisSession(SQLModel, table=True):
     diagnosis_record_id: str | None = Field(default=None, index=True)
     # 会话标题（取自核心问题，便于列表展示）
     title: str = ""
+    title_is_custom: bool = False
     status: str = "chatting"   # chatting | confirmed | filling | diagnosed
+    is_pinned: bool = False
+    memory_enabled: bool = True
+    deleted_at: datetime | None = Field(default=None, index=True)
     # 问卷填写进度快照（JSON）——跨设备恢复，避免重填/重新生成问卷
     draft_json: str | None = None
+
+
+class BrainstormSession(SQLModel, table=True):
+    """项目内头脑风暴会话。
+
+    与正式 DiagnosisSession 分开：它沉淀想法推演和经营假设，不进入诊断/作战室流水线。
+    """
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    user_id: str | None = Field(default=None, index=True)
+    project_id: str | None = Field(default=None, index=True)
+    created_at: datetime = Field(default_factory=_now)
+    updated_at: datetime = Field(default_factory=_now)
+    title: str = ""
+    title_is_custom: bool = False
+    messages_json: str = "[]"
+    use_project_context: bool = True
+    is_pinned: bool = False
+    deleted_at: datetime | None = Field(default=None, index=True)
+
+
+class IdeaCard(SQLModel, table=True):
+    """头脑风暴沉淀的点子卡。
+
+    它不是正式诊断记录，而是诊断前的机会假设。用户确认后保存，
+    后续可转入已有项目或创建新项目继续做正式诊断。
+    """
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    user_id: str | None = Field(default=None, index=True)
+    project_id: str | None = Field(default=None, index=True)
+    created_at: datetime = Field(default_factory=_now)
+    updated_at: datetime = Field(default_factory=_now)
+    title: str
+    one_liner: str = ""
+    source_context: str = ""
+    target_customer: str = ""
+    pain_point: str = ""
+    value_proposition: str = ""
+    core_assumption: str = ""
+    contrary_risk: str = ""
+    validation_action: str = ""
+    next_step: str = ""
+    confidence: str = "待验证"
+    raw_card_json: str = "{}"
+    messages_json: str = "[]"
+    status: str = "saved"  # saved | converted | archived
 
 
 class QuestionnairePreference(SQLModel, table=True):
@@ -178,6 +270,9 @@ class UploadedFile(SQLModel, table=True):
     original_name: str                       # 原始文件名
     stored_path: str                         # 磁盘相对路径
     parsed_summary: str = ""                 # parse_table 解析结果（缓存）
+    archive_extraction_json: str = "{}"      # AI 提炼出的待确认沉淀草稿
+    archive_extraction_status: str = "none"  # none | pending_confirm | confirmed
+    archive_extracted_at: datetime | None = None
     created_at: datetime = Field(default_factory=_now)
 
 

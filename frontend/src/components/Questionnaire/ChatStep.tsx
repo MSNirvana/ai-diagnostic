@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ChatMessage, ProblemMap } from "../../types";
-import { startSession, sessionChat } from "../../api/client";
+import { deleteSessionFile, startSession, sessionChat, uploadSessionFile } from "../../api/client";
 import { ProblemMapPanel } from "./ProblemMapPanel";
 import "./ChatStep.css";
 
@@ -8,11 +8,68 @@ const OPENING =
   "你好，我是你的诊断顾问。先告诉我，当前最让你头疼的一个问题是什么？";
 
 type Phase = "intake" | "confirm" | "done";
-type ChatBlockKind = "paragraph" | "question";
+type ChatBlockKind = "paragraph" | "question" | "heading" | "list_item" | "quote";
+export type ProjectChatMode = "consulting" | "brainstorm";
+
+const PROJECT_CHAT_MODES: Record<ProjectChatMode, {
+  label: string;
+  headline: string;
+  placeholder: string;
+  note: string;
+  suggestions: string[];
+}> = {
+  consulting: {
+    label: "AI咨询",
+    headline: "今天，你想解决什么？",
+    placeholder: "输入消息...",
+    note: "直接把经营问题说出来，我会追问、沉淀问题地图，并在本项目中推进～",
+    suggestions: [],
+  },
+  brainstorm: {
+    label: "头脑风暴",
+    headline: "来来，我们碰撞一下！",
+    placeholder: "输入消息...",
+    note: "把新想法丢进来，我会结合项目上下文做推演、反证和验证路径。",
+    suggestions: [
+      "帮我推演一个低成本获客动作",
+      "这个想法最可能失败在哪里",
+      "变成 7 天验证计划",
+    ],
+  },
+};
 
 interface ChatBlock {
   kind: ChatBlockKind;
   text: string;
+}
+
+interface ChatAttachmentView {
+  id: string;
+  name: string;
+}
+
+export interface UploadedChatFile extends ChatAttachmentView {
+  memoryEnabled: boolean;
+}
+
+interface DisplayChatMessage extends ChatMessage {
+  attachments?: ChatAttachmentView[];
+}
+
+function toDisplayMessage(message: ChatMessage): DisplayChatMessage {
+  const rawAttachments = (message as DisplayChatMessage).attachments;
+  const attachments: ChatAttachmentView[] | undefined = Array.isArray(rawAttachments)
+    ? rawAttachments
+        .filter((attachment): attachment is ChatAttachmentView => Boolean(attachment?.id && attachment?.name))
+        .map((attachment) => ({
+          id: attachment.id,
+          name: attachment.name,
+        }))
+    : undefined;
+  return {
+    ...message,
+    ...(attachments ? { attachments } : {}),
+  };
 }
 
 const READABLE_BREAK_PATTERN =
@@ -84,10 +141,36 @@ export function formatChatBlocks(content: string, role: ChatMessage["role"]): Ch
       ? splitReadableText(normalized)
       : normalized.split(/\n+/).map((item) => item.trim()).filter(Boolean);
 
-  return rawBlocks.map((text) => ({
-    kind: role === "assistant" && /[？?]\s*$/.test(text) ? "question" : "paragraph",
-    text,
-  }));
+  return rawBlocks.map((rawText) => {
+    const text = rawText.trim();
+    if (role === "assistant") {
+      if (/^(#{1,4}\s*)?([一二三四五六七八九十]+|[0-9]+)[、.．]\s*\S{2,28}$/.test(text)) {
+        return { kind: "heading", text: text.replace(/^#{1,4}\s*/, "") };
+      }
+      if (/^[-*•]\s+/.test(text)) {
+        return { kind: "list_item", text: text.replace(/^[-*•]\s+/, "") };
+      }
+      if (/^[>｜|]\s*/.test(text)) {
+        return { kind: "quote", text: text.replace(/^[>｜|]\s*/, "") };
+      }
+      if (/[？?]\s*$/.test(text)) {
+        return { kind: "question", text };
+      }
+    }
+    return { kind: "paragraph", text };
+  });
+}
+
+function DocumentAttachmentCard({ file }: { file: ChatAttachmentView }) {
+  return (
+    <article className="chat-attachment-card" aria-label={`附件：${file.name}`}>
+      <span className="chat-attachment-card__icon" aria-hidden="true">DOC</span>
+      <div className="chat-attachment-card__copy">
+        <strong>{file.name}</strong>
+        <em>文档</em>
+      </div>
+    </article>
+  );
 }
 
 function ChatMessageContent({
@@ -101,16 +184,28 @@ function ChatMessageContent({
   return (
     <div className="chat-bubble__content">
       {blocks.map((block, index) => (
-        <p
-          className={
-            block.kind === "question"
-              ? "chat-bubble__paragraph chat-bubble__question"
-              : "chat-bubble__paragraph"
-          }
-          key={`${block.kind}-${index}`}
-        >
-          {block.text}
-        </p>
+        block.kind === "heading" ? (
+          <h3 className="chat-bubble__heading" key={`${block.kind}-${index}`}>
+            {block.text}
+          </h3>
+        ) : block.kind === "list_item" ? (
+          <p className="chat-bubble__paragraph chat-bubble__list-item" key={`${block.kind}-${index}`}>
+            {block.text}
+          </p>
+        ) : (
+          <p
+            className={
+              block.kind === "question"
+                ? "chat-bubble__paragraph chat-bubble__question"
+                : block.kind === "quote"
+                  ? "chat-bubble__paragraph chat-bubble__quote"
+                  : "chat-bubble__paragraph"
+            }
+            key={`${block.kind}-${index}`}
+          >
+            {block.text}
+          </p>
+        )
       ))}
     </div>
   );
@@ -120,34 +215,88 @@ interface ChatStepProps {
   onComplete: (problemMap: ProblemMap, sessionId: string) => void;
   resumeSessionId?: string;
   resumeMessages?: ChatMessage[];
+  initialMemoryEnabled?: boolean;
   projectId?: string;
+  initialPrompt?: string;
+  variant?: "default" | "project-inline";
+  projectMode?: ProjectChatMode;
+  onProjectModeChange?: (mode: ProjectChatMode) => void;
+  brainstormMessages?: ChatMessage[];
+  brainstormDraft?: string;
+  brainstormLoading?: boolean;
+  brainstormError?: string | null;
+  brainstormUseProjectContext?: boolean;
+  onBrainstormDraftChange?: (value: string) => void;
+  onBrainstormSend?: (attachments?: UploadedChatFile[]) => void;
+  onBrainstormContextChange?: (enabled: boolean) => void;
 }
 
 export function ChatStep({
   onComplete,
   resumeSessionId,
   resumeMessages,
+  initialMemoryEnabled = true,
   projectId,
+  initialPrompt,
+  variant = "default",
+  projectMode = "consulting",
+  onProjectModeChange,
+  brainstormMessages = [],
+  brainstormDraft = "",
+  brainstormLoading = false,
+  brainstormError = null,
+  brainstormUseProjectContext = true,
+  onBrainstormDraftChange,
+  onBrainstormSend,
+  onBrainstormContextChange,
 }: ChatStepProps) {
+  const isProjectInline = variant === "project-inline";
+  const isBrainstormMode = isProjectInline && projectMode === "brainstorm";
+  const activeModeConfig = PROJECT_CHAT_MODES[projectMode];
   const [sessionId, setSessionId] = useState<string | null>(
     resumeSessionId ?? null
   );
-  const [messages, setMessages] = useState<ChatMessage[]>(
+  const [messages, setMessages] = useState<DisplayChatMessage[]>(
     resumeMessages && resumeMessages.length > 0
-      ? resumeMessages
-      : [{ role: "assistant", content: OPENING }]
+      ? resumeMessages.map(toDisplayMessage)
+      : isProjectInline
+        ? []
+        : [{ role: "assistant", content: OPENING }]
   );
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState(initialPrompt?.trim() ?? "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>("intake");
   const [problemMap, setProblemMap] = useState<ProblemMap | null>(null);
+  const [mapPopoverOpen, setMapPopoverOpen] = useState(false);
+  const [plusMenuOpen, setPlusMenuOpen] = useState(false);
+  const [memoryEnabled, setMemoryEnabled] = useState(initialMemoryEnabled);
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedChatFile[]>([]);
+  const [uploadingFileName, setUploadingFileName] = useState("");
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const startedRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const mapToggleRef = useRef<HTMLDivElement>(null);
+  const mapPopoverRef = useRef<HTMLDivElement>(null);
+  const plusControlsRef = useRef<HTMLDivElement>(null);
   const composingRef = useRef(false);   // 输入法合成中（拼音/英文候选未上屏）
   const prevLoadingRef = useRef(false);
+  const displayedMessages: DisplayChatMessage[] = isBrainstormMode
+    ? brainstormMessages.map(toDisplayMessage)
+    : messages;
+  const displayedLoading = isBrainstormMode ? brainstormLoading : loading;
+  const displayedError = isBrainstormMode ? brainstormError : error;
+  const activeDraft = isBrainstormMode ? brainstormDraft : draft;
+  const hasStartedConversation = (isBrainstormMode ? brainstormMessages.length > 0 : messages.length > (isProjectInline ? 0 : 1))
+    || Boolean(resumeSessionId)
+    || displayedLoading
+    || phase !== "intake";
+  const hasConversation = hasStartedConversation
+    || Boolean(initialPrompt?.trim())
+    || Boolean(uploadingFileName)
+    || uploadedFiles.length > 0;
 
   // 续聊用已有 session；新诊断不在挂载时建空会话，避免用户只点进页面就污染历史。
   useEffect(() => {
@@ -162,7 +311,32 @@ export function ChatStep({
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, loading, phase, problemMap]);
+  }, [hasConversation, isProjectInline, displayedMessages, displayedLoading, phase, problemMap]);
+
+  useEffect(() => {
+    if (!problemMap) setMapPopoverOpen(false);
+  }, [problemMap]);
+
+  useEffect(() => {
+    if (!isProjectInline || (!mapPopoverOpen && !plusMenuOpen)) return;
+
+    const closeFloatingPanels = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      const clickedMap =
+        (mapToggleRef.current?.contains(target) ?? false)
+        || (mapPopoverRef.current?.contains(target) ?? false);
+      const clickedPlus = plusControlsRef.current?.contains(target) ?? false;
+
+      if (!clickedMap && !clickedPlus) {
+        setMapPopoverOpen(false);
+        setPlusMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", closeFloatingPanels);
+    return () => document.removeEventListener("pointerdown", closeFloatingPanels);
+  }, [isProjectInline, mapPopoverOpen, plusMenuOpen]);
 
   // 发送结束（loading 由 true 变 false）后自动把焦点送回输入框，免去再点一次
   useEffect(() => {
@@ -175,15 +349,26 @@ export function ChatStep({
   const send = async () => {
     const text = draft.trim();
     if (!text || loading) return;
-    const next: ChatMessage[] = [...messages, { role: "user", content: text }];
+    const filesToSend = uploadedFiles;
+    const next: DisplayChatMessage[] = [
+      ...messages,
+      {
+        role: "user",
+        content: text,
+        ...(filesToSend.length ? { attachments: filesToSend } : {}),
+      },
+    ];
     setMessages(next);
     setDraft("");
-    setError(null);
-    setLoading(true);
+    setUploadedFiles([]);
+      setError(null);
+      setLoading(true);
+      setPlusMenuOpen(false);
+      setMapPopoverOpen(false);
     try {
-      const activeSessionId = sessionId ?? await startSession(projectId);
+      const activeSessionId = sessionId ?? await startSession(projectId, memoryEnabled);
       if (!sessionId) setSessionId(activeSessionId);
-      const resp = await sessionChat(activeSessionId, text);
+      const resp = await sessionChat(activeSessionId, text, memoryEnabled);
       setMessages([...next, { role: "assistant", content: resp.message }]);
       setPhase(resp.phase);
       if (resp.problem_map) setProblemMap(resp.problem_map);
@@ -193,9 +378,66 @@ export function ChatStep({
     } catch (e) {
       setError(e instanceof Error ? e.message : "对话出了点问题，请重试。");
       setMessages(messages);
+      setUploadedFiles(filesToSend);
       setDraft(text);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const sendBrainstorm = () => {
+    const filesToSend = uploadedFiles;
+    onBrainstormSend?.(filesToSend);
+    setUploadedFiles([]);
+    setPlusMenuOpen(false);
+    setMapPopoverOpen(false);
+  };
+
+  const ensureSession = async () => {
+    if (sessionId) return sessionId;
+    const createdSessionId = await startSession(projectId, memoryEnabled);
+    setSessionId(createdSessionId);
+    return createdSessionId;
+  };
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    if (!files.length || uploadingFileName) return;
+    setPlusMenuOpen(false);
+    setMapPopoverOpen(false);
+    setError(null);
+    try {
+      const activeSessionId = await ensureSession();
+      for (const file of files) {
+        setUploadingFileName(file.name);
+        const uploaded = await uploadSessionFile(
+          activeSessionId,
+          "conversation",
+          "uploaded_context",
+          file
+        );
+        const fileItem = {
+          id: uploaded.id,
+          name: uploaded.original_name,
+          memoryEnabled,
+        };
+        setUploadedFiles((items) => [...items, fileItem]);
+      }
+      textareaRef.current?.focus();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "资料上传失败，请重试。");
+    } finally {
+      setUploadingFileName("");
+    }
+  };
+
+  const removeUploadedFile = async (fileId: string) => {
+    setUploadedFiles((items) => items.filter((item) => item.id !== fileId));
+    try {
+      await deleteSessionFile(fileId);
+    } catch {
+      // 删除附件失败不阻断对话；刷新后后端仍以实际文件列表为准。
     }
   };
 
@@ -207,95 +449,282 @@ export function ChatStep({
         return;
       }
       e.preventDefault();
-      void send();
+      if (isBrainstormMode) {
+        sendBrainstorm();
+      } else {
+        void send();
+      }
     }
   };
 
   const inputPlaceholder =
-    phase === "confirm"
+    phase === "confirm" && !isBrainstormMode
       ? "还有要补充或纠正的吗？直接说…"
-      : "描述一下你遇到的问题…（Enter 发送，Shift+Enter 换行）";
+      : variant === "project-inline"
+        ? activeModeConfig.placeholder
+        : "描述一下你遇到的问题…（Enter 发送，Shift+Enter 换行）";
+  const mapStatus = problemMap
+    ? `${problemMap.information_score ?? 0}/100`
+    : hasConversation
+      ? "生成中"
+      : "";
 
   return (
-    <div className="chat-step chat-step--split">
-      <ProblemMapPanel problemMap={problemMap} phase={phase} />
+    <div className={isProjectInline ? "chat-step chat-step--project-inline" : "chat-step chat-step--split"}>
+      {!isProjectInline && <ProblemMapPanel problemMap={problemMap} phase={phase} variant={variant} />}
 
-      <div className="chat-main">
-        <header className="chat-step__head">
-          <h1 className="chat-step__title">先聊聊你的问题</h1>
-          <p className="chat-step__subtitle">
-            像跟顾问对话一样，我会一次问一个，帮你理清核心问题，再生成诊断方案。
-          </p>
-        </header>
+      <div className={hasConversation ? `chat-main chat-main--active${hasStartedConversation ? " chat-main--anchored" : ""}` : "chat-main chat-main--empty"}>
+        {(!isProjectInline || !hasConversation) && <header className="chat-step__head">
+          <h1 className="chat-step__title">{isProjectInline ? activeModeConfig.headline : "先聊聊你的问题"}</h1>
+          {!isProjectInline && (
+            <p className="chat-step__subtitle">
+              像跟顾问对话一样，我会一次问一个，帮你理清核心问题，再生成诊断方案。
+            </p>
+          )}
+        </header>}
 
-        <div className="chat-stream" ref={scrollRef}>
-          {messages.map((m, i) => (
-            <div
-              key={i}
-              className={
-                m.role === "user" ? "chat-row chat-row--user" : "chat-row chat-row--ai"
-              }
-            >
+        {hasConversation && (
+          <div className="chat-stream" ref={scrollRef}>
+            {displayedMessages.map((m, i) => (
               <div
+                key={i}
                 className={
-                  m.role === "user" ? "chat-bubble chat-bubble--user" : "chat-bubble chat-bubble--ai"
+                  m.role === "user" ? "chat-row chat-row--user" : "chat-row chat-row--ai"
                 }
               >
-                <ChatMessageContent content={m.content} role={m.role} />
+                <div className={m.role === "user" ? "chat-message-stack chat-message-stack--user" : "chat-message-stack"}>
+                  {m.role === "user" && m.attachments && m.attachments.length > 0 && (
+                    <div className="chat-attachment-list" aria-label="本条消息附件">
+                      {m.attachments.map((file: ChatAttachmentView) => (
+                        <DocumentAttachmentCard file={file} key={file.id} />
+                      ))}
+                    </div>
+                  )}
+                  <div
+                    className={
+                      m.role === "user" ? "chat-bubble chat-bubble--user" : "chat-bubble chat-bubble--ai"
+                    }
+                  >
+                    <ChatMessageContent content={m.content} role={m.role} />
+                  </div>
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
 
-          {loading && (
-            <div className="chat-row chat-row--ai">
-              <div className="chat-bubble chat-bubble--ai chat-typing">
-                <span />
-                <span />
-                <span />
+            {displayedLoading && (
+              <div className="chat-row chat-row--ai">
+                <div className="chat-bubble chat-bubble--ai chat-typing">
+                  <span />
+                  <span />
+                  <span />
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {phase === "confirm" && problemMap && (
-            <div className="confirm-banner">
-              <p className="confirm-banner__hint">
-                左侧是我对你问题的理解。对吗？不对可以在下方继续补充；没问题就开始诊断。
-              </p>
+            {!isBrainstormMode && phase === "confirm" && problemMap && (
+              <div className="confirm-banner">
+                <p className="confirm-banner__hint">
+                  我已经整理出问题地图。对吗？不对可以在下方继续补充；没问题就开始诊断。
+                </p>
+                <button
+                  type="button"
+                  className="btn-primary btn-primary--final"
+                  onClick={() => onComplete(problemMap, sessionId!)}
+                >
+                  确认无误，开始诊断
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {isProjectInline && (uploadedFiles.length > 0 || uploadingFileName) && (
+          <div className="chat-file-strip" aria-label="已上传资料">
+            {uploadedFiles.map((file) => (
+              <article className="chat-file-chip" key={file.id}>
+                <span>资料</span>
+                <strong>{file.name}</strong>
+                <em>{file.memoryEnabled ? "发送后沉淀" : "仅本次对话"}</em>
+                <button
+                  type="button"
+                  aria-label={`移除资料：${file.name}`}
+                  onClick={() => void removeUploadedFile(file.id)}
+                >
+                  ×
+                </button>
+              </article>
+            ))}
+            {uploadingFileName && (
+              <article className="chat-file-chip chat-file-chip--loading">
+                <span>上传中</span>
+                <strong>{uploadingFileName}</strong>
+                <em>正在解析资料</em>
+              </article>
+            )}
+          </div>
+        )}
+
+        {displayedError && <p className="chat-error">{displayedError}</p>}
+
+        <div className={isProjectInline && hasStartedConversation ? "chat-input-stack chat-input-stack--anchored" : isProjectInline ? "chat-input-stack" : "chat-input-stack chat-input-stack--default"}>
+          {isProjectInline && (
+            <div className="chat-mode-tabs" aria-label="对话模式">
               <button
                 type="button"
-                className="btn-primary btn-primary--final"
-                onClick={() => onComplete(problemMap, sessionId!)}
+                className={projectMode === "consulting" ? "chat-mode-tab is-active" : "chat-mode-tab"}
+                onClick={() => onProjectModeChange?.("consulting")}
               >
-                确认无误，开始诊断
+                <span>{PROJECT_CHAT_MODES.consulting.label}</span>
+              </button>
+              <button
+                type="button"
+                className={projectMode === "brainstorm" ? "chat-mode-tab is-active" : "chat-mode-tab"}
+                onClick={() => onProjectModeChange?.("brainstorm")}
+              >
+                <span>{PROJECT_CHAT_MODES.brainstorm.label}</span>
               </button>
             </div>
           )}
-        </div>
+          {isProjectInline && mapPopoverOpen && (
+            <div className="chat-map-popover" role="dialog" aria-label="问题地图" ref={mapPopoverRef}>
+              <div className="chat-map-popover__head">
+                <span>问题地图</span>
+                <button type="button" onClick={() => setMapPopoverOpen(false)}>
+                  关闭
+                </button>
+              </div>
+              <ProblemMapPanel problemMap={problemMap} phase={phase} variant={variant} />
+            </div>
+          )}
 
-        {error && <p className="chat-error">{error}</p>}
-
-        <div className="chat-input-bar">
-          <textarea
-            ref={textareaRef}
-            className="chat-input"
-            rows={2}
-            placeholder={inputPlaceholder}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={onKeyDown}
-            onCompositionStart={() => { composingRef.current = true; }}
-            onCompositionEnd={() => { composingRef.current = false; }}
-            disabled={loading}
-            autoFocus
-          />
-          <button
-            type="button"
-            className="btn-primary chat-send"
-            onClick={() => void send()}
-            disabled={loading || draft.trim() === ""}
-          >
-            发送
-          </button>
+          <div className="chat-input-bar">
+            {isProjectInline && (
+              <div className="chat-plus-wrap" ref={plusControlsRef}>
+                <button
+                  type="button"
+                  className={plusMenuOpen ? "chat-plus-button is-open" : "chat-plus-button"}
+                  aria-label="更多输入选项"
+                  aria-expanded={plusMenuOpen}
+                  onClick={() => {
+                    setMapPopoverOpen(false);
+                    setPlusMenuOpen((open) => !open);
+                  }}
+                >
+                  +
+                </button>
+                {plusMenuOpen && (
+                  <div className="chat-plus-menu" role="menu" aria-label="输入选项">
+                    <button
+                      type="button"
+                      className="chat-plus-menu__item"
+                      role="menuitem"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <span className="chat-plus-menu__file-icon" aria-hidden="true">+</span>
+                      <span className="chat-plus-menu__copy">
+                        <strong>上传资料</strong>
+                        <em>Excel、Word、PDF、图片等，AI 会先整理摘要再参考</em>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="chat-plus-menu__item"
+                      role="menuitemcheckbox"
+                      aria-checked={memoryEnabled}
+                      onClick={() => {
+                        if (isBrainstormMode) {
+                          onBrainstormContextChange?.(!brainstormUseProjectContext);
+                        } else {
+                          setMemoryEnabled((enabled) => !enabled);
+                        }
+                      }}
+                    >
+                      <span className={(isBrainstormMode ? brainstormUseProjectContext : memoryEnabled) ? "chat-plus-menu__switch is-on" : "chat-plus-menu__switch"} />
+                      <span className="chat-plus-menu__copy">
+                        <strong>{isBrainstormMode ? "带入项目信息" : "沉淀到企业档案"}</strong>
+                        <em>
+                          {isBrainstormMode
+                            ? (brainstormUseProjectContext ? "会参考企业档案和作战室" : "只围绕本轮想法推演")
+                            : (memoryEnabled ? "默认开启，会提取有用信息进入本项目档案" : "本次不沉淀")}
+                        </em>
+                      </span>
+                    </button>
+                  </div>
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="chat-file-input"
+                  multiple
+                  accept=".csv,.xls,.xlsx,.doc,.docx,.pdf,.txt,.md,.png,.jpg,.jpeg,.webp,.gif,.bmp,.tiff,image/*,application/pdf"
+                  onChange={handleFileUpload}
+                />
+              </div>
+            )}
+            <textarea
+              ref={textareaRef}
+              className="chat-input"
+              rows={2}
+              placeholder={inputPlaceholder}
+              value={activeDraft}
+              onChange={(e) => {
+                if (isBrainstormMode) {
+                  onBrainstormDraftChange?.(e.target.value);
+                } else {
+                  setDraft(e.target.value);
+                }
+              }}
+              onKeyDown={onKeyDown}
+              onCompositionStart={() => { composingRef.current = true; }}
+              onCompositionEnd={() => { composingRef.current = false; }}
+              disabled={Boolean(uploadingFileName)}
+              autoFocus
+            />
+            <button
+              type="button"
+              className="btn-primary chat-send"
+              onClick={() => {
+                if (isBrainstormMode) {
+                  sendBrainstorm();
+                } else {
+                  void send();
+                }
+              }}
+              disabled={displayedLoading || Boolean(uploadingFileName) || activeDraft.trim() === ""}
+              aria-label="发送消息"
+            >
+              {isProjectInline ? "↑" : "发送"}
+            </button>
+          </div>
+          {isProjectInline && (
+            <div className="chat-input-tools" ref={mapToggleRef}>
+              {!isBrainstormMode && (
+                <button
+                  type="button"
+                  className={mapPopoverOpen ? "chat-map-toggle is-open" : "chat-map-toggle"}
+                  aria-expanded={mapPopoverOpen}
+                  onClick={() => {
+                    setPlusMenuOpen(false);
+                    setMapPopoverOpen((open) => !open);
+                  }}
+                >
+                  <span>问题地图</span>
+                  {mapStatus && <em>{mapStatus}</em>}
+                </button>
+              )}
+              {activeModeConfig.suggestions.map((prompt) => (
+                <button
+                  type="button"
+                  className="chat-suggestion-pill"
+                  key={prompt}
+                  onClick={() => onBrainstormDraftChange?.(prompt)}
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
+          )}
+          {isProjectInline && <p className="chat-step__disclaimer">{activeModeConfig.note}</p>}
         </div>
       </div>
     </div>

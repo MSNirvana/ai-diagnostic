@@ -27,6 +27,11 @@ OWNER_ROLES = {
     "supply_chain": "供应链负责人",
     "channel_franchise": "渠道负责人",
     "data_systems": "数据 / 信息化负责人",
+    # 能力型 skill（行业→能力重构后新增）
+    "acquisition_efficiency": "投放 / 营销负责人",
+    "private_traffic": "私域 / 用户运营负责人",
+    "channel_expansion": "渠道 / 招商负责人",
+    "overall": "业务负责人",
 }
 
 ACTION_METRICS = {
@@ -111,6 +116,7 @@ def compose_war_room_plan(
         secondary_battlefield=secondary,
         objective=_objective(questionnaire, results, primary),
         confidence=_overall_confidence(results, primary, secondary, data_gaps),
+        accumulation_note=_accumulation_note(iteration_count=1 if record_id else 0),
         decision_items=_decision_items(actions, primary, data_gaps),
         battle_chain=_battle_chain(ordered_results, primary, secondary, triage),
         department_actions=actions,
@@ -160,28 +166,42 @@ def _summary(
 ) -> str:
     if not results:
         return "当前输入不足，建议先补齐经营数据，再生成完整部门作战方案。"
-    primary_label = skill_label(primary)
     secondary_label = skill_label(secondary)
     primary_result = _find_result(results, primary)
     conclusion = primary_result.conclusion if primary_result else "核心经营瓶颈"
     if secondary:
-        summary = f"未来 30 天优先打{primary_label}战，次战场关注{secondary_label}，把「{conclusion}」转成部门动作。"
+        summary = f"本轮经营会先围绕「{conclusion}」定动作；{secondary_label}只处理会影响落地的支撑事项，避免多线分散。"
     else:
-        summary = f"未来 30 天优先打{primary_label}战，先把「{conclusion}」转成可执行动作。"
+        summary = f"本轮经营会先围绕「{conclusion}」定动作，把判断落到负责人、时间窗和验收标准。"
     if has_data_gap:
-        return f"{summary} 当前为保守版方案，需补齐关键数据后复核。"
+        return f"{summary} 由于关键数据未补齐，当前只能作为保守方案，需先补证据再加码。"
     return summary
 
 
 def _objective(questionnaire: Questionnaire, results: list[ModuleResult], primary: str) -> str:
     problem_map = questionnaire.problem_map or {}
-    goal = str(problem_map.get("goal") or "").strip()
-    if goal:
+    goal = _clean_goal(str(problem_map.get("goal") or ""))
+    if goal and not _looks_like_template_goal(goal):
         return goal
     primary_result = _find_result(results, primary)
     if primary_result:
-        return f"30 天内改善：{primary_result.conclusion}"
+        return f"本轮要解决：{primary_result.conclusion}"
     return "补齐关键经营输入，形成可复盘的本期作战目标"
+
+
+def _clean_goal(value: str) -> str:
+    return " ".join(value.strip().split())
+
+
+def _looks_like_template_goal(value: str) -> bool:
+    compact = value.replace(" ", "")
+    return (
+        compact.startswith("未来30天优先打")
+        or compact.startswith("未来30天主攻")
+        or "主战场" in value
+        or "次战场" in value
+        or ("主攻" in value and "协同" in value)
+    )
 
 
 def _overall_confidence(
@@ -212,6 +232,23 @@ def _overall_confidence(
     return round(max(0, min(1, confidence)), 2)
 
 
+def _accumulation_note(
+    *,
+    iteration_count: int,
+    memory_entry_count: int | None = None,
+) -> str:
+    """Generate optional project-memory copy without risking the diagnosis flow."""
+    try:
+        if iteration_count <= 1:
+            return ""
+        prior_count = iteration_count - 1
+        if memory_entry_count is not None and memory_entry_count > 0:
+            return f"本次基于此前 {prior_count} 次诊断 + {memory_entry_count} 条沉淀，结论比首次更贴合。"
+        return f"本次基于此前 {prior_count} 次诊断，结论比首次更贴合。"
+    except Exception:  # noqa: BLE001 - 展示文案不能影响主流程
+        return ""
+
+
 def _department_actions(
     results: list[ModuleResult], primary: str, secondary: str
 ) -> list[DepartmentAction]:
@@ -225,15 +262,18 @@ def _department_actions(
             result.evidence_package.confidence_reason if result.evidence_package is not None else ""
         )
         required_data = _dedupe_data_requests([result])
-        action_title = result.actions[0]
-        action_detail = "；".join(result.actions[1:3]) if len(result.actions) > 1 else result.conclusion
+        action_title = _clean_boss_text(result.actions[0], "明确一个可执行动作")
+        action_detail = _clean_boss_text(
+            "；".join(result.actions[1:3]) if len(result.actions) > 1 else result.conclusion,
+            result.conclusion,
+        )
         start_window = _start_window(priority)
         actions.append(
             DepartmentAction(
                 id=f"{result.module}-action-1",
                 department=result.module,
                 department_label=skill_label(result.module),
-                battle_goal=result.conclusion,
+                battle_goal=_clean_boss_text(result.conclusion, "明确本轮要解决的经营问题"),
                 priority=priority,
                 action_title=action_title,
                 action_detail=action_detail,
@@ -243,10 +283,10 @@ def _department_actions(
                 acceptance_rule=f"{start_window}后，能提供「{action_title}」的执行记录和指标变化。",
                 required_data=required_data,
                 metrics=[_metric_for(result.module)],
-                risk_note=_risk_note(result, required_data, confidence),
+                risk_note=_clean_boss_text(_risk_note(result, required_data, confidence), ""),
                 confidence=confidence,
-                confidence_reason=confidence_reason,
-                evidence_refs=_evidence_refs(result),
+                confidence_reason=_clean_boss_text(confidence_reason, ""),
+                evidence_refs=[_clean_boss_text(ref, "") for ref in _evidence_refs(result) if _clean_boss_text(ref, "")],
             )
         )
     return actions
@@ -272,10 +312,10 @@ def _start_window(priority: str) -> str:
 
 def _dependency_note(module: str, primary: str, secondary: str) -> str:
     if module == primary:
-        return "本期主战场，其他部门围绕该动作配合。"
+        return "本轮牵头动作，其他部门只处理会卡住它的事项。"
     if module == secondary:
-        return "本期次战场，需与主战场同步复盘。"
-    return "按主战场进展排期，避免分散管理注意力。"
+        return "支撑牵头动作的关键协作项，需同步复盘。"
+    return "按牵头动作进展排期，避免分散管理注意力。"
 
 
 def _risk_note(
@@ -285,7 +325,7 @@ def _risk_note(
         labels = "、".join(gap.label for gap in required_data[:2])
         return f"缺少{labels}时，该动作先按保守假设执行。"
     if confidence is not None and confidence < 0.65:
-        return "当前证据置信度偏低，需在两周复盘时校验是否继续推进。"
+        return "当前证据完整度偏低，需在两周复盘时校验是否继续推进。"
     if result.signal == "green":
         return "当前不是核心瓶颈，避免过早投入过多资源。"
     return ""
@@ -327,8 +367,8 @@ def _decision_items(
         primary_label = skill_label(primary)
         fallback_index = len(items) + 1
         if fallback_index == 1:
-            title = f"拍板：把{primary_label}设为本期主战场"
-            detail = f"是否把{primary_label}列为未来 30 天经营会的第一优先级。"
+            title = "拍板：确认本轮只抓一个主问题"
+            detail = f"是否同意本轮经营会由{primary_label}牵头，先把最影响目标达成的问题闭环。"
         elif fallback_index == 2:
             title = "拍板：允许两周试点"
             detail = "是否允许相关部门用两周窗口验证动作有效性，先看过程指标再决定加码。"
@@ -384,12 +424,16 @@ def _evidence_summary(
     summary: list[str] = []
     for result in selected:
         for evidence in result.evidence[:2]:
-            summary.append(f"{skill_label(result.module)}：{evidence.text}（{evidence.source}）")
+            text = _clean_boss_text(evidence.text, "")
+            source = _clean_boss_text(evidence.source, "")
+            if text:
+                summary.append(f"{skill_label(result.module)}：{text}{f'（{source}）' if source else ''}")
         if result.evidence_package:
             for benchmark in result.evidence_package.benchmarks[:1]:
-                summary.append(
-                    f"{skill_label(result.module)}参考{benchmark.name}：{benchmark.value}"
-                )
+                name = _clean_boss_text(benchmark.name, "外部基准")
+                value = _clean_boss_text(benchmark.value, "")
+                if value:
+                    summary.append(f"{skill_label(result.module)}参考{name}：{value}")
     if not summary:
         summary.append("当前证据不足，建议先补齐关键经营数据。")
     return summary[:5]
@@ -404,7 +448,7 @@ def _risk_summary(
     for result in results:
         if result.evidence_package and result.evidence_package.confidence < 0.65:
             risks.append(
-                f"{skill_label(result.module)}证据置信度偏低，需先用复盘指标验证。"
+                f"{skill_label(result.module)}证据完整度偏低，需先用复盘指标验证。"
             )
     for gap in data_gaps[:3]:
         risks.append(f"缺少{gap.label}，相关判断先按保守方案执行。")
@@ -413,11 +457,39 @@ def _risk_summary(
     return risks[:5]
 
 
+def _clean_boss_text(value: object, fallback: str = "") -> str:
+    text = str(value or "").replace("\r\n", "\n").strip()
+    if not text:
+        return fallback
+    text = " ".join(text.split())
+    for marker in ("source:", "source：", "'source'", '"source"', "_cache", "needs_verification", "fetched_at"):
+        pos = text.find(marker)
+        if pos >= 0:
+            text = text[:pos].strip(" ;；,，({[")
+    for marker in ("facts.", "payload.", "data.", "audit_trail", "evidence_package"):
+        if marker in text:
+            text = text.replace(marker, "")
+    for char in "{}[]'\"":
+        text = text.replace(char, "")
+    text = text.strip(" ;；,，")
+    if not text:
+        return fallback
+    return text
+
+
 def _dedupe_data_requests(results: list[ModuleResult]) -> list[DataRequest]:
     collected: dict[str, DataRequest] = {}
     for result in results:
+        owner = OWNER_ROLES.get(result.module, "")
         for request in result.data_requests:
-            collected.setdefault(request.key, request)
+            if request.key in collected:
+                continue
+            # 标出"通常由谁提供"——老板可直接把这条转给对应负责人，不用自己翻资料
+            collected[request.key] = (
+                request.model_copy(update={"typical_owner": owner})
+                if owner and not request.typical_owner
+                else request
+            )
     return sorted(collected.values(), key=lambda request: (not request.required, request.key))
 
 
@@ -432,7 +504,7 @@ def _checkpoints(primary: str) -> list[ReviewCheckpoint]:
         ReviewCheckpoint(
             window="14d",
             title="14 天过程复盘",
-            checks=["过程指标是否出现变化", "跨部门依赖是否卡住", "是否继续保持当前主战场"],
+            checks=["过程指标是否出现变化", "跨部门依赖是否卡住", "是否继续保持当前牵头动作"],
         ),
         ReviewCheckpoint(
             window="30d",

@@ -1,4 +1,5 @@
 import type { DecisionItem } from "../../types";
+import { cleanDisplayText, cleanSentenceText } from "../../utils/displayText";
 import { priorityClass, URGENCY_LABELS } from "./warRoomViewModel";
 
 interface DecisionBoardProps {
@@ -6,7 +7,7 @@ interface DecisionBoardProps {
 }
 
 function decisionTitle(title: string): string {
-  return title.replace(/^拍板[:：]\s*/, "").trim();
+  return cleanDisplayText(title.replace(/^拍板[:：]\s*/, "").trim(), "待确认事项");
 }
 
 function decisionPrompt(item: DecisionItem): string {
@@ -15,20 +16,21 @@ function decisionPrompt(item: DecisionItem): string {
   if (action) {
     prompt = prompt.replace(action, "该事项");
   }
-  return prompt.replace(/「该事项」/g, "该事项").replace(/\s+/g, " ");
+  return cleanSentenceText(prompt.replace(/「该事项」/g, "该事项").replace(/\s+/g, " "));
 }
 
 export function DecisionBoard({ items }: DecisionBoardProps) {
   const urgentCount = items.filter((item) => item.urgency === "now").length;
+  const displayCount = urgentCount || items.length;
 
   return (
     <section className="war-panel war-panel--decision">
       <div className="war-panel__heading">
         <div>
           <span>Decision Board</span>
-          <h3>老板今天要拍板的事</h3>
+          <h3>先拍板的事项</h3>
         </div>
-        <strong className="war-panel__count">{urgentCount || items.length} 个重点</strong>
+        <strong className="war-panel__count">{displayCount} 项</strong>
       </div>
       <div className="decision-list">
         {items.map((item, index) => (

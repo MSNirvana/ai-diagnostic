@@ -71,8 +71,11 @@ class SkillContextLLM:
     seen_prompt = ""
 
     async def complete(self, system: str, prompt: str) -> str:
+        # 质量评审调用：prompt 是评审 payload（无 available_skills），直接放行
+        if "available_skills" not in prompt:
+            return json.dumps({"passed": True, "score": 90}, ensure_ascii=False)
+        # 生成调用：捕获 prompt 供断言
         SkillContextLLM.seen_prompt = prompt
-        assert "available_skills" in prompt
         assert "recommended_skills" in prompt
         assert "legal_compliance" in prompt
         return json.dumps({
@@ -152,6 +155,30 @@ def test_generate_thin_output_fails_quality_gate(db_session):
     app.dependency_overrides.pop(get_llm_client, None)
     assert resp.status_code == 422
     assert "质量未达标" in resp.json()["detail"]
+
+
+class MissingDataHandleLLM:
+    """结构达标（过规则门），但 LLM 评审判缺数据入口 → 应被 LLM 把关拦下。"""
+    async def complete(self, system: str, prompt: str) -> str:
+        if "available_skills" not in prompt:
+            # 质量评审调用：判不通过，缺直播间/商品链接
+            return json.dumps({
+                "passed": False,
+                "score": 55,
+                "missing_data_handles": ["直播间链接", "商品链接"],
+                "improvements": ["补充直播间与商品链接字段，供顾问做外部核验"],
+            }, ensure_ascii=False)
+        # 生成调用：返回结构达标的问卷（过规则门）
+        return json.dumps(_VALID, ensure_ascii=False)
+
+
+def test_generate_blocked_when_missing_data_handles(db_session):
+    """LLM 质量评审：问卷缺真实数据入口（直播间/商品链接）→ 422，不放行。"""
+    app.dependency_overrides[get_llm_client] = lambda: MissingDataHandleLLM()
+    resp = client.post("/questionnaire/generate", json=_PROFILE)
+    app.dependency_overrides.pop(get_llm_client, None)
+    assert resp.status_code == 422
+    assert "数据入口" in resp.json()["detail"]
 
 
 def test_generate_injects_extensible_skill_network_context(db_session):

@@ -1,0 +1,37 @@
+{
+  "module": "channel_expansion",
+  "module_note": "与现有 channel_franchise(专业风险:渠道政策合规) 区分：本能力侧重扩张可复制性与单元经济模型。",
+  "method": "channel-unit-economics-evidence",
+  "label": "渠道招商与单元经济诊断",
+  "category": "capability",
+  "description": "诊断加盟/经销/分销扩张是否可复制、单店或单商盈利模型是否成立。通用能力，适用餐饮/厨电/零售/服务等任何渠道扩张业务，按行业调基准。",
+  "trigger_keywords": ["加盟", "招商", "经销商", "代理", "单店模型", "单店", "回本周期", "动销", "闭店", "首批进货", "门店扩张", "单商", "渠道扩张", "复制"],
+  "industry_kpis": ["单店回本周期", "单店月营收", "动销率", "闭店率", "加盟商存活率", "首批进货额", "招商转化率", "单店净利率"],
+  "scenarios": ["local_service", "ecommerce_retail", "manufacturing"],
+  "data_requirements": [
+    {
+      "key": "unit_store_model",
+      "label": "单店/单商盈利模型",
+      "reason": "扩张能不能复制，根子在单个门店/经销商赚不赚钱。没有单店营收、成本、回本周期，无法判断模型是否成立。",
+      "source_hint": "提供样板店/头部经销商的月营收、成本结构、净利率、回本周期。",
+      "keywords": ["单店", "月营收", "成本", "净利", "回本", "毛利"],
+      "required": true
+    },
+    {
+      "key": "expansion_funnel",
+      "label": "招商与存活漏斗",
+      "reason": "只看签约数会掩盖高闭店/低动销。要看从招商到存活的全链路。",
+      "source_hint": "提供近12个月招商线索数、签约数、开业数、闭店数、加盟商/经销商存活率、动销率。",
+      "keywords": ["招商", "签约", "开业", "闭店", "存活率", "动销"],
+      "required": true
+    },
+    {
+      "key": "channel_entry",
+      "label": "渠道入口与政策",
+      "reason": "顾问要核验真实渠道运营，需要入口和政策而非自述。",
+      "source_hint": "提供招商页/加盟手册链接、首批进货政策、返利/区域保护政策、督导频次。",
+      "keywords": ["招商页", "加盟手册", "首批进货", "返利", "区域保护", "督导"],
+      "required": false
+    }
+  ]
+}

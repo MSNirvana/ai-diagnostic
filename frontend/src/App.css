@@ -72,7 +72,7 @@
   }
 }
 
-/* 诊断结果页：顾问审核中 banner（伪异步交付提示） */
+/* 诊断交付页：顾问审核状态 */
 .result-review-banner {
   background: #fffbeb;
   border: 1px solid #fcd34d;
@@ -86,3 +86,15 @@
   font-size: 0.88rem;
 }
 .result-review-banner strong { font-size: 0.95rem; }
+
+.result-review-banner--rejected {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #991b1b;
+}
+
+.result-review-banner--approved {
+  background: #f0fdf4;
+  border-color: #86efac;
+  color: #166534;
+}

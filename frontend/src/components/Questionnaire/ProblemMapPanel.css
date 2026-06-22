@@ -13,8 +13,19 @@
 }
 
 .map-panel--active {
-  border-color: rgba(179, 139, 77, 0.46);
-  box-shadow: var(--shadow), 0 0 0 4px rgba(246, 240, 229, 0.72);
+  border-color: rgba(14, 74, 125, 0.34);
+  box-shadow: var(--shadow), 0 0 0 4px rgba(230, 242, 252, 0.72);
+}
+
+.map-panel--project-inline {
+  width: 320px;
+  min-width: 0;
+  position: sticky;
+  top: 96px;
+  border-color: rgba(151, 164, 184, 0.22);
+  background: var(--surface-glass);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(16px);
 }
 
 .map-panel__title {
@@ -37,9 +48,9 @@
 }
 
 .map-panel__score-card {
-  border: 1px solid rgba(193, 154, 76, 0.28);
+  border: 1px solid rgba(14, 74, 125, 0.14);
   border-radius: var(--radius-lg);
-  background: linear-gradient(135deg, rgba(255, 251, 241, 0.96), rgba(246, 250, 255, 0.92));
+  background: linear-gradient(135deg, rgba(232, 243, 251, 0.92), rgba(255, 255, 255, 0.94));
   padding: 14px;
 }
 
@@ -63,7 +74,7 @@
 .map-panel__meter {
   height: 6px;
   border-radius: 999px;
-  background: rgba(15, 45, 76, 0.1);
+  background: rgba(151, 164, 184, 0.22);
   overflow: hidden;
   margin-top: 10px;
 }
@@ -72,7 +83,7 @@
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--gold), var(--accent));
+  background: linear-gradient(90deg, #3B87B5, var(--accent));
 }
 
 .map-panel__score-copy,
@@ -95,7 +106,7 @@
 
 .map-panel__label {
   font-size: 0.76rem;
-  color: var(--gold);
+  color: var(--accent);
   font-weight: 800;
   letter-spacing: 0.04em;
 }

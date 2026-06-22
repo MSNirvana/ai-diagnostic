@@ -8,13 +8,31 @@
 prompt 优先从数据库 SkillVersion 表（module='conversation_intake'）读，
 DB 空时回退代码 fallback。
 """
+import json
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import ValidationError
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_llm_client
+from app.auth.jwt import get_current_user, get_optional_user
+from app.db.models import BrainstormSession, IdeaCard, Project, ProjectMemoryEntry, User
 from app.llm.base import LLMClient
-from app.models.conversation import ChatRequest, ChatResponse, ProblemMap
+from app.models.conversation import (
+    ChatRequest,
+    ChatMessage,
+    ChatResponse,
+    FreeChatRequest,
+    FreeChatResponse,
+    BrainstormSessionDetail,
+    BrainstormSessionPatchRequest,
+    BrainstormSessionSummary,
+    IdeaCardResponse,
+    SaveIdeaCardRequest,
+    ProblemMap,
+)
 from app.skills.intake_completeness import (
     annotate_problem_map,
     build_intake_gate_message,
@@ -22,14 +40,25 @@ from app.skills.intake_completeness import (
 )
 from app.skills.parsing import parse_json_object
 from app.skills.store import get_active_skill_version
-from app.skills.prompts import CONVERSATION_INTAKE, INTAKE_COMPLETENESS
+from app.skills.prompts import CONVERSATION_INTAKE, FREE_CHAT, INTAKE_COMPLETENESS
 from app.db.database import get_session
+from app.data.uploads import render_file_summary
+from app.db.models import UploadedFile
 
 router = APIRouter(prefix="/conversation")
 
 LLM_UNAVAILABLE_MESSAGE = (
     "模型通道暂时不可用。请先在后台「模型通道」配置可用 API Key，"
     "或检查当前模型服务连接后再继续对话。"
+)
+
+PROJECT_CONTEXT_RUNTIME_RULE = (
+    "\n\n【项目上下文运行时规则】\n"
+    "- 如果本轮 prompt 出现【可参考的项目信息】，说明用户已开启“带入项目信息思考”。"
+    "你必须基于这些项目档案、长期记忆和作战室摘要回答。\n"
+    "- 不要回答“当前模式没有绑定项目”“我没有读取你的项目档案”“不知道当前项目”。"
+    "如果信息不足，只能说“项目档案中还缺少哪些字段”。\n"
+    "- 如果本轮 prompt 出现【项目信息状态】且说明未找到项目档案，才可以说明项目档案不可用。"
 )
 
 
@@ -41,6 +70,235 @@ def _format_history(req: ChatRequest) -> str:
         who = "老板" if m.role == "user" else "顾问"
         lines.append(f"{who}：{m.content}")
     return "\n".join(lines)
+
+
+async def _project_context_for_free_chat(
+    session: AsyncSession,
+    project_id: str | None,
+    user: User | None,
+) -> str:
+    if not project_id or user is None:
+        return ""
+    project = await session.get(Project, project_id)
+    if project is None or project.user_id != user.id:
+        return ""
+
+    memory_rows = list((await session.scalars(
+        select(ProjectMemoryEntry)
+        .where(ProjectMemoryEntry.project_id == project_id)
+        .order_by(ProjectMemoryEntry.created_at.desc())
+        .limit(8)
+    )).all())
+    memory_lines = [
+        f"- {row.entry_type}：{_clean_card_text(row.summary)[:220]}"
+        for row in memory_rows
+        if _clean_card_text(row.summary)
+    ]
+    war_room = ""
+    if project.war_room_plan_json:
+        try:
+            plan = json.loads(project.war_room_plan_json)
+            war_room = "\n".join([
+                f"作战室目标：{_clean_card_text(plan.get('objective'))}",
+                f"主战场：{_clean_card_text(plan.get('primary_battlefield'))}",
+                f"作战室摘要：{_clean_card_text(plan.get('summary'))[:260]}",
+            ])
+        except (TypeError, ValueError, AttributeError):
+            war_room = ""
+
+    return "\n\n".join([
+        f"项目名称：{project.name}",
+        f"项目长期记忆：{project.memory_summary}" if project.memory_summary.strip() else "",
+        f"最近档案事件：\n{chr(10).join(memory_lines)}" if memory_lines else "",
+        war_room,
+    ]).strip()
+
+
+def _is_stale_no_project_reply(text: str) -> bool:
+    compact = _clean_card_text(text)
+    stale_markers = (
+        "没有绑定任何项目",
+        "没有绑定项目",
+        "没有读取你的项目档案",
+        "没有项目档案",
+        "不知道当前项目",
+        "这张桌子是空的",
+        "空白纸",
+        "当前模式没有绑定",
+    )
+    return any(marker in compact for marker in stale_markers)
+
+
+def _filtered_free_chat_messages(messages: list[ChatMessage], has_project_context: bool) -> list[ChatMessage]:
+    if not has_project_context:
+        return messages
+    return [
+        message for message in messages
+        if not (message.role == "assistant" and _is_stale_no_project_reply(message.content))
+    ]
+
+
+def _project_name_from_context(project_context: str) -> str:
+    for line in project_context.splitlines():
+        if line.startswith("项目名称："):
+            return line.removeprefix("项目名称：").strip()
+    return ""
+
+
+def _is_project_identity_question(messages: list[ChatMessage]) -> bool:
+    last_user = next((m.content for m in reversed(messages) if m.role == "user"), "")
+    compact = _clean_card_text(last_user)
+    return any(phrase in compact for phrase in (
+        "当前是什么项目",
+        "现在是什么项目",
+        "这是什么项目",
+        "当前项目是什么",
+        "你知道这个项目吗",
+        "你知道当前项目吗",
+    ))
+
+
+def _project_identity_answer(project_context: str) -> str:
+    project_name = _project_name_from_context(project_context) or "当前项目"
+    context_lines = [
+        line for line in project_context.splitlines()
+        if line.strip() and not line.startswith("项目名称：")
+    ]
+    if context_lines:
+        return (
+            f"当前带入的是**「{project_name}」**。\n\n"
+            "我已经读取到这个项目的档案摘要，后续头脑风暴会基于这些信息展开：\n"
+            + "\n".join(f"- {line.strip()}" for line in context_lines[:6])
+            + "\n\n你可以直接说一个想推演的动作，例如获客、渠道招商、转化、产品定位或 7 天验证计划。"
+        )
+    return (
+        f"当前带入的是**「{project_name}」**。\n\n"
+        "不过这个项目目前沉淀的信息还比较少，我至少已经拿到项目名称。"
+        "你接下来可以直接说想推演的动作，我会围绕这个项目继续追问和拆解。"
+    )
+
+
+def _format_free_chat_history(req: FreeChatRequest, project_context: str = "") -> str:
+    context = (project_context or req.project_context).strip()
+    if context:
+        context_block = (
+            "【可参考的项目信息】\n"
+            f"{context}\n\n"
+            "【本轮要求】用户已开启“带入项目信息思考”。回答必须基于以上项目背景推演；"
+            "不要说不了解该项目，除非上方明确提示项目档案不可用。\n\n"
+        )
+    elif req.use_project_context:
+        context_block = (
+            "【项目信息状态】用户已开启“带入项目信息思考”，但后端没有找到当前账号可访问的项目档案。"
+            "请先说明无法读取项目档案，再按用户当前输入做通用推演，并提醒用户回到正确项目后重试。\n\n"
+        )
+    else:
+        context_block = ""
+    messages = _filtered_free_chat_messages(req.messages, bool(context))
+    if not messages:
+        return f"{context_block}用户刚进入头脑风暴模式，请用一句简洁开场邀请用户说出一个商业点子、营销想法或新项目灵感。"
+    lines = []
+    for m in messages:
+        who = "用户" if m.role == "user" else "助手"
+        content = m.content.strip()
+        if content:
+            lines.append(f"{who}：{content}")
+    history = "\n".join(lines) or "用户刚进入头脑风暴模式，请用一句简洁开场邀请用户说出一个商业点子、营销想法或新项目灵感。"
+    return f"{context_block}{history}"
+
+
+def _load_uploaded_summary(raw: str) -> dict:
+    try:
+        parsed = json.loads(raw)
+        return parsed if isinstance(parsed, dict) else {"raw": parsed}
+    except (TypeError, ValueError):
+        return {"content_type": "legacy", "text": str(raw or "")}
+
+
+async def _attachment_context_for_free_chat(
+    session: AsyncSession,
+    file_ids: list[str],
+    user: User | None,
+) -> str:
+    ids = [file_id for file_id in dict.fromkeys(file_ids) if file_id]
+    if not ids:
+        return ""
+    rows = list((await session.scalars(
+        select(UploadedFile).where(UploadedFile.id.in_(ids))
+    )).all())
+    visible = [
+        row for row in rows
+        if row.user_id is None or (user is not None and row.user_id == user.id)
+    ]
+    if not visible:
+        return ""
+    lines = []
+    for row in visible[:8]:
+        summary = render_file_summary(row.original_name, _load_uploaded_summary(row.parsed_summary))
+        if summary.strip():
+            lines.append(f"【{row.original_name}】\n{summary[:1600]}")
+    if not lines:
+        return ""
+    return (
+        "【本轮上传资料摘要】\n"
+        + "\n\n".join(lines)
+        + "\n\n【资料使用要求】以上资料是用户本轮随消息发送的上下文。回答时必须阅读并引用其中可用事实；"
+        "如果资料不足，请明确指出还缺什么，不要假装已经有数据。"
+    )
+
+
+def _clean_card_text(value: object, fallback: str = "") -> str:
+    text = str(value or "").strip()
+    if not text:
+        return fallback
+    return " ".join(text.split())
+
+
+def _idea_card_response(card: IdeaCard) -> IdeaCardResponse:
+    return IdeaCardResponse(
+        id=card.id,
+        project_id=card.project_id,
+        created_at=card.created_at.isoformat(),
+        updated_at=card.updated_at.isoformat(),
+        status=card.status,
+        title=card.title,
+        one_liner=card.one_liner,
+        source_context=card.source_context,
+        target_customer=card.target_customer,
+        pain_point=card.pain_point,
+        value_proposition=card.value_proposition,
+        core_assumption=card.core_assumption,
+        contrary_risk=card.contrary_risk,
+        validation_action=card.validation_action,
+        next_step=card.next_step,
+        confidence=card.confidence,
+    )
+
+
+def _brainstorm_title(messages: list[ChatMessage]) -> str:
+    for message in messages:
+        if message.role != "user":
+            continue
+        text = _clean_card_text(message.content)
+        if text:
+            return text[:28]
+    return "风暴记录"
+
+
+def _brainstorm_summary(row: BrainstormSession) -> BrainstormSessionSummary:
+    return BrainstormSessionSummary(
+        id=row.id,
+        project_id=row.project_id,
+        created_at=row.created_at.isoformat(),
+        updated_at=row.updated_at.isoformat(),
+        title=row.title or "风暴记录",
+        is_pinned=row.is_pinned,
+        use_project_context=row.use_project_context,
+    )
+
+
+def _can_access_brainstorm(row: BrainstormSession, user: User | None) -> bool:
+    return row.user_id is None or (user is not None and row.user_id == user.id)
 
 
 async def run_chat_turn(
@@ -139,3 +397,217 @@ async def chat(
     session: AsyncSession = Depends(get_session),
 ) -> ChatResponse:
     return await run_chat_turn(req.messages, llm, session)
+
+
+@router.post("/free-chat", response_model=FreeChatResponse)
+async def free_chat(
+    req: FreeChatRequest,
+    user: User | None = Depends(get_optional_user),
+    llm: LLMClient = Depends(get_llm_client),
+    session: AsyncSession = Depends(get_session),
+) -> FreeChatResponse:
+    """头脑风暴对话：不创建诊断会话、不产出正式问题地图；项目内风暴会话会独立留存。"""
+    ver = await get_active_skill_version(session, "free_chat")
+    system = ver.system_prompt if ver else FREE_CHAT
+    if req.use_project_context:
+        system = system + PROJECT_CONTEXT_RUNTIME_RULE
+    project_context = ""
+    if req.use_project_context:
+        project_context = await _project_context_for_free_chat(session, req.project_id, user)
+    attachment_context = await _attachment_context_for_free_chat(session, req.attachment_file_ids, user)
+    merged_context = "\n\n".join([part for part in [project_context, attachment_context] if part.strip()])
+    if project_context and _is_project_identity_question(req.messages):
+        message = _project_identity_answer(project_context)
+        brainstorm_session_id = await _persist_brainstorm_turn(
+            session=session,
+            req=req,
+            user=user,
+            message=message,
+        )
+        return FreeChatResponse(message=message, brainstorm_session_id=brainstorm_session_id)
+    prompt = _format_free_chat_history(req, merged_context)
+    try:
+        message = (await llm.complete(system=system, prompt=prompt)).strip()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"{LLM_UNAVAILABLE_MESSAGE}（错误类型：{exc.__class__.__name__}）",
+        ) from exc
+    message = message or "我在，说一个你想风暴的点子，我们先把它拆开看看。"
+    brainstorm_session_id = await _persist_brainstorm_turn(
+        session=session,
+        req=req,
+        user=user,
+        message=message,
+    )
+    return FreeChatResponse(message=message, brainstorm_session_id=brainstorm_session_id)
+
+
+async def _persist_brainstorm_turn(
+    session: AsyncSession,
+    req: FreeChatRequest,
+    user: User | None,
+    message: str,
+) -> str | None:
+    brainstorm_session_id = req.brainstorm_session_id
+    if req.project_id and user is not None:
+        project = await session.get(Project, req.project_id)
+        if project is not None and project.user_id == user.id:
+            row: BrainstormSession | None = None
+            if req.brainstorm_session_id:
+                candidate = await session.get(BrainstormSession, req.brainstorm_session_id)
+                if (
+                    candidate is not None
+                    and candidate.deleted_at is None
+                    and candidate.project_id == req.project_id
+                    and _can_access_brainstorm(candidate, user)
+                ):
+                    row = candidate
+            messages = list(req.messages)
+            if not messages or messages[-1].role != "assistant" or messages[-1].content != message:
+                messages.append(ChatMessage(role="assistant", content=message))
+            if row is None:
+                row = BrainstormSession(
+                    user_id=user.id,
+                    project_id=req.project_id,
+                    title=_brainstorm_title(messages),
+                    use_project_context=req.use_project_context,
+                )
+            elif not row.title_is_custom:
+                row.title = _brainstorm_title(messages)
+            row.messages_json = json.dumps([m.model_dump() for m in messages], ensure_ascii=False)
+            row.use_project_context = req.use_project_context
+            row.updated_at = datetime.now(timezone.utc)
+            session.add(row)
+            await session.commit()
+            await session.refresh(row)
+            brainstorm_session_id = row.id
+    return brainstorm_session_id
+
+
+@router.get("/brainstorm-sessions", response_model=list[BrainstormSessionSummary])
+async def list_brainstorm_sessions(
+    project_id: str | None = None,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> list[BrainstormSessionSummary]:
+    stmt = (
+        select(BrainstormSession)
+        .where(BrainstormSession.user_id == user.id)
+        .where(BrainstormSession.deleted_at.is_(None))
+        .order_by(BrainstormSession.is_pinned.desc(), BrainstormSession.updated_at.desc())
+    )
+    if project_id:
+        stmt = stmt.where(BrainstormSession.project_id == project_id)
+    rows = list((await session.scalars(stmt)).all())
+    visible = []
+    for row in rows:
+        try:
+            messages = json.loads(row.messages_json or "[]")
+        except (TypeError, ValueError):
+            messages = []
+        if messages:
+            visible.append(_brainstorm_summary(row))
+    return visible
+
+
+@router.get("/brainstorm-sessions/{brainstorm_session_id}", response_model=BrainstormSessionDetail)
+async def get_brainstorm_session(
+    brainstorm_session_id: str,
+    user: User | None = Depends(get_optional_user),
+    session: AsyncSession = Depends(get_session),
+) -> BrainstormSessionDetail:
+    row = await session.get(BrainstormSession, brainstorm_session_id)
+    if row is None or row.deleted_at is not None or not _can_access_brainstorm(row, user):
+        raise HTTPException(status_code=404, detail="风暴记录不存在")
+    return BrainstormSessionDetail(
+        **_brainstorm_summary(row).model_dump(),
+        messages=[ChatMessage.model_validate(m) for m in json.loads(row.messages_json or "[]")],
+    )
+
+
+@router.patch("/brainstorm-sessions/{brainstorm_session_id}", response_model=BrainstormSessionSummary)
+async def patch_brainstorm_session(
+    brainstorm_session_id: str,
+    body: BrainstormSessionPatchRequest,
+    user: User | None = Depends(get_optional_user),
+    session: AsyncSession = Depends(get_session),
+) -> BrainstormSessionSummary:
+    row = await session.get(BrainstormSession, brainstorm_session_id)
+    if row is None or row.deleted_at is not None or not _can_access_brainstorm(row, user):
+        raise HTTPException(status_code=404, detail="风暴记录不存在")
+    if body.title is not None:
+        title = body.title.strip()
+        if title:
+            row.title = title[:80]
+            row.title_is_custom = True
+    if body.is_pinned is not None:
+        row.is_pinned = body.is_pinned
+    row.updated_at = datetime.now(timezone.utc)
+    session.add(row)
+    await session.commit()
+    await session.refresh(row)
+    return _brainstorm_summary(row)
+
+
+@router.delete("/brainstorm-sessions/{brainstorm_session_id}", status_code=204)
+async def delete_brainstorm_session(
+    brainstorm_session_id: str,
+    user: User | None = Depends(get_optional_user),
+    session: AsyncSession = Depends(get_session),
+) -> None:
+    row = await session.get(BrainstormSession, brainstorm_session_id)
+    if row is None or row.deleted_at is not None or not _can_access_brainstorm(row, user):
+        raise HTTPException(status_code=404, detail="风暴记录不存在")
+    row.deleted_at = datetime.now(timezone.utc)
+    row.is_pinned = False
+    row.updated_at = row.deleted_at
+    session.add(row)
+    await session.commit()
+
+
+@router.post("/idea-cards", response_model=IdeaCardResponse, status_code=201)
+async def save_idea_card(
+    req: SaveIdeaCardRequest,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> IdeaCardResponse:
+    """保存头脑风暴点子卡。"""
+    card = req.card
+    title = _clean_card_text(card.title) or _clean_card_text(card.one_liner) or "未命名点子"
+    record = IdeaCard(
+        user_id=user.id,
+        project_id=req.project_id,
+        title=title[:120],
+        one_liner=_clean_card_text(card.one_liner),
+        source_context=_clean_card_text(card.source_context),
+        target_customer=_clean_card_text(card.target_customer),
+        pain_point=_clean_card_text(card.pain_point),
+        value_proposition=_clean_card_text(card.value_proposition),
+        core_assumption=_clean_card_text(card.core_assumption),
+        contrary_risk=_clean_card_text(card.contrary_risk),
+        validation_action=_clean_card_text(card.validation_action),
+        next_step=_clean_card_text(card.next_step),
+        confidence=_clean_card_text(card.confidence, "待验证"),
+        raw_card_json=card.model_dump_json(),
+        messages_json=json.dumps([m.model_dump() for m in req.messages], ensure_ascii=False),
+    )
+    session.add(record)
+    await session.commit()
+    await session.refresh(record)
+    return _idea_card_response(record)
+
+
+@router.get("/idea-cards", response_model=list[IdeaCardResponse])
+async def list_idea_cards(
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> list[IdeaCardResponse]:
+    stmt = (
+        select(IdeaCard)
+        .where(IdeaCard.user_id == user.id)
+        .order_by(IdeaCard.updated_at.desc())
+        .limit(50)
+    )
+    cards = list((await session.scalars(stmt)).all())
+    return [_idea_card_response(card) for card in cards]

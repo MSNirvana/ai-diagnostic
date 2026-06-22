@@ -10,12 +10,17 @@ import type {
   ChatMessage,
   ChatResponse,
   ChatTurnResponse,
+  BrainstormSessionDetail,
+  BrainstormSessionSummary,
+  FreeChatResponse,
+  IdeaCard,
   ProblemMap,
   ProblemSummary,
   SessionSummary,
   SessionDetail,
   ProjectSummary,
   ProjectDetail,
+  ProjectArchive,
   WarRoomPlan,
   SkillRegistryItem,
   SkillVersionOut,
@@ -27,6 +32,10 @@ import type {
   L4Stats,
   ReviewQueueItem,
   ReviewDetail,
+  DiagnosisJobCreated,
+  DiagnosisJobStatus,
+  ResearchEvidenceOut,
+  ArchiveExtractionPreview,
 } from "../types";
 import { clearToken, getToken } from "../auth/authStore";
 
@@ -69,6 +78,44 @@ export async function runDiagnose(
   if (!resp.ok) throw new Error(`diagnose failed: ${resp.status}`);
   const body = await resp.json();
   return body as DiagnoseResult;
+}
+
+export async function createDiagnosisJob(
+  answers: ModuleAnswer[],
+  sessionId?: string,
+  projectId?: string,
+  problemMap?: Partial<ProblemMap>
+): Promise<DiagnosisJobCreated> {
+  const resp = await fetch(`${BASE}/diagnosis-jobs/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({
+      answers,
+      session_id: sessionId,
+      project_id: projectId,
+      problem_map: problemMap,
+    }),
+  });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "创建深度尽调任务失败"));
+  return (await resp.json()) as DiagnosisJobCreated;
+}
+
+export async function getDiagnosisJob(jobId: string): Promise<DiagnosisJobStatus> {
+  const resp = await fetch(`${BASE}/diagnosis-jobs/${jobId}`, { headers: { ...authHeaders() } });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "获取深度尽调任务失败"));
+  return (await resp.json()) as DiagnosisJobStatus;
+}
+
+export async function getDiagnosisJobEvidence(jobId: string): Promise<ResearchEvidenceOut[]> {
+  const resp = await fetch(`${BASE}/diagnosis-jobs/${jobId}/evidence`, { headers: { ...authHeaders() } });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "获取尽调证据失败"));
+  return (await resp.json()) as ResearchEvidenceOut[];
+}
+
+export async function getProjectEvidence(projectId: string): Promise<ResearchEvidenceOut[]> {
+  const resp = await fetch(`${BASE}/project/${projectId}/evidence`, { headers: { ...authHeaders() } });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "获取项目证据失败"));
+  return (await resp.json()) as ResearchEvidenceOut[];
 }
 
 export async function runDiagnoseWithFiles(
@@ -204,6 +251,91 @@ export async function sendChatMessage(
   return (await resp.json()) as ChatResponse;
 }
 
+export async function sendFreeChatMessage(
+  messages: ChatMessage[],
+  options: {
+    projectContext?: string;
+    projectId?: string;
+    useProjectContext?: boolean;
+    brainstormSessionId?: string;
+    attachmentFileIds?: string[];
+  } | string = ""
+): Promise<FreeChatResponse> {
+  const payload = typeof options === "string"
+    ? { messages, project_context: options }
+    : {
+        messages,
+        project_context: options.projectContext ?? "",
+        project_id: options.projectId ?? null,
+        use_project_context: Boolean(options.useProjectContext),
+        brainstorm_session_id: options.brainstormSessionId ?? null,
+        attachment_file_ids: options.attachmentFileIds ?? [],
+      };
+  const resp = await fetch(`${BASE}/conversation/free-chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(payload),
+  });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "对话失败"));
+  return (await resp.json()) as FreeChatResponse;
+}
+
+export const sendBrainstormMessage = sendFreeChatMessage;
+
+export async function listBrainstormSessions(projectId?: string): Promise<BrainstormSessionSummary[]> {
+  const query = projectId ? `?project_id=${encodeURIComponent(projectId)}` : "";
+  const resp = await fetch(`${BASE}/conversation/brainstorm-sessions${query}`, { headers: { ...authHeaders() } });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "获取风暴记录失败"));
+  return (await resp.json()) as BrainstormSessionSummary[];
+}
+
+export async function getBrainstormSession(id: string): Promise<BrainstormSessionDetail> {
+  const resp = await fetch(`${BASE}/conversation/brainstorm-sessions/${id}`, { headers: { ...authHeaders() } });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "获取风暴记录失败"));
+  return (await resp.json()) as BrainstormSessionDetail;
+}
+
+export async function updateBrainstormSession(
+  id: string,
+  body: { title?: string; is_pinned?: boolean }
+): Promise<BrainstormSessionSummary> {
+  const resp = await fetch(`${BASE}/conversation/brainstorm-sessions/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "更新风暴记录失败"));
+  return (await resp.json()) as BrainstormSessionSummary;
+}
+
+export async function deleteBrainstormSession(id: string): Promise<void> {
+  const resp = await fetch(`${BASE}/conversation/brainstorm-sessions/${id}`, {
+    method: "DELETE",
+    headers: { ...authHeaders() },
+  });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "删除风暴记录失败"));
+}
+
+export async function saveIdeaCard(
+  card: IdeaCard,
+  messages: ChatMessage[],
+  projectId?: string | null
+): Promise<IdeaCard> {
+  const resp = await fetch(`${BASE}/conversation/idea-cards`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ card, messages, project_id: projectId ?? null }),
+  });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "保存点子卡失败"));
+  return (await resp.json()) as IdeaCard;
+}
+
+export async function listIdeaCards(): Promise<IdeaCard[]> {
+  const resp = await fetch(`${BASE}/conversation/idea-cards`, { headers: { ...authHeaders() } });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "获取点子卡失败"));
+  return (await resp.json()) as IdeaCard[];
+}
+
 export async function generateABFromSummary(
   summary: ProblemSummary,
   projectId?: string,
@@ -271,11 +403,11 @@ export async function recordPreference(
   });
 }
 
-export async function startSession(projectId?: string): Promise<string> {
+export async function startSession(projectId?: string, memoryEnabled = true): Promise<string> {
   const resp = await fetch(`${BASE}/session/start`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify({ project_id: projectId ?? null }),
+    body: JSON.stringify({ project_id: projectId ?? null, memory_enabled: memoryEnabled }),
   });
   if (!resp.ok) throw new Error(`创建会话失败: ${resp.status}`);
   return (await resp.json()).session_id as string;
@@ -283,12 +415,13 @@ export async function startSession(projectId?: string): Promise<string> {
 
 export async function sessionChat(
   sessionId: string,
-  message: string
+  message: string,
+  memoryEnabled?: boolean
 ): Promise<ChatTurnResponse> {
   const resp = await fetch(`${BASE}/session/${sessionId}/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, memory_enabled: memoryEnabled ?? null }),
   });
   if (!resp.ok) throw new Error(await errorMessage(resp, "对话失败"));
   return (await resp.json()) as ChatTurnResponse;
@@ -304,6 +437,27 @@ export async function getSessionDetail(id: string): Promise<SessionDetail> {
   const resp = await fetch(`${BASE}/session/${id}`, { headers: { ...authHeaders() } });
   if (!resp.ok) throw new Error(`获取会话失败: ${resp.status}`);
   return (await resp.json()) as SessionDetail;
+}
+
+export async function updateSession(
+  id: string,
+  body: { title?: string; is_pinned?: boolean; memory_enabled?: boolean }
+): Promise<SessionSummary> {
+  const resp = await fetch(`${BASE}/session/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "更新会话失败"));
+  return (await resp.json()) as SessionSummary;
+}
+
+export async function deleteSession(id: string): Promise<void> {
+  const resp = await fetch(`${BASE}/session/${id}`, {
+    method: "DELETE",
+    headers: { ...authHeaders() },
+  });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "删除会话失败"));
 }
 
 export async function saveSessionDraft(sessionId: string, draftJson: string): Promise<void> {
@@ -353,6 +507,32 @@ export async function patchProject(
   });
   if (!resp.ok) throw new Error(`更新项目失败: ${resp.status}`);
   return (await resp.json()) as ProjectSummary;
+}
+
+export async function extractArchiveFile(
+  projectId: string,
+  fileId: string,
+): Promise<ArchiveExtractionPreview> {
+  const resp = await fetch(`${BASE}/project/${projectId}/archive/files/${fileId}/extract`, {
+    method: "POST",
+    headers: { ...authHeaders() },
+  });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "生成沉淀草稿失败"));
+  return (await resp.json()) as ArchiveExtractionPreview;
+}
+
+export async function confirmArchiveFileExtraction(
+  projectId: string,
+  fileId: string,
+  body: { highlights: { label: string; value: string }[]; summary?: string },
+): Promise<ProjectArchive> {
+  const resp = await fetch(`${BASE}/project/${projectId}/archive/files/${fileId}/confirm`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "确认沉淀失败"));
+  return (await resp.json()) as ProjectArchive;
 }
 
 // ── 后台：Skill 管理 ──────────────────────────────────
@@ -461,7 +641,7 @@ export async function uploadSessionFile(
     headers: { ...authHeaders() },
     body: form,
   });
-  if (!resp.ok) throw new Error(`上传失败: ${resp.status}`);
+  if (!resp.ok) throw new Error(await errorMessage(resp, "上传失败"));
   return (await resp.json()) as UploadedFileOut;
 }
 
@@ -472,7 +652,8 @@ export async function listSessionFiles(sessionId: string): Promise<UploadedFileO
 }
 
 export async function deleteSessionFile(fileId: string): Promise<void> {
-  await fetch(`${BASE}/files/${fileId}`, { method: "DELETE", headers: { ...authHeaders() } });
+  const resp = await fetch(`${BASE}/files/${fileId}`, { method: "DELETE", headers: { ...authHeaders() } });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "删除文件失败"));
 }
 
 // ── Loop 治理 API ─────────────────────────────────────────────────────────────

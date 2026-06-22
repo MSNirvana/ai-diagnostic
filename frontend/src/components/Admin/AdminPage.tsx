@@ -28,12 +28,14 @@ import type {
   ReviewQueueItem,
   ReviewDetail,
 } from "../../types";
+import { cleanDisplayText, cleanSentenceText, displayModuleLabel } from "../../utils/displayText";
 import { AppShell } from "../Layout/AppShell";
+import { EvidencePackPanel } from "../Evidence/EvidencePackPanel";
 import "./AdminPage.css";
 
 type Tab = "skills" | "models" | "review" | "l1" | "l2" | "l3" | "l4";
 
-type SkillGroupKey = "intake" | "questionnaire" | "core" | "professional" | "industry" | "delivery" | "other";
+type SkillGroupKey = "assistant" | "intake" | "questionnaire" | "core" | "professional" | "industry" | "delivery" | "other";
 type SkillFilterKey = SkillGroupKey | "all";
 
 const SKILL_GROUPS: Array<{
@@ -41,6 +43,11 @@ const SKILL_GROUPS: Array<{
   title: string;
   shortTitle: string;
 }> = [
+  {
+    key: "assistant",
+    title: "头脑风暴",
+    shortTitle: "脑暴",
+  },
   {
     key: "intake",
     title: "客户进入与问题地图",
@@ -80,9 +87,10 @@ const SKILL_GROUPS: Array<{
 const SKILL_GROUP_ORDER = SKILL_GROUPS.reduce<Record<SkillGroupKey, number>>((acc, group, index) => {
   acc[group.key] = index;
   return acc;
-}, { intake: 0, questionnaire: 0, core: 0, professional: 0, industry: 0, delivery: 0, other: 0 });
+}, { assistant: 0, intake: 0, questionnaire: 0, core: 0, professional: 0, industry: 0, delivery: 0, other: 0 });
 
 const SKILL_CATEGORY_ORDER: Record<string, number> = {
+  assistant: 5,
   intake: 10,
   questionnaire: 20,
   core: 30,
@@ -93,9 +101,10 @@ const SKILL_CATEGORY_ORDER: Record<string, number> = {
 };
 
 function normalizeGroup(category: string, skillType?: string): SkillGroupKey {
-  if (category === "intake" || category === "questionnaire" || category === "core" || category === "professional" || category === "industry" || category === "delivery") {
+  if (category === "assistant" || category === "intake" || category === "questionnaire" || category === "core" || category === "professional" || category === "industry" || category === "delivery") {
     return category;
   }
+  if (skillType === "assistant") return "assistant";
   if (skillType === "conversation") return "intake";
   if (skillType === "questionnaire") return "questionnaire";
   if (skillType === "diagnosis") return "core";
@@ -113,7 +122,7 @@ export function AdminPage() {
       description="维护专家方法库、模型通道与版本留痕，让前台交付稳定、可追溯、可持续优化。"
       actions={
         <button type="button" className="btn-ghost" onClick={() => navigate("/projects")}>
-          返回项目中心
+          返回项目组合
         </button>
       }
     >
@@ -226,7 +235,7 @@ function SkillsTab() {
   const groupCounts = SKILL_GROUPS.reduce<Record<SkillGroupKey, number>>((acc, group) => {
     acc[group.key] = (skills ?? []).filter((skill) => normalizeGroup(skill.category, skill.skill_type) === group.key).length;
     return acc;
-  }, { intake: 0, questionnaire: 0, core: 0, professional: 0, industry: 0, delivery: 0, other: 0 });
+  }, { assistant: 0, intake: 0, questionnaire: 0, core: 0, professional: 0, industry: 0, delivery: 0, other: 0 });
   const visibleSkills = (skills ?? [])
     .filter((skill) => activeGroup === "all" || normalizeGroup(skill.category, skill.skill_type) === activeGroup)
     .filter((skill) => {
@@ -763,26 +772,33 @@ function ReviewTab() {
                     </span>
                   </div>
 
+                  <EvidencePackPanel
+                    evidence={detail.evidence_pack ?? []}
+                    title="外部证据包"
+                    emptyText="这条诊断暂未沉淀外部证据。请重点核查专家结论是否需要补充来源。"
+                    compact
+                  />
+
                   {detail.results.map((r, i) => (
                     <div key={i} className="review-result">
                       <div className="review-result__head">
-                        <code>{r.module}</code>
+                        <code>{displayModuleLabel(r.module) || r.module}</code>
                         <span>{SIGNAL_LABEL[r.signal] ?? r.signal}</span>
                       </div>
-                      <p className="review-result__conclusion">{r.conclusion}</p>
+                      <p className="review-result__conclusion">{cleanSentenceText(r.conclusion, "暂无明确结论。")}</p>
                       {r.evidence.length > 0 && (
                         <ul className="review-result__evidence">
                           {r.evidence.map((ev, j) => (
                             <li key={j}>
-                              {ev.text}
-                              {ev.source && <span className="source-badge">来源：{ev.source}</span>}
+                              {cleanSentenceText(ev.text, "暂无可展示依据。")}
+                              {ev.source && <span className="source-badge">来源：{cleanDisplayText(ev.source, "未注明来源")}</span>}
                             </li>
                           ))}
                         </ul>
                       )}
                       {r.actions.length > 0 && (
                         <div className="review-result__actions">
-                          <strong>建议行动：</strong>{r.actions.join("；")}
+                          <strong>建议行动：</strong>{r.actions.map((action) => cleanDisplayText(action, "")).filter(Boolean).join("；")}
                         </div>
                       )}
                     </div>
@@ -791,7 +807,7 @@ function ReviewTab() {
                   {detail.consultant_notes.length > 0 && (
                     <div className="review-notes">
                       <strong>顾问补充意见：</strong>
-                      <ul>{detail.consultant_notes.map((n, i) => <li key={i}>{n}</li>)}</ul>
+                      <ul>{detail.consultant_notes.map((n, i) => <li key={i}>{cleanSentenceText(n, "")}</li>)}</ul>
                     </div>
                   )}
 

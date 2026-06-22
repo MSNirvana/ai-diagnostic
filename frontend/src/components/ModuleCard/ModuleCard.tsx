@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { ModuleResult } from "../../types";
 import { DrillDown } from "../DrillDown/DrillDown";
 import { submitFeedback } from "../../api/client";
+import { cleanDisplayText, cleanSentenceText, displayModuleLabel } from "../../utils/displayText";
 import "./ModuleCard.css";
 
 const SIGNAL_LABEL: Record<string, string> = { red: "高优先级", yellow: "需跟进", green: "运行稳定" };
@@ -22,9 +23,20 @@ export function ModuleCard({ result, recordId, skillVersionId }: ModuleCardProps
   const showFeedback = Boolean(recordId && skillVersionId);
   const evidencePackage = result.evidence_package;
   const dataRequests = result.data_requests ?? [];
+  const evidenceItems = result.evidence ?? [];
+  const confidenceValue = evidencePackage?.confidence ?? null;
+  const isLowConfidence = typeof confidenceValue === "number" && confidenceValue < 0.5;
+  const needsData = dataRequests.length > 0;
+  const lacksEvidence = evidenceItems.length === 0 && needsData;
   const confidence = evidencePackage
     ? `${Math.round(evidencePackage.confidence * 100)}%`
     : "待补证据";
+  const conclusion = lacksEvidence
+    ? "数据不足，需补齐后才能判断。"
+    : cleanSentenceText(
+        needsData ? `初步判断：${result.conclusion}` : result.conclusion,
+        "暂无明确结论。",
+      );
 
   const handleSubmitFeedback = async () => {
     if (!recordId || !skillVersionId) return;
@@ -42,25 +54,60 @@ export function ModuleCard({ result, recordId, skillVersionId }: ModuleCardProps
             <span className="signal__dot" />
             <span className="signal__label">{SIGNAL_LABEL[result.signal]}</span>
           </div>
-          <h3 className="module-card__name">{result.module}</h3>
+          <h3 className="module-card__name">{displayModuleLabel(result.module) || result.module}</h3>
         </div>
-        <span className="module-card__confidence">证据置信度 {confidence}</span>
+        <span className={isLowConfidence ? "module-card__confidence module-card__confidence--low" : "module-card__confidence"}>
+          证据完整度 {confidence}
+          {isLowConfidence && <em>低置信 / 待验证</em>}
+        </span>
       </div>
-      <p className="module-card__conclusion">{result.conclusion}</p>
+      {lacksEvidence && (
+        <div className="module-card__insufficient">
+          <strong>数据不足，需补齐后才能判断</strong>
+          <span>当前模块还没有可展示依据，以下数据补齐前只应作为待验证假设。</span>
+        </div>
+      )}
+      {!lacksEvidence && needsData && (
+        <div className="module-card__preliminary">
+          初步判断 · 需补数据后复核
+        </div>
+      )}
+      <p className="module-card__conclusion">{conclusion}</p>
       <div className="module-card__evidence-block">
         <span className="module-card__section-label">关键依据</span>
-        <ul className="module-card__evidence">
-          {result.evidence.map((e, i) => (
-            <li key={i}>
-              {e.text}
-              {e.source && <span className="evidence-source">来源：{e.source}</span>}
-            </li>
-          ))}
-        </ul>
+        {evidenceItems.length > 0 ? (
+          <ul className="module-card__evidence">
+            {evidenceItems.map((e, i) => (
+              <li key={i}>
+                {cleanSentenceText(e.text, "暂无可展示依据。")}
+                <span className="evidence-source">来源：{cleanDisplayText(e.source, "未注明来源")}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="module-card__empty-evidence">暂无可验证依据，需先补齐数据。</p>
+        )}
       </div>
+      {lacksEvidence && dataRequests.length > 0 && (
+        <div className="module-card__missing-data">
+          <span className="module-card__section-label">待补数据</span>
+          <div className="data-request-list">
+            {dataRequests.map((request) => (
+              <div className="data-request" key={request.key}>
+                <div className="data-request__head">
+                  <strong>{request.label}</strong>
+                  {request.required && <span>必需</span>}
+                </div>
+                <p>{cleanSentenceText(request.reason)}</p>
+                {request.source_hint && <small>{cleanSentenceText(request.source_hint)}</small>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="module-card__actions">
         <span className="module-card__section-label">建议动作</span>
-        <ul>{result.actions.map((a, i) => <li key={i}>{a}</li>)}</ul>
+        <ul>{result.actions.map((a, i) => <li key={i}>{cleanSentenceText(a, "待明确动作。")}</li>)}</ul>
       </div>
       {(result.drilldown || evidencePackage) && (
         <>
@@ -72,9 +119,9 @@ export function ModuleCard({ result, recordId, skillVersionId }: ModuleCardProps
             <div className="evidence-pack">
               <div className="evidence-pack__head">
                 <h4>可信证据包</h4>
-                <span>置信度：{Math.round(evidencePackage.confidence * 100)}%</span>
+                <span>证据完整度：{Math.round(evidencePackage.confidence * 100)}%</span>
               </div>
-              <p className="evidence-pack__reason">{evidencePackage.confidence_reason}</p>
+              <p className="evidence-pack__reason">{cleanSentenceText(evidencePackage.confidence_reason)}</p>
 
               {evidencePackage.citations.length > 0 && (
                 <>
@@ -82,7 +129,7 @@ export function ModuleCard({ result, recordId, skillVersionId }: ModuleCardProps
                   <ul>
                     {evidencePackage.citations.map((citation, index) => (
                       <li key={`${citation.source}-${index}`}>
-                        {citation.text}（{citation.source}）
+                        {cleanSentenceText(citation.text)}（{cleanDisplayText(citation.source, "未注明来源")}）
                       </li>
                     ))}
                   </ul>
@@ -95,7 +142,7 @@ export function ModuleCard({ result, recordId, skillVersionId }: ModuleCardProps
                   <ul>
                     {evidencePackage.benchmarks.map((benchmark) => (
                       <li key={`${benchmark.name}-${benchmark.source}`}>
-                        {benchmark.name}：{benchmark.value}（{benchmark.source}）
+                        {cleanDisplayText(benchmark.name, "外部基准")}：{cleanDisplayText(benchmark.value)}（{cleanDisplayText(benchmark.source, "未注明来源")}）
                       </li>
                     ))}
                   </ul>
@@ -112,9 +159,9 @@ export function ModuleCard({ result, recordId, skillVersionId }: ModuleCardProps
                           <strong>{request.label}</strong>
                           {request.required && <span>必需</span>}
                         </div>
-                        <p>{request.reason}</p>
+                        <p>{cleanSentenceText(request.reason)}</p>
                         {request.source_hint && (
-                          <small>{request.source_hint}</small>
+                          <small>{cleanSentenceText(request.source_hint)}</small>
                         )}
                       </div>
                     ))}
@@ -132,7 +179,7 @@ export function ModuleCard({ result, recordId, skillVersionId }: ModuleCardProps
               {evidencePackage.audit_trail.checks.length > 0 && (
                 <ul>
                   {evidencePackage.audit_trail.checks.map((check) => (
-                    <li key={check}>{check}</li>
+                    <li key={check}>{cleanSentenceText(check)}</li>
                   ))}
                 </ul>
               )}

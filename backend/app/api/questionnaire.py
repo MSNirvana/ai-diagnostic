@@ -17,7 +17,7 @@ from app.models.profile import (
 from app.models.conversation import ProblemMap, ProblemSummary
 from app.skills.parsing import parse_json_object
 from app.skills.store import get_active_skill_version
-from app.skills.prompts import QUESTIONNAIRE_BASE, QUESTIONNAIRE_AB_A, QUESTIONNAIRE_AB_B
+from app.skills.prompts import QUESTIONNAIRE_BASE, QUESTIONNAIRE_AB_A, QUESTIONNAIRE_AB_B, QUESTIONNAIRE_QUALITY_GATE
 from app.skills.scenario_catalog import detect_business_scenario, render_problem_text
 from app.skills.skill_network import (
     default_core_skill_keys,
@@ -37,6 +37,7 @@ router = APIRouter(prefix="/questionnaire")
 _SYSTEM = QUESTIONNAIRE_BASE
 _SYSTEM_A = QUESTIONNAIRE_AB_A
 _SYSTEM_B = QUESTIONNAIRE_AB_B
+_GATE_SYSTEM = QUESTIONNAIRE_QUALITY_GATE
 
 
 async def _prompt_for(session: AsyncSession | None, module: str, fallback: str) -> str:
@@ -459,15 +460,17 @@ async def generate_questionnaire(
     context = _build_context(body, "coverage")
     base_prompt = _build_input(body, "coverage")
     system = await _prompt_for(session, "questionnaire_ab_a", _SYSTEM)
+    gate_system = await _prompt_for(session, "questionnaire_quality_gate", _GATE_SYSTEM)
     known = await collect_known_facts(session, body.project_id)
+    gate_context = _gate_context_json(body)
 
     last_reasons: list[str] = []
-    for attempt in range(2):  # 首次 + 把关失败后重试 1 次
+    for attempt in range(3):  # 首次 + 最多 2 次按把关意见重生成
         prompt = base_prompt
         if last_reasons:
             prompt = (
                 base_prompt
-                + "\n\n上一版问卷未达质量门，问题如下，请针对性改进后重新输出：\n- "
+                + "\n\n上一版问卷未通过质量评审，问题如下，请针对性改进后重新输出：\n- "
                 + "\n- ".join(last_reasons)
             )
         raw = await llm.complete(system=system, prompt=prompt)
@@ -477,10 +480,15 @@ async def generate_questionnaire(
         except (ValueError, ValidationError):
             last_reasons = ["输出不是合法问卷 JSON 结构"]
             continue
-        # 把关在归一化之前跑——归一化会补齐字段/痛点，会掩盖 LLM 产出的单薄
+        # 第一层：规则粗筛（在归一化之前——归一化会补齐字段/痛点，掩盖单薄产出）
         passed, reasons = _questionnaire_quality_gate(generated)
         if not passed:
             last_reasons = reasons
+            continue
+        # 第二层：LLM 质量评审 Skill（行业贴合 + 问题贴合 + 数据入口齐全）
+        gate_passed, gate_reasons = await _llm_quality_review(llm, gate_system, gate_context, generated)
+        if not gate_passed:
+            last_reasons = gate_reasons
             continue
         normalized = _normalize_questionnaire(generated, mode="coverage", context=context)
         return _prefill_known(normalized, known)
@@ -532,6 +540,83 @@ def _questionnaire_quality_gate(
             )
 
     return (len(reasons) == 0, reasons)
+
+
+def _gate_context_json(body: "GenerateRequest") -> dict:
+    """给质量评审 Skill 的上下文：行业/业务/核心问题/目标/场景。"""
+    pm = body.problem_map
+    if pm is not None:
+        return {
+            "industry": pm.industry,
+            "main_business": pm.main_business,
+            "business_model": pm.business_model,
+            "core_problem": pm.core_problem,
+            "goal": pm.goal,
+            "scenario": detect_business_scenario(
+                industry=pm.industry,
+                main_business=pm.main_business,
+                business_model=pm.business_model,
+                extra_text=render_problem_text(pm.model_dump()),
+            ).label,
+        }
+    p = body.profile
+    s = body.summary
+    return {
+        "industry": (p.industry if p else "") or (s.industry if s else ""),
+        "main_business": (p.main_business if p else "") or (s.main_business if s else ""),
+        "business_model": (p.business_model if p else "") or (s.business_model if s else ""),
+        "core_problem": (s.core_problem if s else ""),
+        "goal": "",
+        "scenario": "",
+    }
+
+
+async def _llm_quality_review(
+    llm: LLMClient,
+    gate_system: str,
+    gate_context: dict,
+    questionnaire: GeneratedQuestionnaire,
+) -> tuple[bool, list[str]]:
+    """LLM 质量评审 Skill：行业贴合 + 问题贴合 + 数据入口齐全。
+
+    评审本身失败（网关抖动/解析异常）时优雅放行——不让评审基础设施故障卡死生成，
+    规则粗筛已挡住结构性垃圾。返回 (是否通过, 改进指令列表)。
+    """
+    payload = json.dumps(
+        {
+            "problem_map": gate_context,
+            "questionnaire": {
+                "modules": [
+                    {
+                        "key": m.key,
+                        "label": m.label,
+                        "fields": [{"key": f.key, "label": f.label} for f in m.fields],
+                        "pains": list(m.pains),
+                    }
+                    for m in questionnaire.modules
+                ]
+            },
+        },
+        ensure_ascii=False,
+    )
+    try:
+        raw = await llm.complete(system=gate_system, prompt=payload)
+        verdict = parse_json_object(raw)
+    except Exception:  # noqa: BLE001 — 评审故障不阻断生成（规则门已兜底结构）
+        return (True, [])
+    if not isinstance(verdict, dict):
+        return (True, [])
+    # 只有明确判 passed=false 才拦截；评审没给出可识别结论时优雅放行（规则门已兜底结构）
+    if verdict.get("passed") is not False:
+        return (True, [])
+    reasons: list[str] = []
+    for handle in verdict.get("missing_data_handles", []) or []:
+        reasons.append(f"缺少关键数据入口：{handle}")
+    reasons.extend(str(x) for x in (verdict.get("improvements") or []))
+    reasons.extend(str(x) for x in (verdict.get("issues") or []))
+    if not reasons:
+        reasons.append("问卷未通过质量评审，请提升行业贴合度并补齐真实数据入口字段")
+    return (False, reasons)
 
 
 class GenerateABResponse(BaseModel):

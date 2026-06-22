@@ -49,7 +49,7 @@ export const MODULES: ModuleDef[] = [
   },
   {
     key: "sales",
-    label: "营销与销售",
+    label: "销售与增长",
     subtitle: "你怎么把产品卖出去、卖得划算",
     acceptFiles: true,
     fields: [

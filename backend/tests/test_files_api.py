@@ -1,11 +1,26 @@
 """文件上传/列表/删除端点测试。"""
 import io
+import json
 
 from fastapi.testclient import TestClient
 
+from app.config import get_llm_client
 from app.main import app
 
 client = TestClient(app)
+
+
+class PromptSpyLLM:
+    seen_prompt = ""
+
+    async def complete(self, system: str, prompt: str) -> str:
+        PromptSpyLLM.seen_prompt = prompt
+        return json.dumps({
+            "phase": "intake",
+            "done": False,
+            "message": "我会结合你上传的资料继续追问。",
+            "problem_map": None,
+        }, ensure_ascii=False)
 
 
 def _register(email: str) -> str:
@@ -117,3 +132,92 @@ def test_diagnose_uses_stored_file(db_session):
     assert len(file_facts) == 1
     assert "row_count" in file_facts[0]
 
+
+def test_chat_file_upload_adds_context_and_project_memory(db_session):
+    """项目对话里上传资料后，前台历史不展开，AI 发送时可后台读取，并按开关沉淀。"""
+    import asyncio
+    from sqlalchemy import select
+    from app.db.models import DiagnosisSession, ProjectMemoryEntry
+
+    token = _register("chat-file@b.com")
+    auth = {"Authorization": f"Bearer {token}"}
+    project_id = client.post("/project/", json={"name": "资料沉淀项目"}, headers=auth).json()["id"]
+    sid = client.post("/session/start", json={"project_id": project_id}, headers=auth).json()["session_id"]
+
+    resp = client.post(
+        f"/session/{sid}/files",
+        data={"module_key": "conversation", "field_key": "uploaded_context"},
+        files={"file": ("notes.txt", io.BytesIO("近三个月ROI从1.2降到0.8".encode("utf-8")), "text/plain")},
+        headers=auth,
+    )
+    assert resp.status_code == 201
+    assert "近三个月ROI" in resp.json()["summary_text"]
+
+    async def fetch():
+        async with db_session() as s:
+            row = await s.get(DiagnosisSession, sid)
+            memories = list(await s.scalars(
+                select(ProjectMemoryEntry).where(ProjectMemoryEntry.project_id == project_id)
+            ))
+            return row, memories
+
+    row, memories = asyncio.get_event_loop().run_until_complete(fetch())
+    history = json.loads(row.messages_json)
+    assert history == []
+    assert memories == []
+
+    app.dependency_overrides[get_llm_client] = lambda: PromptSpyLLM()
+    chat_resp = client.post(
+        f"/session/{sid}/chat",
+        json={"message": "基于刚才上传的资料，先问我一个关键问题"},
+        headers=auth,
+    )
+    app.dependency_overrides.pop(get_llm_client, None)
+    assert chat_resp.status_code == 200
+    assert "本会话已上传资料" in PromptSpyLLM.seen_prompt
+    assert "近三个月ROI从1.2降到0.8" in PromptSpyLLM.seen_prompt
+
+    _, memories_after_send = asyncio.get_event_loop().run_until_complete(fetch())
+    uploaded_memories = [m for m in memories_after_send if m.entry_type == "uploaded_file"]
+    assert len(uploaded_memories) == 1
+    assert "近三个月ROI" in uploaded_memories[0].summary
+
+    client.post(
+        f"/session/{sid}/chat",
+        json={"message": "再结合资料追问一个问题"},
+        headers=auth,
+    )
+    _, memories_after_second_send = asyncio.get_event_loop().run_until_complete(fetch())
+    assert len([m for m in memories_after_second_send if m.entry_type == "uploaded_file"]) == 1
+
+
+def test_chat_file_upload_respects_memory_toggle(db_session):
+    import asyncio
+    from sqlalchemy import select
+    from app.db.models import ProjectMemoryEntry
+
+    token = _register("chat-file-off@b.com")
+    auth = {"Authorization": f"Bearer {token}"}
+    project_id = client.post("/project/", json={"name": "不沉淀资料项目"}, headers=auth).json()["id"]
+    sid = client.post(
+        "/session/start",
+        json={"project_id": project_id, "memory_enabled": False},
+        headers=auth,
+    ).json()["session_id"]
+
+    resp = client.post(
+        f"/session/{sid}/files",
+        data={"module_key": "conversation", "field_key": "uploaded_context"},
+        files={"file": ("private.txt", io.BytesIO("这份资料不要沉淀".encode("utf-8")), "text/plain")},
+        headers=auth,
+    )
+    assert resp.status_code == 201
+
+    async def count_memory():
+        async with db_session() as s:
+            rows = list(await s.scalars(
+                select(ProjectMemoryEntry).where(ProjectMemoryEntry.project_id == project_id)
+            ))
+            return len(rows)
+
+    assert asyncio.get_event_loop().run_until_complete(count_memory()) == 0

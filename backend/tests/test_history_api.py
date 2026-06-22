@@ -69,8 +69,8 @@ def test_history_detail_returns_full_record(db_session):
     body = resp.json()
     assert body["answers"]["answers"][0]["module"] == "market"
     assert body["results"][0]["module"] == "market"
-    assert body["war_room_plan"]["record_id"] == record_id
-    assert body["war_room_plan"]["primary_battlefield"] == "market"
+    assert body["review_status"] == "pending_review"
+    assert body["war_room_plan"] is None
 
 
 def test_history_detail_blocks_other_user(db_session):
@@ -133,6 +133,7 @@ def test_history_detail_builds_and_persists_war_room_for_legacy_record(db_sessio
                     ensure_ascii=False,
                 ),
                 war_room_plan_json=None,
+                review_status="approved",
             )
             session.add(record)
             await session.commit()

@@ -46,8 +46,84 @@ const warRoomPlan = {
   checkpoints: [],
 };
 
-vi.mock("../src/api/client", () => ({
+vi.mock("../src/api/client", () => {
+  const rejectedRecord = {
+    id: "rec-rejected",
+    created_at: "2026-06-13T00:00:00Z",
+    answers: {
+      problem_map: {
+        company_name: "华火新能源",
+        industry: "新能源厨电",
+        main_business: "电火灶招商加盟",
+        core_problem: "招商获客成本高，合规证据不足",
+      },
+      answers: [
+        {
+          module: "market",
+          facts: { "推广渠道": "抖音、小红书" },
+          pains: ["招商获客成本高"],
+        },
+      ],
+    },
+    results: [
+      {
+        module: "market",
+        signal: "red",
+        conclusion: "缺少推广账号和渠道转化数据。",
+        evidence: [],
+        actions: ["补充推广账号和线索转化数据"],
+        drilldown: null,
+        evidence_package: null,
+        data_requests: [
+          {
+            key: "ad_account",
+            label: "推广账号后台截图或导出数据",
+            reason: "需要核验真实获客成本。",
+            source_hint: "抖音/小红书/百度投放后台",
+            required: true,
+          },
+        ],
+      },
+    ],
+    war_room_plan: null,
+    profile: null,
+    review_status: "rejected",
+    consultant_notes: ["证据包混入无关来源，请补充真实推广账号、渠道消耗和线索转化数据。"],
+  };
+  return ({
+  listProjects: vi.fn(async () => [
+    {
+      id: "proj-1",
+      name: "待审核项目",
+      created_at: "2026-06-13T00:00:00Z",
+      updated_at: "2026-06-13T00:00:00Z",
+      status: "active",
+      memory_summary: "",
+    },
+  ]),
+  patchProject: vi.fn(async (projectId: string, body: { status?: string }) => ({
+    id: projectId,
+    name: "待审核项目",
+    created_at: "2026-06-13T00:00:00Z",
+    updated_at: "2026-06-14T00:00:00Z",
+    status: body.status ?? "active",
+    memory_summary: "",
+  })),
   getProjectWarRoom: vi.fn(async () => warRoomPlan),
+  getProjectEvidence: vi.fn(async () => []),
+  fetchRecord: vi.fn(async (recordId: string) => (
+    recordId === "rec-rejected"
+      ? rejectedRecord
+      : {
+          id: "rec-1",
+          created_at: "2026-06-13T00:00:00Z",
+          answers: { answers: [] },
+          results: [],
+          war_room_plan: warRoomPlan,
+          profile: null,
+        }
+  )),
+  createDiagnosisJob: vi.fn(async () => ({ job_id: "job-1", status: "queued" })),
   runDiagnose: vi.fn(async () => ({
     results: [],
     record_id: "rec-1",
@@ -60,18 +136,92 @@ vi.mock("../src/api/client", () => ({
       priority_actions: [],
     },
     war_room_plan: warRoomPlan,
+    review_status: "pending_review",
   })),
   runDiagnoseWithFiles: vi.fn(),
-  getProject: vi.fn(),
-  fetchRecord: vi.fn(async () => ({
-    id: "rec-1",
+  sendBrainstormMessage: vi.fn(async () => ({ message: "我们先拆核心假设。" })),
+  getProject: vi.fn(async (projectId: string) => ({
+    ...(projectId === "proj-rejected" ? {
+    id: "proj-rejected",
+    name: "被打回项目",
     created_at: "2026-06-13T00:00:00Z",
-    answers: { answers: [] },
-    results: [],
-    war_room_plan: warRoomPlan,
-    profile: null,
+    updated_at: "2026-06-13T00:00:00Z",
+    status: "active",
+    memory_summary: "",
+    memory_entries: [],
+    sessions: [],
+    records: [
+      {
+        id: "rec-rejected",
+        created_at: "2026-06-14T00:00:00Z",
+        module_count: 1,
+        has_war_room_plan: false,
+        review_status: "rejected",
+      },
+    ],
+    archive: {
+      profile: [],
+      modules: [
+        { module: "market", label: "市场与客户", facts: [], has_data: false },
+        { module: "product", label: "产品与服务", facts: [], has_data: false },
+        { module: "sales", label: "销售与增长", facts: [], has_data: false },
+        { module: "ops", label: "运营与供应链", facts: [], has_data: false },
+        { module: "org", label: "组织与人才", facts: [], has_data: false },
+        { module: "finance", label: "财务与资本", facts: [], has_data: false },
+      ],
+      files: [],
+      last_updated: null,
+    },
+    delivery_status: {
+      state: "rejected",
+      approved_count: 0,
+      pending_review_count: 0,
+      rejected_count: 1,
+      latest_review_status: "rejected",
+    },
+    war_room_plan: null,
+  } : {
+    id: "proj-1",
+    name: "待审核项目",
+    created_at: "2026-06-13T00:00:00Z",
+    updated_at: "2026-06-13T00:00:00Z",
+    status: "active",
+    memory_summary: "",
+    memory_entries: [],
+    sessions: [],
+    records: [
+      {
+        id: "rec-1",
+        created_at: "2026-06-13T00:00:00Z",
+        module_count: 1,
+        has_war_room_plan: false,
+        review_status: "pending_review",
+      },
+    ],
+    archive: {
+      profile: [],
+      modules: [
+        { module: "market", label: "市场与客户", facts: [], has_data: false },
+        { module: "product", label: "产品与服务", facts: [], has_data: false },
+        { module: "sales", label: "销售与增长", facts: [], has_data: false },
+        { module: "ops", label: "运营与供应链", facts: [], has_data: false },
+        { module: "org", label: "组织与人才", facts: [], has_data: false },
+        { module: "finance", label: "财务与资本", facts: [], has_data: false },
+      ],
+      files: [],
+      last_updated: null,
+    },
+    delivery_status: {
+      state: "pending_review",
+      approved_count: 0,
+      pending_review_count: 1,
+      rejected_count: 0,
+      latest_review_status: "pending_review",
+    },
+    war_room_plan: null,
+  }),
   })),
-}));
+})});
 
 vi.mock("../src/auth/useAuth", () => ({
   useAuth: () => ({
@@ -83,13 +233,21 @@ vi.mock("../src/auth/useAuth", () => ({
 }));
 
 vi.mock("../src/components/Questionnaire/Questionnaire", () => ({
-  Questionnaire: ({ onSubmit, projectId }: { onSubmit: Function; projectId?: string }) => (
-    <button
-      type="button"
-      onClick={() => onSubmit([{ module: "sales", facts: {}, pains: [] }], [], undefined, projectId)}
-    >
-      模拟完成诊断
-    </button>
+  Questionnaire: ({ onSubmit, projectId, supplementRecord }: { onSubmit: Function; projectId?: string; supplementRecord?: any }) => (
+    supplementRecord ? (
+      <section>
+        <h2>顾问打回补充</h2>
+        <p>{supplementRecord.consultant_notes?.[0]}</p>
+        <p>{supplementRecord.results?.[0]?.data_requests?.[0]?.label}</p>
+      </section>
+    ) : (
+      <button
+        type="button"
+        onClick={() => onSubmit([{ module: "sales", facts: {}, pains: [] }], [], undefined, projectId)}
+      >
+        模拟完成诊断
+      </button>
+    )
   ),
 }));
 
@@ -98,7 +256,7 @@ function LocationProbe() {
 }
 
 describe("project diagnosis war room routing", () => {
-  it("navigates to the dedicated war room after a project diagnosis is saved", async () => {
+  it("returns to the project workspace after a project diagnosis enters review", async () => {
     render(
       <MemoryRouter initialEntries={["/projects/proj-1/diagnose"]}>
         <App />
@@ -110,9 +268,15 @@ describe("project diagnosis war room routing", () => {
 
     await waitFor(() =>
       expect(screen.getByTestId("location").textContent).toBe(
-        "/projects/proj-1/war-room"
+        "/projects/proj-1"
       )
     );
+    expect(await screen.findByRole("button", { name: /新对话/ })).toBeTruthy();
+    expect(screen.getByText("对话记录")).toBeTruthy();
+    expect(screen.queryByText("推进路径")).toBeNull();
+    expect(screen.queryByText("深度尽调任务已启动")).toBeNull();
+    expect(screen.queryByText(/系统正在进行外部预研、多专家诊断和证据整理/)).toBeNull();
+    expect(screen.queryByText("当前状态")).toBeNull();
   });
 
   it("routes from the project war room overview into a functional section", async () => {
@@ -126,15 +290,64 @@ describe("project diagnosis war room routing", () => {
       </MemoryRouter>
     );
 
-    await waitFor(() => screen.getByText("经营会总览"));
-    fireEvent.click(screen.getByText("分配执行"));
+    await waitFor(() => screen.getByText("本次会议先处理"));
+    fireEvent.click(screen.getByText("查看拍板事项"));
+    fireEvent.click(await screen.findByText("02 · 动作"));
 
     await waitFor(() =>
       expect(screen.getByTestId("location").textContent).toBe(
         "/projects/proj-1/war-room/view/actions"
       )
     );
-    expect(screen.getByText("部门动作区")).toBeTruthy();
+    expect(screen.getByText("分配执行动作")).toBeTruthy();
     expect(screen.getByText("重分线索池")).toBeTruthy();
+  });
+
+  it("opens the brainstorm route from the main app", async () => {
+    render(
+      <MemoryRouter initialEntries={["/brainstorm"]}>
+        <App />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole("heading", { name: "头脑风暴" })).toBeTruthy();
+    expect(screen.getByText("逻辑自证")).toBeTruthy();
+    expect(screen.queryByText("随便聊聊")).toBeNull();
+  });
+
+  it("opens rejected diagnoses in supplement mode instead of a cold-start chat", async () => {
+    render(
+      <MemoryRouter initialEntries={[{
+        pathname: "/projects/proj-1/diagnose",
+        state: { rejectedRecordId: "rec-rejected", projectId: "proj-1" },
+      }]}>
+        <App />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText("顾问打回补充")).toBeTruthy();
+    expect(screen.getByText("证据包混入无关来源，请补充真实推广账号、渠道消耗和线索转化数据。")).toBeTruthy();
+    expect(screen.getByText("推广账号后台截图或导出数据")).toBeTruthy();
+    expect(screen.queryByText("先聊聊你的问题")).toBeNull();
+  });
+
+  it("carries the rejected record when supplementing from the project workspace", async () => {
+    render(
+      <MemoryRouter initialEntries={["/projects/proj-rejected"]}>
+        <App />
+        <LocationProbe />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /补充资料再诊断/ }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/projects/proj-rejected/diagnose"
+      )
+    );
+    expect(await screen.findByText("顾问打回补充")).toBeTruthy();
+    expect(screen.getByText("推广账号后台截图或导出数据")).toBeTruthy();
+    expect(screen.queryByText("模拟完成诊断")).toBeNull();
   });
 });

@@ -58,7 +58,7 @@ async def test_dispatcher_routes_problem_map_focus_to_expert():
     outcome = await diagnose_all(q, llm=FakeLLM())
 
     # 核心三模块的相对顺序必须正确（focus=sales 优先）。
-    # 用子序列断言而非全等：configs/ 下的行业 skill（如 dtc_ads）也可能被
+    # 用子序列断言而非全等：configs/ 下的能力 skill（如 acquisition_efficiency）也可能被
     # "获客成本"等关键词正确召回，不应让本测试（验证核心路由逻辑）失败。
     core_order = [m for m in (r.module for r in outcome.results) if m in {"sales", "market", "finance"}]
     assert core_order == ["sales", "market", "finance"]

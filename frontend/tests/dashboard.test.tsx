@@ -37,7 +37,7 @@ describe("Dashboard triage summary", () => {
 
     expect(screen.getByText("会诊路径与优先级")).toBeTruthy();
     expect(screen.getByText("主诊专家：销售与增长")).toBeTruthy();
-    expect(screen.getByText("销售与增长")).toBeTruthy();
+    expect(screen.getAllByText("销售与增长").length).toBeGreaterThan(0);
     expect(screen.getByText("财务与资本")).toBeTruthy();
     expect(screen.getByText(/现金流约束/)).toBeTruthy();
     expect(screen.getByText("销售与增长：先拆解线索到成交的漏斗")).toBeTruthy();

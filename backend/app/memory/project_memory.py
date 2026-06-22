@@ -2,9 +2,11 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import DiagnosisFeedback, DiagnosisRecord, Project, ProjectMemoryEntry
+from app.db.models import DiagnosisFeedback, DiagnosisRecord, DiagnosisSession, Project, ProjectMemoryEntry
+from app.models.conversation import ChatMessage, ProblemMap
 from app.models.result import ModuleResult, TriageSummary
 
 
@@ -91,6 +93,56 @@ async def append_problem_map_memory(
     return entry
 
 
+async def append_conversation_memory(
+    session: AsyncSession,
+    *,
+    project_id: str,
+    diagnosis_session: DiagnosisSession,
+    user_message: str,
+    assistant_message: str,
+    problem_map: ProblemMap | None = None,
+    user_id: str | None = None,
+) -> ProjectMemoryEntry | None:
+    """Persist useful intake facts from each project conversation turn.
+
+    This is deliberately deterministic and low-risk: it extracts explicit facts
+    already present in the user message / problem map, instead of asking another
+    model to infer hidden meaning.
+    """
+    if not user_message.strip() and problem_map is None:
+        return None
+
+    payload = {
+        "session_id": diagnosis_session.id,
+        "user_message": user_message.strip(),
+        "assistant_message": assistant_message.strip(),
+        "problem_map": _dump_model(problem_map),
+        "extracted": _extract_conversation_facts(user_message, problem_map),
+    }
+    summary = _conversation_summary(payload["extracted"], user_message)
+    if not summary:
+        return None
+    exists = await session.scalar(
+        select(ProjectMemoryEntry).where(
+            ProjectMemoryEntry.project_id == project_id,
+            ProjectMemoryEntry.source_id == diagnosis_session.id,
+            ProjectMemoryEntry.entry_type == "conversation",
+            ProjectMemoryEntry.summary == summary,
+        )
+    )
+    if exists is not None:
+        return None
+    return await append_memory_entry(
+        session,
+        project_id=project_id,
+        entry_type="conversation",
+        summary=summary,
+        payload=payload,
+        user_id=user_id,
+        source_id=diagnosis_session.id,
+    )
+
+
 async def append_diagnosis_memory(
     session: AsyncSession,
     *,
@@ -163,9 +215,11 @@ async def append_feedback_memory(
 def _append_summary_line(project: Project, entry_type: str, summary: str) -> None:
     stamp = _now().strftime("%Y-%m-%d")
     label = {
+        "conversation": "对话沉淀",
         "problem_map": "问题地图",
         "diagnosis": "诊断",
         "feedback": "反馈",
+        "uploaded_file": "上传资料",
     }.get(entry_type, entry_type)
     lines = [line for line in project.memory_summary.split("\n") if line.strip()]
     lines.append(f"[{stamp}] {label}：{summary}")
@@ -180,3 +234,67 @@ def _dump_model(value: Any) -> dict[str, Any]:
     if isinstance(value, dict):
         return value
     return {}
+
+
+def _extract_conversation_facts(user_message: str, problem_map: ProblemMap | None) -> dict[str, Any]:
+    extracted: dict[str, Any] = {}
+    payload = _dump_model(problem_map)
+    for key in (
+        "company_name",
+        "industry",
+        "main_business",
+        "business_model",
+        "scale",
+        "stage",
+        "core_problem",
+        "goal",
+        "constraints",
+        "success_criteria",
+        "impact",
+        "context",
+        "suspected_cause",
+        "tried",
+        "data_readiness",
+        "diagnosis_focus",
+    ):
+        value = str(payload.get(key) or "").strip()
+        if value:
+            extracted[key] = value
+    if payload.get("sub_problems"):
+        extracted["sub_problems"] = payload["sub_problems"]
+    metrics = _extract_metric_phrases(user_message)
+    if metrics:
+        extracted["metrics"] = metrics
+    clean_user_message = _compact_sentence(user_message, 160)
+    if clean_user_message:
+        extracted["latest_user_input"] = clean_user_message
+    return extracted
+
+
+def _conversation_summary(extracted: dict[str, Any], user_message: str) -> str:
+    parts: list[str] = []
+    if extracted.get("core_problem"):
+        parts.append(f"问题：{_compact_sentence(str(extracted['core_problem']), 70)}")
+    elif extracted.get("latest_user_input"):
+        parts.append(f"线索：{_compact_sentence(str(extracted['latest_user_input']), 70)}")
+    if extracted.get("goal"):
+        parts.append(f"目标：{_compact_sentence(str(extracted['goal']), 54)}")
+    if extracted.get("metrics"):
+        parts.append(f"数据：{_compact_sentence('；'.join(extracted['metrics'][:3]), 70)}")
+    if not parts:
+        parts.append(f"线索：{_compact_sentence(user_message, 80)}")
+    return "；".join(part for part in parts if part).strip()
+
+
+def _extract_metric_phrases(text: str) -> list[str]:
+    text = " ".join(str(text or "").split())
+    if not text:
+        return []
+    fragments = []
+    for chunk in text.replace("，", "\n").replace("。", "\n").replace("；", "\n").replace(",", "\n").splitlines():
+        clean = chunk.strip(" ：:")
+        if not clean:
+            continue
+        if any(char.isdigit() for char in clean) and any(unit in clean for unit in ("%", "元", "万", "天", "月", "年", "单", "人", "个", "台", "条", "ROI", "roi")):
+            fragments.append(clean[:48])
+    return fragments[:5]

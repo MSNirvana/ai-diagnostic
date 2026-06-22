@@ -1,25 +1,26 @@
 ---
-description: 批量跑 Skill 生产线 —— 读 skill_matrix.csv，对每行(行业,功能,场景)跑 /factory，汇总通过率。
+description: 批量跑诊断能力生产线 —— 读 skill_matrix.csv，对每个未建的能力跑 /factory，汇总通过率。
 argument-hint: [matrix文件路径，默认 .claude/skill_matrix.csv]
 ---
 
-# 批量 Skill 生产（Loop 1 跑批）
+# 批量诊断能力生产（Loop 1 跑批）
 
-读 `${ARGUMENTS:-.claude/skill_matrix.csv}`，对每一行跑一遍 `/factory` 的循环。这是夜里无人值守跑 30-100 个 skill 的入口。
+读 `${ARGUMENTS:-.claude/skill_matrix.csv}`，对每一行（一个诊断能力）跑一遍 `/factory` 循环。这是无人值守批量造能力 skill 的入口。
+
+> 架构原则：按**诊断能力**造，不按行业。能力通用、靠运行时 benchmark 调行业差异。priority 列为 `DONE` 的已建，跳过。
 
 ## CSV 格式
 
 ```
-industry,function,scenario,priority
-DTC美妆电商,投放,广告ROI与获客成本诊断,1
-连锁餐饮,渠道,加盟单店模型与招商效率诊断,1
-新能源厨电,合规,商用场景资质与广告合规诊断,2
+capability_key,label,core_question,priority
+pricing_power,定价与利润诊断,定价是否偏离价值与竞争、有无提价空间或正在价格战失血,1
+retention_churn,留存流失诊断,客户/用户为什么流失、留存曲线卡在哪一段,1
 ```
 
 ## 执行策略
 
 1. 读 CSV，按 priority 升序排队。
-2. **幂等去重（关键，避免重复造 + 覆盖已上线的）**：对每一行先算出 skill key（行业_功能，转拼音/英文小写下划线），再判断该跳过还是该造：
+2. **幂等去重（关键，避免重复造 + 覆盖已上线的）**：每行的 skill key 直接取 CSV 的 `capability_key` 列，再判断该跳过还是该造：
    - `configs/<key>.json` 存在 **且** `configs/_review/<key>.json` 里 `review_status == "approved"`（已人审通过/已上线）→ **跳过**，不重造（重造会覆盖沉淀的案例 few-shot）。
    - `configs/<key>.json` 存在但仍是草稿（无 approved 标记）→ 默认**跳过并提示**；仅当用户在参数里传 `--force` 时才重造刷新。
    - `configs/<key>.json` 不存在 → 正常造（新行）。

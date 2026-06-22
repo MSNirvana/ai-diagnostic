@@ -19,6 +19,7 @@ from app.skills.evidence import build_evidence_package
 from app.skills.store import get_active_skill_version
 from app.warroom.composer import compose_war_room_plan, _risk_note
 from app.warroom.history import merge_project_war_room_plan
+from app.warroom.normalizer import normalize_war_room_plan
 
 
 @dataclass
@@ -189,6 +190,7 @@ async def rebuild_project_war_room(
                 skill_version_ids={},
                 record_id=record.id,
             )
+            plan = normalize_war_room_plan(plan)
             record.war_room_plan_json = plan.model_dump_json()
             session.add(record)
         merged = merge_project_war_room_plan(
@@ -207,6 +209,7 @@ async def rebuild_project_war_room(
 
     if previous_id:
         merged.id = previous_id
+    merged = normalize_war_room_plan(merged)
     new_json = merged.model_dump_json()
     if project.war_room_plan_json != new_json:
         project.war_room_plan_json = new_json
@@ -229,10 +232,12 @@ def _sync_record_war_room_plan(
             skill_version_ids={},
             record_id=record.id,
         )
+        plan = normalize_war_room_plan(plan)
         record.war_room_plan_json = plan.model_dump_json()
         return True
 
     before = plan.model_dump_json()
+    plan = normalize_war_room_plan(plan)
     by_module = {result.module: result for result in results}
     for index, action in enumerate(plan.department_actions):
         result = by_module.get(action.department)

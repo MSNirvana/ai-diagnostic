@@ -2,9 +2,11 @@ from dataclasses import dataclass
 
 from app.skills.configured import DataRequirement, ExpertConfig
 from app.skills.prompts import (
+    ARCHIVE_EXTRACTION,
     CONVERSATION_INTAKE,
     EVIDENCE_CONFIDENCE,
     FINANCE_DIAGNOSIS,
+    FREE_CHAT,
     INTAKE_COMPLETENESS,
     MARKET_DIAGNOSIS,
     OPS_DIAGNOSIS,
@@ -12,6 +14,7 @@ from app.skills.prompts import (
     PRODUCT_DIAGNOSIS,
     QUESTIONNAIRE_AB_A,
     QUESTIONNAIRE_AB_B,
+    QUESTIONNAIRE_QUALITY_GATE,
     SALES_DIAGNOSIS,
 )
 
@@ -424,6 +427,19 @@ SPECIALIST_DEFINITIONS: tuple[SkillDefinition, ...] = tuple(
 
 SYSTEM_DEFINITIONS: tuple[SkillDefinition, ...] = (
     SkillDefinition(
+        key="free_chat",
+        label="头脑风暴陪练",
+        category="assistant",
+        category_label="头脑风暴",
+        skill_type="assistant",
+        method="brainstorm_chat",
+        description="陪用户推演已有项目的新想法或全新项目灵感，追问关键假设、反证风险和低成本验证动作。",
+        trigger_keywords=("头脑风暴", "脑暴", "点子", "想法", "灵感", "商业假设", "新项目", "营销点子", "brainstorm"),
+        fallback_prompt=FREE_CHAT,
+        upgrade_policy="根据用户是否继续追问、点子卡完整度、验证动作可执行性和转项目诊断率调整提示词，人工审核后激活。",
+        evaluation_metrics=("追问有效率", "点子逻辑链完整度", "验证动作可执行性", "转项目诊断率"),
+    ),
+    SkillDefinition(
         key="conversation_intake",
         label="深度访谈与问题地图",
         category="intake",
@@ -472,6 +488,18 @@ SYSTEM_DEFINITIONS: tuple[SkillDefinition, ...] = (
         evaluation_metrics=("选择率", "填写完成率", "关键字段命中率", "诊断置信度提升"),
     ),
     SkillDefinition(
+        key="questionnaire_quality_gate",
+        label="问卷质量评审",
+        category="questionnaire",
+        category_label="数据采集",
+        skill_type="questionnaire",
+        method="quality_gate",
+        description="LLM 评审生成的问卷：是否贴合行业与问题、是否收集了真实数据入口（直播间/商品/账号链接），不达标则打回重生成。",
+        trigger_keywords=("问卷", "质量", "把关", "评审", "quality gate"),
+        fallback_prompt=QUESTIONNAIRE_QUALITY_GATE,
+        evaluation_metrics=("拦截率", "数据入口命中率", "行业贴合度", "重生成通过率"),
+    ),
+    SkillDefinition(
         key="evidence_gate",
         label="证据可信闸门",
         category="delivery",
@@ -494,6 +522,19 @@ SYSTEM_DEFINITIONS: tuple[SkillDefinition, ...] = (
         fallback_prompt=EVIDENCE_CONFIDENCE,
         upgrade_policy="根据用户反馈、复盘命中率和过度自信样本调整评分权重，必须人工审核后激活。",
         evaluation_metrics=("过度自信率", "低估命中率", "证据解释完整度", "复盘校准误差"),
+    ),
+    SkillDefinition(
+        key="archive_extraction",
+        label="企业档案资料沉淀",
+        category="delivery",
+        category_label="证据交付",
+        skill_type="delivery",
+        method="archive_extraction",
+        description="从上传资料中提炼可长期复用的项目档案事实，识别报告性质、参与人、撰写/审阅关系、数据口径和经营上下文。",
+        trigger_keywords=("企业档案", "资料沉淀", "上传资料", "报告性质", "参与人", "撰写人", "审阅人", "项目档案", "archive"),
+        fallback_prompt=ARCHIVE_EXTRACTION,
+        upgrade_policy="根据用户确认/修改沉淀字段的差异、漏提的人名角色和复诊引用率迭代字段识别纪律，人工审核后激活。",
+        evaluation_metrics=("字段确认率", "用户手动修改率", "报告元信息命中率", "复诊引用率"),
     ),
     SkillDefinition(
         key="war_room_delivery",

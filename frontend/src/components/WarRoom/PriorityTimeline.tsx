@@ -1,4 +1,5 @@
 import type { PriorityBoard, WarRoomUrgency } from "../../types";
+import { cleanDisplayText } from "../../utils/displayText";
 import { PRIORITY_LABELS, priorityClass } from "./warRoomViewModel";
 
 interface PriorityTimelineProps {
@@ -18,7 +19,7 @@ export function PriorityTimeline({ board }: PriorityTimelineProps) {
             <span className={priorityClass(priority)}>{PRIORITY_LABELS[priority]}</span>
             <ul>
               {board[priority].map((item) => (
-                <li key={`${priority}-${item}`}>{item}</li>
+                <li key={`${priority}-${item}`}>{cleanDisplayText(item)}</li>
               ))}
             </ul>
           </article>

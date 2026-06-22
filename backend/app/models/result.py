@@ -28,12 +28,18 @@ class AuditTrail(BaseModel):
 
 
 class DataRequest(BaseModel):
-    """专家需要补充的数据，用于把低置信度结论变成下一步数据采集任务。"""
+    """专家需要补充的数据，用于把低置信度结论变成下一步数据采集任务。
+
+    typical_owner：这条数据通常由公司哪个角色掌握。老板不知道资料在哪、也不该自己一个个找；
+    标出"通常由 X 提供"，老板可直接把这条请求转给对应负责人，而不是自己去翻。
+    这是"取数从老板单人 → 派给对的人"的最小落地。
+    """
     key: str
     label: str
     reason: str
     source_hint: str = ""
     required: bool = True
+    typical_owner: str = ""
 
 
 class EvidencePackage(BaseModel):
@@ -54,6 +60,7 @@ class ModuleResult(BaseModel):
     drilldown: DrillDown | None = None
     evidence_package: EvidencePackage | None = None
     data_requests: list[DataRequest] = Field(default_factory=list)
+    research_questions: list[str] = Field(default_factory=list)
 
 
 class ExpertRoute(BaseModel):

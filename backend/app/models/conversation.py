@@ -1,9 +1,15 @@
 from pydantic import BaseModel, Field
 
 
+class ChatAttachment(BaseModel):
+    id: str
+    name: str
+
+
 class ChatMessage(BaseModel):
     role: str   # "user" | "assistant"
     content: str
+    attachments: list[ChatAttachment] = Field(default_factory=list)
 
 
 class ProblemSummary(BaseModel):
@@ -78,3 +84,64 @@ class ChatResponse(BaseModel):
     problem_map: ProblemMap | None = None   # phase 为 confirm/done 时返回
     # 向后兼容：在 done 时同步填一份 summary
     summary: ProblemSummary | None = None
+
+
+class FreeChatRequest(BaseModel):
+    messages: list[ChatMessage] = Field(default_factory=list)
+    project_context: str = ""
+    project_id: str | None = None
+    use_project_context: bool = False
+    brainstorm_session_id: str | None = None
+    attachment_file_ids: list[str] = Field(default_factory=list)
+
+
+class FreeChatResponse(BaseModel):
+    message: str
+    brainstorm_session_id: str | None = None
+
+
+class BrainstormSessionSummary(BaseModel):
+    id: str
+    project_id: str | None = None
+    created_at: str
+    updated_at: str
+    title: str
+    is_pinned: bool = False
+    use_project_context: bool = True
+
+
+class BrainstormSessionDetail(BrainstormSessionSummary):
+    messages: list[ChatMessage] = Field(default_factory=list)
+
+
+class BrainstormSessionPatchRequest(BaseModel):
+    title: str | None = None
+    is_pinned: bool | None = None
+
+
+class IdeaCardPayload(BaseModel):
+    title: str = ""
+    one_liner: str = ""
+    source_context: str = ""
+    target_customer: str = ""
+    pain_point: str = ""
+    value_proposition: str = ""
+    core_assumption: str = ""
+    contrary_risk: str = ""
+    validation_action: str = ""
+    next_step: str = ""
+    confidence: str = "待验证"
+
+
+class SaveIdeaCardRequest(BaseModel):
+    card: IdeaCardPayload
+    messages: list[ChatMessage] = Field(default_factory=list)
+    project_id: str | None = None
+
+
+class IdeaCardResponse(IdeaCardPayload):
+    id: str
+    project_id: str | None = None
+    created_at: str
+    updated_at: str
+    status: str

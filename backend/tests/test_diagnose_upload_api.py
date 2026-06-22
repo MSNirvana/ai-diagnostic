@@ -48,7 +48,7 @@ def test_upload_merges_file_into_facts(client):
     # 用 all_prompts：诊断后还有作战方案增强调用，last_prompt 会被覆盖。
     joined = "\n".join(FakeLLM.all_prompts)
     assert "file_market_sales.csv" in joined
-    assert "row_count" in joined
+    assert "表格共 2 行" in joined
 
 
 def test_upload_without_files_still_works(client):

@@ -2,13 +2,20 @@
 import json
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.api.conversation import run_chat_turn
 from app.main import app
 from app.config import get_llm_client
-from app.db.models import SkillVersion
+from app.db.models import SkillVersion, DiagnosisSession, Project, ProjectMemoryEntry
 
 client = TestClient(app)
+
+
+def _register(email: str) -> str:
+    return client.post(
+        "/auth/register", json={"email": email, "password": "secret123"}
+    ).json()["access_token"]
 
 
 class AskingLLM:
@@ -55,6 +62,16 @@ class DoneLLM:
         }, ensure_ascii=False)
 
 
+class FreeChatLLM:
+    seen_system = ""
+    seen_prompt = ""
+
+    async def complete(self, system: str, prompt: str) -> str:
+        FreeChatLLM.seen_system = system
+        FreeChatLLM.seen_prompt = prompt
+        return "当然，可以从你的增长目标开始聊。"
+
+
 def test_chat_keeps_asking(db_session):
     app.dependency_overrides[get_llm_client] = lambda: AskingLLM()
     resp = client.post("/conversation/chat", json={
@@ -66,6 +83,217 @@ def test_chat_keeps_asking(db_session):
     assert body["done"] is False
     assert "什么时候" in body["message"]
     assert body["summary"] is None
+
+
+def test_free_chat_returns_plain_answer_without_project_records(db_session):
+    app.dependency_overrides[get_llm_client] = lambda: FreeChatLLM()
+
+    resp = client.post("/conversation/free-chat", json={
+        "messages": [{"role": "user", "content": "帮我看看这个项目怎么提效"}]
+    })
+    app.dependency_overrides.pop(get_llm_client, None)
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "增长目标" in body["message"]
+    assert "头脑风暴" in FreeChatLLM.seen_system
+    assert "默认不绑定项目" in FreeChatLLM.seen_system
+
+    import asyncio
+
+    async def fetch_counts():
+        async with db_session() as session:
+            sessions = await session.scalars(select(DiagnosisSession))
+            projects = await session.scalars(select(Project))
+            return len(list(sessions)), len(list(projects))
+
+    session_count, project_count = asyncio.get_event_loop().run_until_complete(fetch_counts())
+    assert session_count == 0
+    assert project_count == 0
+
+
+def test_free_chat_uses_seedable_skill_prompt(db_session):
+    app.dependency_overrides[get_llm_client] = lambda: FreeChatLLM()
+    resp = client.post("/conversation/free-chat", json={"messages": []})
+    app.dependency_overrides.pop(get_llm_client, None)
+
+    assert resp.status_code == 200
+    assert "头脑风暴" in FreeChatLLM.seen_system
+    assert "普通文本" not in FreeChatLLM.seen_prompt
+
+
+def test_free_chat_can_include_project_context(db_session):
+    app.dependency_overrides[get_llm_client] = lambda: FreeChatLLM()
+    resp = client.post("/conversation/free-chat", json={
+        "project_context": "项目名称：星麦直播\n当前目标：降低获客成本",
+        "messages": [{"role": "user", "content": "帮我推演一个低成本动作"}],
+    })
+    app.dependency_overrides.pop(get_llm_client, None)
+
+    assert resp.status_code == 200
+    assert "可参考的项目信息" in FreeChatLLM.seen_prompt
+    assert "星麦直播" in FreeChatLLM.seen_prompt
+    assert "帮我推演一个低成本动作" in FreeChatLLM.seen_prompt
+
+
+async def test_free_chat_loads_project_context_from_database(db_session):
+    token = _register("brainstorm-project@b.com")
+    auth = {"Authorization": f"Bearer {token}"}
+    project_id = client.post("/project/", json={"name": "华火电火灶"}, headers=auth).json()["id"]
+
+    async with db_session() as session:
+        project = await session.get(Project, project_id)
+        project.memory_summary = "核心业务：电火灶代理销售；当前卡点：终端动销不足。"
+        session.add(ProjectMemoryEntry(
+            project_id=project_id,
+            user_id=project.user_id,
+            entry_type="diagnosis",
+            summary="诊断：客单价中游但转化率偏低，需要先做低成本获客验证。",
+        ))
+        await session.commit()
+
+    app.dependency_overrides[get_llm_client] = lambda: FreeChatLLM()
+    resp = client.post("/conversation/free-chat", json={
+        "project_id": project_id,
+        "use_project_context": True,
+        "messages": [{"role": "user", "content": "基于当前项目推演一个低成本获客动作"}],
+    }, headers=auth)
+    app.dependency_overrides.pop(get_llm_client, None)
+
+    assert resp.status_code == 200
+    assert "华火电火灶" in FreeChatLLM.seen_prompt
+    assert "电火灶代理销售" in FreeChatLLM.seen_prompt
+    assert "终端动销不足" in FreeChatLLM.seen_prompt
+    assert "项目上下文运行时规则" in FreeChatLLM.seen_system
+    assert "用户已开启“带入项目信息思考”" in FreeChatLLM.seen_prompt
+    assert "不要说不了解该项目" in FreeChatLLM.seen_prompt
+
+
+async def test_free_chat_filters_stale_no_project_reply_when_context_is_loaded(db_session):
+    token = _register("brainstorm-stale@b.com")
+    auth = {"Authorization": f"Bearer {token}"}
+    project_id = client.post("/project/", json={"name": "华火电火灶"}, headers=auth).json()["id"]
+
+    app.dependency_overrides[get_llm_client] = lambda: FreeChatLLM()
+    resp = client.post("/conversation/free-chat", json={
+        "project_id": project_id,
+        "use_project_context": True,
+        "messages": [
+            {"role": "assistant", "content": "我现在没有绑定任何项目哦，这里是一张空白纸。"},
+            {"role": "user", "content": "基于当前项目推演一个获客动作"},
+        ],
+    }, headers=auth)
+    app.dependency_overrides.pop(get_llm_client, None)
+
+    assert resp.status_code == 200
+    assert "华火电火灶" in FreeChatLLM.seen_prompt
+    assert "没有绑定任何项目" not in FreeChatLLM.seen_prompt
+    assert "空白纸" not in FreeChatLLM.seen_prompt
+
+
+async def test_free_chat_answers_project_identity_directly(db_session):
+    token = _register("brainstorm-identity@b.com")
+    auth = {"Authorization": f"Bearer {token}"}
+    project_id = client.post("/project/", json={"name": "华火电火灶"}, headers=auth).json()["id"]
+
+    app.dependency_overrides[get_llm_client] = lambda: BrokenLLM()
+    resp = client.post("/conversation/free-chat", json={
+        "project_id": project_id,
+        "use_project_context": True,
+        "messages": [{"role": "user", "content": "当前是什么项目？"}],
+    }, headers=auth)
+    app.dependency_overrides.pop(get_llm_client, None)
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "华火电火灶" in body["message"]
+    assert body["brainstorm_session_id"]
+
+
+def test_free_chat_marks_missing_project_context_when_requested(db_session):
+    app.dependency_overrides[get_llm_client] = lambda: FreeChatLLM()
+    resp = client.post("/conversation/free-chat", json={
+        "project_id": "missing-project",
+        "use_project_context": True,
+        "messages": [{"role": "user", "content": "结合项目帮我推演渠道动作"}],
+    })
+    app.dependency_overrides.pop(get_llm_client, None)
+
+    assert resp.status_code == 200
+    assert "没有找到当前账号可访问的项目档案" in FreeChatLLM.seen_prompt
+    assert "结合项目帮我推演渠道动作" in FreeChatLLM.seen_prompt
+
+
+async def test_project_brainstorm_session_is_persisted(db_session):
+    token = _register("brainstorm-history@b.com")
+    auth = {"Authorization": f"Bearer {token}"}
+    project_id = client.post("/project/", json={"name": "风暴留存项目"}, headers=auth).json()["id"]
+
+    app.dependency_overrides[get_llm_client] = lambda: FreeChatLLM()
+    resp = client.post("/conversation/free-chat", json={
+        "project_id": project_id,
+        "use_project_context": True,
+        "messages": [{"role": "user", "content": "帮我推演一个渠道招商动作"}],
+    }, headers=auth)
+    app.dependency_overrides.pop(get_llm_client, None)
+
+    assert resp.status_code == 200
+    brainstorm_id = resp.json()["brainstorm_session_id"]
+    assert brainstorm_id
+
+    list_resp = client.get(f"/conversation/brainstorm-sessions?project_id={project_id}", headers=auth)
+    assert list_resp.status_code == 200
+    rows = list_resp.json()
+    assert len(rows) == 1
+    assert rows[0]["id"] == brainstorm_id
+    assert rows[0]["title"] == "帮我推演一个渠道招商动作"
+
+    detail_resp = client.get(f"/conversation/brainstorm-sessions/{brainstorm_id}", headers=auth)
+    assert detail_resp.status_code == 200
+    messages = detail_resp.json()["messages"]
+    assert messages[0]["content"] == "帮我推演一个渠道招商动作"
+    assert messages[-1]["role"] == "assistant"
+
+    project_detail = client.get(f"/project/{project_id}", headers=auth).json()
+    assert project_detail["brainstorm_sessions"][0]["id"] == brainstorm_id
+
+
+def test_save_and_list_idea_cards(db_session):
+    token = _register("idea-card@b.com")
+    auth = {"Authorization": f"Bearer {token}"}
+    payload = {
+        "card": {
+            "title": "学校食堂电火灶改造",
+            "one_liner": "给学校食堂做电火灶安全改造方案",
+            "source_context": "新项目点子",
+            "target_customer": "学校食堂",
+            "pain_point": "明火和燃气安全风险",
+            "value_proposition": "降低用火风险并提升监管可见度",
+            "core_assumption": "学校食堂愿意为更安全的烹饪方案付费",
+            "contrary_risk": "采购预算或改造周期过长",
+            "validation_action": "7天内访谈3个后勤负责人并拿到试点意向",
+            "next_step": "整理试点清单",
+            "confidence": "可进入验证",
+        },
+        "messages": [
+            {"role": "user", "content": "我想给学校食堂做电火灶安全改造方案"},
+            {"role": "assistant", "content": "先验证后勤负责人是否愿意试点。"},
+        ],
+    }
+
+    create_resp = client.post("/conversation/idea-cards", json=payload, headers=auth)
+    assert create_resp.status_code == 201
+    body = create_resp.json()
+    assert body["id"]
+    assert body["title"] == "学校食堂电火灶改造"
+    assert body["status"] == "saved"
+
+    list_resp = client.get("/conversation/idea-cards", headers=auth)
+    assert list_resp.status_code == 200
+    cards = list_resp.json()
+    assert len(cards) == 1
+    assert cards[0]["id"] == body["id"]
+    assert cards[0]["target_customer"] == "学校食堂"
 
 
 def test_chat_finishes_with_summary(db_session):
@@ -83,6 +311,83 @@ def test_chat_finishes_with_summary(db_session):
     assert body["done"] is True
     assert body["summary"]["core_problem"]
     assert body["summary"]["industry"] == "直播电商"
+
+
+def test_session_can_be_pinned_renamed_and_hidden_from_project(db_session):
+    token = _register("session-manage@b.com")
+    auth = {"Authorization": f"Bearer {token}"}
+    project_id = client.post("/project/", json={"name": "星麦直播"}, headers=auth).json()["id"]
+
+    first_id = client.post("/session/start", json={"project_id": project_id}, headers=auth).json()["session_id"]
+    second_id = client.post("/session/start", json={"project_id": project_id}, headers=auth).json()["session_id"]
+
+    app.dependency_overrides[get_llm_client] = lambda: DoneLLM()
+    assert client.post(f"/session/{first_id}/chat", json={"message": "获客成本越来越高"}, headers=auth).status_code == 200
+    assert client.post(f"/session/{second_id}/chat", json={"message": "复购率一直上不来"}, headers=auth).status_code == 200
+    app.dependency_overrides.pop(get_llm_client, None)
+
+    auto_detail = client.get(f"/project/{project_id}", headers=auth).json()
+    auto_titles = {s["id"]: s["title"] for s in auto_detail["sessions"]}
+    assert auto_titles[first_id] == "获客成本翻倍但转化没涨"
+    assert auto_titles[second_id] == "获客成本翻倍但转化没涨"
+
+    rename_resp = client.patch(
+        f"/session/{first_id}",
+        json={"title": "直播获客成本复盘", "is_pinned": True},
+        headers=auth,
+    )
+    assert rename_resp.status_code == 200
+    assert rename_resp.json()["title"] == "直播获客成本复盘"
+    assert rename_resp.json()["is_pinned"] is True
+
+    detail = client.get(f"/project/{project_id}", headers=auth).json()
+    assert detail["sessions"][0]["id"] == first_id
+    assert detail["sessions"][0]["title"] == "直播获客成本复盘"
+    assert detail["sessions"][0]["is_pinned"] is True
+
+    app.dependency_overrides[get_llm_client] = lambda: DoneLLM()
+    assert client.post(f"/session/{first_id}/chat", json={"message": "补充一个信息"}, headers=auth).status_code == 200
+    app.dependency_overrides.pop(get_llm_client, None)
+    assert client.get(f"/session/{first_id}", headers=auth).json()["title"] == "直播获客成本复盘"
+
+    delete_resp = client.delete(f"/session/{first_id}", headers=auth)
+    assert delete_resp.status_code == 204
+    detail_after_delete = client.get(f"/project/{project_id}", headers=auth).json()
+    assert [s["id"] for s in detail_after_delete["sessions"]] == [second_id]
+
+    assert client.get(f"/session/{first_id}", headers=auth).status_code == 404
+
+
+def test_project_session_memory_can_be_toggled(db_session):
+    token = _register("session-memory@b.com")
+    auth = {"Authorization": f"Bearer {token}"}
+    project_id = client.post("/project/", json={"name": "星麦直播"}, headers=auth).json()["id"]
+
+    app.dependency_overrides[get_llm_client] = lambda: AskingLLM()
+    on_id = client.post("/session/start", json={"project_id": project_id}, headers=auth).json()["session_id"]
+    off_id = client.post(
+        "/session/start",
+        json={"project_id": project_id, "memory_enabled": False},
+        headers=auth,
+    ).json()["session_id"]
+    assert client.post(f"/session/{on_id}/chat", json={"message": "今天直播间有2000人看，但每天只成交1到2单"}, headers=auth).status_code == 200
+    assert client.post(f"/session/{off_id}/chat", json={"message": "这个信息不要进档案"}, headers=auth).status_code == 200
+    app.dependency_overrides.pop(get_llm_client, None)
+
+    import asyncio
+
+    async def fetch_memory():
+        async with db_session() as session:
+            rows = list(await session.scalars(
+                select(ProjectMemoryEntry).where(ProjectMemoryEntry.project_id == project_id)
+            ))
+            return rows
+
+    rows = asyncio.get_event_loop().run_until_complete(fetch_memory())
+    assert len(rows) == 1
+    assert rows[0].entry_type == "conversation"
+    assert rows[0].source_id == on_id
+    assert "2000人看" in rows[0].summary or "每天只成交1到2单" in rows[0].summary
 
 
 def test_chat_empty_start(db_session):

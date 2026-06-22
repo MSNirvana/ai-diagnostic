@@ -72,3 +72,14 @@ def test_evidence_confidence_skill_is_seeded_for_iteration():
     assert skill_type == "delivery"
     assert method == "confidence_calibration"
     assert "禁止固定高分" in prompt
+
+
+def test_archive_extraction_skill_is_seeded_for_iteration():
+    seeded = {module: (skill_type, method, prompt) for module, skill_type, method, prompt in SEEDS}
+
+    assert "archive_extraction" in seeded
+    skill_type, method, prompt = seeded["archive_extraction"]
+    assert skill_type == "delivery"
+    assert method == "archive_extraction"
+    assert "报告性质" in prompt
+    assert "参与人" in prompt

@@ -7,6 +7,7 @@ import { PriorityTimeline } from "./PriorityTimeline";
 import { ReviewCadencePanel } from "./ReviewCadencePanel";
 import { WarRoomHeader } from "./WarRoomHeader";
 import "./WarRoomPage.css";
+import { cleanDisplayText } from "../../utils/displayText";
 
 interface WarRoomPageProps {
   plan: WarRoomPlan;
@@ -43,6 +44,7 @@ export function WarRoomPage({ plan, showIterations = false }: WarRoomPageProps) 
 export function WarRoomIterations({ plan }: { plan: WarRoomPlan }) {
   const iterations = [...(plan.iterations ?? [])].reverse();
   if (iterations.length === 0) return null;
+  const totalVersions = plan.iteration_count ?? iterations.length;
 
   return (
     <section className="war-panel war-iterations" aria-label="作战室迭代轨迹">
@@ -51,24 +53,31 @@ export function WarRoomIterations({ plan }: { plan: WarRoomPlan }) {
           <span>Iteration Trail</span>
           <h3>作战室迭代轨迹</h3>
         </div>
-        <strong>{plan.iteration_count ?? iterations.length} 次诊断迭代</strong>
+        <strong>当前生效版本 V{totalVersions}</strong>
       </div>
       <div className="war-iteration-list">
-        {iterations.map((item, index) => (
-          <article key={item.record_id} className="war-iteration-card">
+        {iterations.map((item, index) => {
+          const versionNumber = iterations.length - index;
+          const isCurrent = versionNumber === totalVersions;
+          return (
+          <article
+            key={item.record_id}
+            className={isCurrent ? "war-iteration-card war-iteration-card--current" : "war-iteration-card"}
+          >
             <div className="war-iteration-card__meta">
-              <span>第 {iterations.length - index} 轮</span>
+              <span>V{versionNumber} · 第 {versionNumber} 轮{isCurrent ? " · 当前生效" : ""}</span>
               <time>{new Date(item.created_at).toLocaleString("zh-CN")}</time>
             </div>
-            <h4>{item.summary}</h4>
-            <p>{item.objective}</p>
+            <h4>{cleanDisplayText(item.summary)}</h4>
+            <p>{cleanDisplayText(item.objective)}</p>
             <ul>
               {(item.changes.length ? item.changes : ["本轮诊断补充了作战室依据"]).map((change) => (
-                <li key={change}>{change}</li>
+                <li key={change}>{cleanDisplayText(change)}</li>
               ))}
             </ul>
           </article>
-        ))}
+          );
+        })}
       </div>
     </section>
   );

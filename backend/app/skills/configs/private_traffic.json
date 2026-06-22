@@ -1,0 +1,36 @@
+{
+  "module": "private_traffic",
+  "method": "private-traffic-retention-evidence",
+  "label": "私域复购诊断",
+  "category": "capability",
+  "description": "诊断私域流量池的承接、留存、复购、转化是否健康。通用能力，适用任何依赖私域/会员/社群复购的业务，按行业调整基准。",
+  "trigger_keywords": ["私域", "复购", "社群", "会员", "企微", "公众号", "小程序", "留存", "LTV", "用户运营", "RFM", "沉默用户", "唤醒", "裂变"],
+  "industry_kpis": ["复购率", "留存率", "LTV", "私域GMV占比", "社群活跃度", "会员转化率", "ARPU", "唤醒率"],
+  "scenarios": ["ecommerce_retail", "local_service", "live_commerce"],
+  "data_requirements": [
+    {
+      "key": "retention_funnel",
+      "label": "私域承接与留存漏斗",
+      "reason": "没有从加私域到复购的分层数据，无法判断流失卡在承接、激活还是复购环节。",
+      "source_hint": "提供加私域人数、入群率、首次复购率、30/90天留存、沉默用户占比。",
+      "keywords": ["加私域", "入群", "复购率", "留存", "沉默", "活跃"],
+      "required": true
+    },
+    {
+      "key": "member_economics",
+      "label": "会员经济模型",
+      "reason": "判断私域价值要看 LTV、ARPU、复购频次，否则只看人数会误判。",
+      "source_hint": "提供会员 LTV、ARPU、复购频次、私域 GMV 占总营收比。",
+      "keywords": ["LTV", "ARPU", "复购频次", "私域GMV", "会员"],
+      "required": true
+    },
+    {
+      "key": "private_entry",
+      "label": "私域入口与运营动作",
+      "reason": "顾问要核验真实运营，需要私域入口和动作记录而非自述。",
+      "source_hint": "提供企微/公众号/小程序/社群入口、近30天 SOP 触达频次与内容类型。",
+      "keywords": ["企微", "公众号", "小程序", "社群", "SOP", "触达"],
+      "required": false
+    }
+  ]
+}

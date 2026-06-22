@@ -80,6 +80,10 @@ class ConfiguredExpertSkill(Skill):
             scenario_key=scenario.key,
         )
         data_requests = missing_data_requests(answer, self.config.data_requirements)
+        external_research = _research_for_module(
+            answer.context.get("research_evidence", []),
+            self.module,
+        )
         prompt = json.dumps(
             {
                 "module": self.module,
@@ -94,6 +98,12 @@ class ConfiguredExpertSkill(Skill):
                 "context": answer.context,
                 "problem_map": answer.context,
                 "benchmark": benchmark,
+                "external_research_evidence": external_research,
+                "external_research_usage": (
+                    "这些 external_research_evidence 来自系统预研搜索，带 url/title/snippet/credibility。"
+                    "专家结论可以引用其中证据；涉及外部事实时必须在 evidence.source 写明来源标题或 URL。"
+                    "如果这些证据仍不足，请在输出 JSON 中增加 research_questions 数组，说明还要补搜什么。"
+                ),
                 "similar_cases": similar_cases,
                 "similar_cases_usage": (
                     "以上 similar_cases 是同行业/同场景的脱敏历史诊断先例，"
@@ -141,6 +151,7 @@ class ConfiguredExpertSkill(Skill):
                     data_requests=data_requests,
                 ),
                 data_requests=data_requests,
+                research_questions=_research_questions(data.get("research_questions")),
             ),
             version_id,
         )
@@ -168,3 +179,34 @@ def missing_data_requests(
                 )
             )
     return missing
+
+
+def _research_questions(value) -> list[str]:
+    if not value:
+        return []
+    if isinstance(value, str):
+        candidates = [value]
+    elif isinstance(value, list):
+        candidates = value
+    else:
+        return []
+    out: list[str] = []
+    for item in candidates:
+        text = str(item).strip()
+        if text and text not in out:
+            out.append(text[:180])
+    return out[:5]
+
+
+def _research_for_module(items: object, module: str) -> list[dict]:
+    if not isinstance(items, list):
+        return []
+    relevant: list[dict] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        item_module = str(item.get("module") or "")
+        if item_module and item_module != module:
+            continue
+        relevant.append(item)
+    return relevant[:30]

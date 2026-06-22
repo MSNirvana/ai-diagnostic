@@ -9,6 +9,8 @@ vi.mock("../src/auth/useAuth", () => ({
 }));
 
 vi.mock("../src/api/client", () => ({
+  listProjects: vi.fn(async () => []),
+  patchProject: vi.fn(),
   listSkillRegistry: vi.fn(async () => []),
   listSkillVersions: vi.fn(async () => []),
   addSkillVersion: vi.fn(),

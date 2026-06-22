@@ -6,14 +6,137 @@ import type {
   ProblemMap,
   ChatMessage,
   UploadedFileOut,
+  DiagnosisDetail,
 } from "../../types";
 import { generateFromSummary, getSessionDetail, saveSessionDraft, uploadSessionFile, listSessionFiles, deleteSessionFile } from "../../api/client";
 import { useAuth } from "../../auth/useAuth";
 import { saveDraft, loadDraft, clearDraft, clearLegacyDraft } from "../../utils/draft";
 import type { DraftState } from "../../utils/draft";
 import { StepIndicator } from "./StepIndicator";
-import { ChatStep } from "./ChatStep";
+import { ChatStep, type ProjectChatMode } from "./ChatStep";
 import "./Questionnaire.css";
+
+const MODULE_LABELS: Record<string, string> = {
+  market: "市场与客户",
+  sales: "销售与增长",
+  product: "产品与服务",
+  ops: "运营与供应链",
+  org: "组织与人才",
+  finance: "财务与资本",
+  legal_compliance: "法务合规",
+  tax: "税务与财务合规",
+  policy: "政策与监管",
+  ip: "知识产权",
+  supply_chain: "供应链",
+  channel_franchise: "渠道与加盟",
+  data_systems: "数据系统",
+};
+
+const uniqueByKey = <T extends { key: string }>(items: T[]) => {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    if (seen.has(item.key)) return false;
+    seen.add(item.key);
+    return true;
+  });
+};
+
+function problemSummaryFromRecord(record: DiagnosisDetail): ProblemSummary | null {
+  const problemMap = record.answers.problem_map;
+  if (!problemMap) return null;
+  return {
+    core_problem: problemMap.core_problem ?? "",
+    context: problemMap.context ?? "",
+    suspected_cause: problemMap.suspected_cause ?? "",
+    tried: problemMap.tried ?? "",
+    company_name: problemMap.company_name ?? "",
+    industry: problemMap.industry ?? "",
+    main_business: problemMap.main_business ?? "",
+    business_model: problemMap.business_model ?? "",
+    scale: problemMap.scale ?? "",
+    stage: problemMap.stage ?? "",
+  };
+}
+
+function factsFromRecord(record: DiagnosisDetail): Record<string, Record<string, string>> {
+  return Object.fromEntries(
+    record.answers.answers.map((answer) => [answer.module, { ...answer.facts }])
+  );
+}
+
+function painsFromRecord(record: DiagnosisDetail): Record<string, string[]> {
+  return Object.fromEntries(
+    record.answers.answers.map((answer) => [answer.module, [...answer.pains]])
+  );
+}
+
+function modulesFromRejectedRecord(record: DiagnosisDetail): GeneratedModule[] {
+  const previousByModule = new Map(record.answers.answers.map((answer) => [answer.module, answer]));
+  const requestModules = record.results
+    .filter((result) => (result.data_requests ?? []).length > 0)
+    .map((result) => result.module);
+  const moduleKeys = Array.from(new Set([...requestModules, ...previousByModule.keys()]));
+
+  if (moduleKeys.length === 0) {
+    return [{
+      key: "supplement",
+      label: "补充材料",
+      subtitle: "请按顾问意见补充说明、截图、表格或其他能支撑复审的材料。",
+      fields: [{
+        key: "supplement_note",
+        label: "补充说明",
+        placeholder: "例如：已补充近 30 天投放后台截图、渠道消耗、线索转化和合同材料。",
+        hint: "如果没有明确字段，也可以先把材料变化说明清楚。",
+        accept_file: true,
+      }],
+      pains: [],
+      free_text_label: "还有哪些需要顾问复核的补充信息？",
+    }];
+  }
+
+  return moduleKeys.map((moduleKey) => {
+    const result = record.results.find((item) => item.module === moduleKey);
+    const previous = previousByModule.get(moduleKey);
+    const existingFields = Object.keys(previous?.facts ?? {}).map((key) => ({
+      key,
+      label: key,
+      placeholder: "沿用上一轮已填信息，可在这里修正。",
+      hint: "上一轮已提供，复审时可修正。",
+      accept_file: false,
+      prefilled_value: previous?.facts[key] ?? "",
+      known_source: "上一轮诊断",
+    }));
+    const requestFields = (result?.data_requests ?? []).map((request) => ({
+      key: request.key,
+      label: request.label,
+      placeholder: request.source_hint
+        ? `请填写或上传：${request.source_hint}`
+        : "请填写或上传对应补充材料。",
+      hint: request.reason,
+      accept_file: true,
+      prefilled_value: previous?.facts[request.key] ?? null,
+      known_source: previous?.facts[request.key] ? "上一轮诊断" : null,
+    }));
+    const fields = uniqueByKey([...requestFields, ...existingFields]);
+
+    return {
+      key: moduleKey,
+      label: MODULE_LABELS[moduleKey] ?? moduleKey,
+      subtitle: result?.conclusion
+        ? `上一轮判断：${result.conclusion}`
+        : "请补齐本模块复审所需的关键事实和证据材料。",
+      fields: fields.length ? fields : [{
+        key: `${moduleKey}_supplement_note`,
+        label: "补充说明",
+        placeholder: "请说明本次新增、修正或可供复核的材料。",
+        hint: "用于顾问复审时快速定位变化。",
+        accept_file: true,
+      }],
+      pains: previous?.pains ?? [],
+      free_text_label: `补充说明：${MODULE_LABELS[moduleKey] ?? moduleKey} 本次新增了哪些材料或判断？`,
+    };
+  });
+}
 
 interface QuestionnaireProps {
   onSubmit: (
@@ -25,19 +148,51 @@ interface QuestionnaireProps {
   ) => void;
   projectId?: string;          // 当前所属项目（从项目页进入）
   resumeSessionId?: string;    // 续聊：要恢复的会话 id（从项目/历史页进入）
+  supplementRecord?: DiagnosisDetail | null; // 顾问打回后补充材料复审
+  initialPrompt?: string;      // 从项目入口带入的待确认问题描述
+  variant?: "default" | "project-inline";
+  projectMode?: ProjectChatMode;
+  onProjectModeChange?: (mode: ProjectChatMode) => void;
+  brainstormMessages?: ChatMessage[];
+  brainstormDraft?: string;
+  brainstormLoading?: boolean;
+  brainstormError?: string | null;
+  brainstormUseProjectContext?: boolean;
+  onBrainstormDraftChange?: (value: string) => void;
+  onBrainstormSend?: () => void;
+  onBrainstormContextChange?: (enabled: boolean) => void;
 }
 
 type Mode = "chatting" | "generating" | "ready" | "gen_error";
 
-export function Questionnaire({ onSubmit, projectId, resumeSessionId: resumeFromNav }: QuestionnaireProps) {
+export function Questionnaire({
+  onSubmit,
+  projectId,
+  resumeSessionId: resumeFromNav,
+  supplementRecord,
+  initialPrompt,
+  variant = "default",
+  projectMode,
+  onProjectModeChange,
+  brainstormMessages,
+  brainstormDraft,
+  brainstormLoading,
+  brainstormError,
+  brainstormUseProjectContext,
+  onBrainstormDraftChange,
+  onBrainstormSend,
+  onBrainstormContextChange,
+}: QuestionnaireProps) {
   const { token } = useAuth();
   const userId = token ? token.slice(0, 16) : "anon";
+  const isProjectInline = variant === "project-inline";
 
   const [mode, setMode] = useState<Mode>("chatting");
   const [activeModules, setActiveModules] = useState<GeneratedModule[]>([]);
   const [storedSummary, setStoredSummary] = useState<ProblemSummary | null>(null);
   const [storedProblemMap, setStoredProblemMap] = useState<ProblemMap | null>(null);
   const [storedSessionId, setStoredSessionId] = useState<string | null>(null);
+  const [memoryEnabled, setMemoryEnabled] = useState(true);
 
   const [current, setCurrent] = useState(0);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -68,6 +223,7 @@ export function Questionnaire({ onSubmit, projectId, resumeSessionId: resumeFrom
         setResumeSessionId(detail.id);
         setResumeMessages(detail.messages);
         setStoredSessionId(detail.id);
+        setMemoryEnabled(detail.memory_enabled ?? true);
         // 拉该会话已上传的文件，跨设备复用、不用重传
         listSessionFiles(detail.id).then(setStoredFiles).catch(() => {});
         setChatMessages(detail.messages);
@@ -103,8 +259,27 @@ export function Questionnaire({ onSubmit, projectId, resumeSessionId: resumeFrom
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (!supplementRecord) return;
+    const modules = modulesFromRejectedRecord(supplementRecord);
+    setPendingDraft(null);
+    setResumeReady(true);
+    setResumeSessionId(null);
+    setResumeMessages(null);
+    setStoredSessionId(null);
+    setChatMessages([]);
+    setStoredProblemMap(supplementRecord.answers.problem_map ?? null);
+    setStoredSummary(problemSummaryFromRecord(supplementRecord));
+    setActiveModules(modules);
+    setCurrent(0);
+    setFacts(factsFromRecord(supplementRecord));
+    setPains(painsFromRecord(supplementRecord));
+    setMode("ready");
+  }, [supplementRecord]);
+
   // 挂载时读草稿（续聊场景不弹草稿）
   useEffect(() => {
+    if (isProjectInline) return;
     if (resumeFromNav) return;
     clearLegacyDraft(userId);
     const draft = loadDraft(userId, projectId);
@@ -112,7 +287,7 @@ export function Questionnaire({ onSubmit, projectId, resumeSessionId: resumeFrom
       setPendingDraft(draft);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isProjectInline, resumeFromNav, userId, projectId]);
 
   // 防抖保存草稿（仅 chatting/ready 阶段）
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -379,6 +554,26 @@ export function Questionnaire({ onSubmit, projectId, resumeSessionId: resumeFrom
     </div>
   );
 
+  const supplementBanner = supplementRecord && (
+    <section className="review-supplement-banner">
+      <span>顾问打回补充</span>
+      <h2>先补齐关键材料，再重新进入审核。</h2>
+      <p>
+        本次不是从零开始诊断。系统已带入上一轮问题地图和已填事实，请按顾问意见补充缺失证据。
+      </p>
+      {supplementRecord.consultant_notes?.length ? (
+        <div className="review-supplement-banner__notes">
+          <strong>顾问意见</strong>
+          <ul>
+            {supplementRecord.consultant_notes.map((note, index) => (
+              <li key={index}>{note}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </section>
+  );
+
   if (mode === "chatting") {
     // 续聊场景：会话详情未加载完前，不渲染 ChatStep（避免它误建新会话）
     if (!resumeReady) {
@@ -395,13 +590,27 @@ export function Questionnaire({ onSubmit, projectId, resumeSessionId: resumeFrom
       resumeMessages ?? (chatMessages.length > 0 ? chatMessages : undefined);
     return (
       <>
-        {resumeBanner}
+        {supplementBanner}
+        {!isProjectInline && resumeBanner}
         <ChatStep
           key={sid ?? "new"}
           onComplete={handleChatComplete}
           resumeSessionId={sid}
           resumeMessages={msgs}
+          initialMemoryEnabled={memoryEnabled}
           projectId={projectId}
+          initialPrompt={initialPrompt}
+          variant={variant}
+          projectMode={projectMode}
+          onProjectModeChange={onProjectModeChange}
+          brainstormMessages={brainstormMessages}
+          brainstormDraft={brainstormDraft}
+          brainstormLoading={brainstormLoading}
+          brainstormError={brainstormError}
+          brainstormUseProjectContext={brainstormUseProjectContext}
+          onBrainstormDraftChange={onBrainstormDraftChange}
+          onBrainstormSend={onBrainstormSend}
+          onBrainstormContextChange={onBrainstormContextChange}
         />
       </>
     );
@@ -457,7 +666,8 @@ export function Questionnaire({ onSubmit, projectId, resumeSessionId: resumeFrom
       .filter((e) => e.moduleKey === modKey && e.fieldKey === fieldKey);
 
   return (
-    <div className="questionnaire">
+    <div className={variant === "project-inline" ? "questionnaire questionnaire--project-inline" : "questionnaire"}>
+      {supplementBanner}
       <StepIndicator
         steps={activeModules.map((m) => ({ label: m.label }))}
         current={current}

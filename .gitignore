@@ -7,6 +7,8 @@ __pycache__/
 node_modules/
 frontend/dist/
 frontend/tsconfig.tsbuildinfo
+.DS_Store
+data/*.db
 
 # 运行时数据库
 backend/data/

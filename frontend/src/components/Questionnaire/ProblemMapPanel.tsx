@@ -3,7 +3,7 @@ import "./ProblemMapPanel.css";
 
 const FOCUS_LABELS: Record<string, string> = {
   market: "市场与客户",
-  sales: "营销与销售",
+  sales: "销售与增长",
   product: "产品与服务",
   ops: "运营与供应链",
   org: "组织与人才",
@@ -22,11 +22,18 @@ const scoreLabel = (score: number): string => {
 interface ProblemMapPanelProps {
   problemMap: ProblemMap | null;
   phase: "intake" | "confirm" | "done";
+  variant?: "default" | "project-inline";
 }
 
-export function ProblemMapPanel({ problemMap, phase }: ProblemMapPanelProps) {
+export function ProblemMapPanel({ problemMap, phase, variant = "default" }: ProblemMapPanelProps) {
+  const className = [
+    "map-panel",
+    phase === "confirm" ? "map-panel--active" : "",
+    variant === "project-inline" ? "map-panel--project-inline" : "",
+  ].filter(Boolean).join(" ");
+
   return (
-    <aside className={phase === "confirm" ? "map-panel map-panel--active" : "map-panel"}>
+    <aside className={className}>
       <h3 className="map-panel__title">问题地图</h3>
       {!problemMap ? (
         <p className="map-panel__placeholder">

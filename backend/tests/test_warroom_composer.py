@@ -9,7 +9,8 @@ from app.models.result import (
     ModuleResult,
     TriageSummary,
 )
-from app.warroom.composer import compose_war_room_plan
+from app.skills.skill_network import diagnosis_skill_definitions
+from app.warroom.composer import OWNER_ROLES, compose_war_room_plan
 
 
 def _result(
@@ -142,6 +143,7 @@ def test_compose_war_room_plan_maps_actions_gaps_priorities_and_checkpoints():
     )
 
     assert [gap.key for gap in plan.data_gaps] == ["ad_account"]
+    assert plan.data_gaps[0].typical_owner == "市场负责人"
     assert plan.department_actions[0].department == "market"
     assert plan.department_actions[0].priority == "now"
     assert plan.department_actions[0].required_data[0].key == "ad_account"
@@ -152,3 +154,36 @@ def test_compose_war_room_plan_maps_actions_gaps_priorities_and_checkpoints():
     assert "保持交付排期周检查" in plan.priority_board.later
     assert [checkpoint.window for checkpoint in plan.checkpoints] == ["7d", "14d", "30d"]
     assert any("推广账号数据" in risk for risk in plan.risk_summary)
+
+
+def test_data_requests_keep_existing_owner_and_owner_mapping_covers_diagnosis_skills():
+    owned_gap = DataRequest(
+        key="campaign_budget",
+        label="广告预算消耗",
+        reason="需要核验真实投放效率",
+        source_hint="广告后台",
+        typical_owner="增长负责人",
+    )
+    plan = compose_war_room_plan(
+        Questionnaire(answers=[]),
+        [
+            _result(
+                "acquisition_efficiency",
+                "red",
+                "投放效率需要核验",
+                ["拉取投放账号数据"],
+                confidence=0.48,
+                data_requests=[owned_gap],
+            )
+        ],
+        TriageSummary(primary_module="acquisition_efficiency"),
+        {},
+    )
+
+    assert plan.data_gaps[0].typical_owner == "增长负责人"
+    missing = [
+        definition.key
+        for definition in diagnosis_skill_definitions()
+        if definition.key not in OWNER_ROLES
+    ]
+    assert missing == []
