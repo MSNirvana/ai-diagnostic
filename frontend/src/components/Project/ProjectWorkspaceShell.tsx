@@ -193,17 +193,6 @@ export function ProjectWorkspaceShell({
     reader.readAsDataURL(file);
   };
 
-  const clearProjectLogo = () => {
-    setProjectLogo("");
-    try {
-      if (typeof window.localStorage?.removeItem === "function") {
-        window.localStorage.removeItem(projectLogoStorageKey(project.id));
-      }
-    } catch {
-      // Local custom logo is optional; ignore storage failures.
-    }
-  };
-
   const openNewConversation = () => {
     navigateStable(`/projects/${project.id}`);
     onNewConversation?.();
@@ -634,14 +623,11 @@ export function ProjectWorkspaceShell({
               <strong>{project.name}</strong>
             </div>
           </div>
-          <div className="project-workspace-brand__meta">
-            {projectLogo && (
-              <button type="button" onClick={clearProjectLogo}>
-                恢复默认 Logo
-              </button>
-            )}
-            {project.status === "archived" && <em>已归档</em>}
-          </div>
+          {project.status === "archived" && (
+            <div className="project-workspace-brand__meta">
+              <em>已归档</em>
+            </div>
+          )}
         </div>
 
         <nav className="project-workspace-menu" aria-label="项目功能">
