@@ -14,6 +14,12 @@ import { WarRoomIterations } from "../WarRoom/WarRoomPage";
 import { cleanDisplayText, cleanSentenceText, ensureChineseSentence } from "../../utils/displayText";
 
 type WarRoomSection = "decisions" | "actions" | "chain" | "evidence" | "review" | "iterations";
+type WarRoomBlockedState = "pending_review" | "rejected" | null;
+type WarRoomProjectSnapshot = Pick<ProjectDetail, "id" | "name" | "status"> & {
+  sessions?: ProjectSessionBrief[];
+  delivery_status?: ProjectDetail["delivery_status"];
+  records?: ProjectDetail["records"];
+};
 
 interface SectionConfig {
   key: WarRoomSection;
@@ -130,28 +136,63 @@ function detailLines(value: unknown, fallback: string, maxItems = 2): string[] {
   return picked.length ? picked : [ensureChineseSentence(fallback)];
 }
 
+function isEmptyWarRoomError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return message.includes("404") || message.includes("尚未建立");
+}
+
+function blockedWarRoomState(error: unknown): WarRoomBlockedState {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  if (message.includes("403") || message.includes("审核中")) return "pending_review";
+  if (message.includes("409") || message.includes("打回")) return "rejected";
+  return null;
+}
+
 export function ProjectWarRoomPage() {
   const { projectId, section } = useParams<{ projectId: string; section?: string }>();
   const navigate = useNavigate();
   const location = useLocation();
   const navState = (location.state as {
-    projectSnapshot?: Pick<ProjectDetail, "id" | "name" | "status"> & { sessions?: ProjectSessionBrief[] };
+    projectSnapshot?: WarRoomProjectSnapshot;
   } | null) ?? {};
   const initialProject = navState.projectSnapshot && navState.projectSnapshot.id === projectId
     ? navState.projectSnapshot
     : null;
-  const [project, setProject] = useState<(Pick<ProjectDetail, "id" | "name" | "status"> & { sessions?: ProjectSessionBrief[] }) | null>(initialProject);
+  const [project, setProject] = useState<WarRoomProjectSnapshot | null>(initialProject);
   const [plan, setPlan] = useState<WarRoomPlan | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [projectError, setProjectError] = useState<string | null>(null);
+  const [warRoomError, setWarRoomError] = useState<string | null>(null);
+  const [isEmptyWarRoom, setIsEmptyWarRoom] = useState(false);
+  const [blockedState, setBlockedState] = useState<WarRoomBlockedState>(null);
 
   useEffect(() => {
     if (!projectId) return;
     getProject(projectId)
       .then(setProject)
-      .catch((e) => setError(e instanceof Error ? e.message : "项目加载失败"));
+      .catch((e) => setProjectError(e instanceof Error ? e.message : "项目加载失败"));
     getProjectWarRoom(projectId)
-      .then(setPlan)
-      .catch((e) => setError(e instanceof Error ? e.message : "作战室加载失败"));
+      .then((nextPlan) => {
+        setPlan(nextPlan);
+        setWarRoomError(null);
+        setIsEmptyWarRoom(false);
+        setBlockedState(null);
+      })
+      .catch((e) => {
+        const nextBlockedState = blockedWarRoomState(e);
+        if (nextBlockedState) {
+          setBlockedState(nextBlockedState);
+          setWarRoomError(null);
+          setIsEmptyWarRoom(false);
+          return;
+        }
+        if (isEmptyWarRoomError(e)) {
+          setIsEmptyWarRoom(true);
+          setWarRoomError(null);
+          setBlockedState(null);
+          return;
+        }
+        setWarRoomError(e instanceof Error ? e.message : "作战室加载失败");
+      });
   }, [projectId]);
 
   const activeSection = isWarRoomSection(section) ? section : null;
@@ -160,8 +201,8 @@ export function ProjectWarRoomPage() {
     return <p className="state-note state-note--error">缺少项目 ID。</p>;
   }
 
-  if (!project && error) {
-    return <p className="state-note state-note--error">{error}</p>;
+  if (!project && projectError) {
+    return <p className="state-note state-note--error">{projectError}</p>;
   }
 
   const shellProject = project ?? {
@@ -170,6 +211,23 @@ export function ProjectWarRoomPage() {
     status: "active",
     sessions: [],
   };
+  const openNewConversation = (extraState: Record<string, unknown> = {}) => {
+    navigate(`/projects/${projectId}`, {
+      preventScrollReset: true,
+      state: {
+        projectSnapshot: shellProject,
+        newConversation: true,
+        ...extraState,
+      },
+    });
+  };
+  const effectiveBlockedState = blockedState ?? (
+    project?.delivery_status?.state === "pending_review"
+      ? "pending_review"
+      : project?.delivery_status?.state === "rejected"
+        ? "rejected"
+        : null
+  );
 
   return (
     <ProjectWorkspaceShell
@@ -202,7 +260,7 @@ export function ProjectWarRoomPage() {
               <button
                 type="button"
                 className="pd-section__link"
-                onClick={() => navigate(`/projects/${projectId}/diagnose`)}
+                onClick={() => openNewConversation()}
               >
                 新增诊断迭代
               </button>
@@ -210,8 +268,59 @@ export function ProjectWarRoomPage() {
           </div>
         </div>
 
-        {error && <p className="state-note state-note--error">{error}</p>}
-        {!plan && !error && <p className="state-note">正在加载项目作战室…</p>}
+        {warRoomError && <p className="state-note state-note--error">{warRoomError}</p>}
+        {effectiveBlockedState === "pending_review" && !plan && (
+          <WarRoomReviewState
+            title="顾问深度判断中"
+            eyebrow="审核阶段"
+            description="系统已完成资料整理、外部预研和多专家诊断，当前正在由顾问复核证据、结论和行动建议。审核通过后，这里会展示正式作战室交付。"
+            steps={[
+              "已完成：问题地图、资料整理、外部证据预研。",
+              "进行中：顾问核验证据是否足够支撑结论。",
+              "下一步：审核通过后生成老板可开会使用的作战室。",
+            ]}
+            primaryLabel="回到对话继续补充"
+            onPrimary={() => navigate(`/projects/${projectId}`, {
+              preventScrollReset: true,
+              state: { projectSnapshot: shellProject },
+            })}
+          />
+        )}
+        {effectiveBlockedState === "rejected" && !plan && (
+          <WarRoomReviewState
+            title="顾问已打回，需要补充资料"
+            eyebrow="补充阶段"
+            description="顾问认为当前证据不足或部分判断需要修正。请先补充关键数据和资料，复审通过后再进入正式作战室。"
+            steps={[
+              "先查看顾问打回意见，补齐缺失数据。",
+              "重新提交诊断后，系统会更新证据包和专家判断。",
+              "通过复审后，作战室会按项目维度迭代更新。",
+            ]}
+            primaryLabel="补充资料再诊断"
+            onPrimary={() => {
+              const rejectedRecord = project?.records?.find((record) => record.review_status === "rejected");
+              openNewConversation({
+                rejectedRecordId: rejectedRecord?.id,
+                initialPrompt: "顾问已打回，请根据顾问意见补充资料并重新诊断。",
+              });
+            }}
+          />
+        )}
+        {isEmptyWarRoom && !plan && !effectiveBlockedState && (
+          <section className="war-room-empty-state" aria-label="作战室尚未建立">
+            <span className="war-room-empty-state__eyebrow">初次咨询未开始</span>
+            <h2>请先进行对话，完成初次咨询。</h2>
+            <p>项目作战室会在你完成第一次 AI 咨询并通过诊断后自动生成，用来沉淀老板决策、部门动作和证据风险。</p>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => openNewConversation()}
+            >
+              开始新对话
+            </button>
+          </section>
+        )}
+        {!plan && !warRoomError && !isEmptyWarRoom && !effectiveBlockedState && <p className="state-note">正在加载项目作战室…</p>}
         {plan && (
           <ProjectWarRoom
             plan={plan}
@@ -225,6 +334,38 @@ export function ProjectWarRoomPage() {
         )}
       </section>
     </ProjectWorkspaceShell>
+  );
+}
+
+function WarRoomReviewState({
+  eyebrow,
+  title,
+  description,
+  steps,
+  primaryLabel,
+  onPrimary,
+}: {
+  eyebrow: string;
+  title: string;
+  description: string;
+  steps: string[];
+  primaryLabel: string;
+  onPrimary: () => void;
+}) {
+  return (
+    <section className="war-room-empty-state war-room-review-state" aria-label={title}>
+      <span className="war-room-empty-state__eyebrow">{eyebrow}</span>
+      <h2>{title}</h2>
+      <p>{description}</p>
+      <ol className="war-room-review-state__steps">
+        {steps.map((step) => (
+          <li key={step}>{step}</li>
+        ))}
+      </ol>
+      <button type="button" className="btn-primary" onClick={onPrimary}>
+        {primaryLabel}
+      </button>
+    </section>
   );
 }
 

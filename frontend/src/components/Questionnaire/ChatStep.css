@@ -542,6 +542,11 @@
   box-shadow: 0 8px 20px rgba(22, 31, 44, 0.08), inset 0 0 0 1px rgba(27, 38, 54, 0.06);
 }
 
+.chat-mode-tab--locked {
+  cursor: default;
+  pointer-events: none;
+}
+
 .chat-input-stack--default {
   gap: 0;
 }
@@ -743,28 +748,31 @@
   align-items: center;
   width: 100%;
   max-width: 980px;
-  min-height: calc(100vh - 24px);
+  height: 100%;
+  min-height: 0;
   margin: 0 auto;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .chat-step--project-inline .chat-main {
   display: flex;
   flex-direction: column;
   width: 100%;
-  min-height: inherit;
+  height: 100%;
+  min-height: 0;
   justify-content: center;
+  overflow: hidden;
 }
 
 .chat-step--project-inline .chat-main--active {
-  min-height: inherit;
+  min-height: 0;
   justify-content: flex-start;
   padding-top: clamp(8px, 2vh, 18px);
-  overflow: visible;
+  overflow: hidden;
 }
 
 .chat-step--project-inline .chat-main--anchored {
-  padding-bottom: 240px;
+  padding-bottom: 0;
 }
 
 .chat-step--project-inline .chat-step__head {
@@ -783,18 +791,32 @@
 .chat-step--project-inline .chat-stream {
   width: 100%;
   max-width: 980px;
-  flex: 0 0 auto;
+  flex: 1 1 auto;
+  min-height: 0;
   max-height: none;
   margin: 0 auto;
-  padding: 0 4px 260px;
+  padding: 0 4px 28px;
   border: 0;
   border-radius: 0;
   background: transparent;
   box-shadow: none;
-  overflow: visible;
-  overscroll-behavior: auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   scrollbar-gutter: auto;
   gap: 22px;
+}
+
+.chat-step--project-inline .chat-stream::-webkit-scrollbar {
+  width: 8px;
+}
+
+.chat-step--project-inline .chat-stream::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chat-step--project-inline .chat-stream::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(93, 116, 138, 0.22);
 }
 
 .chat-step--project-inline .chat-row {
@@ -857,10 +879,11 @@
   width: 100%;
   max-width: none;
   border: 0;
+  border-left: 3px solid rgba(14, 74, 125, 0.22);
   border-radius: 0;
   background: transparent;
   color: #1f2937;
-  padding: 2px 0 4px;
+  padding: 2px 0 4px 18px;
   font-size: 1rem;
   font-weight: 520;
   line-height: 1.78;
@@ -1004,27 +1027,33 @@
   width: 100%;
   max-width: 900px;
   margin: 0 auto;
-  padding: 18px 0 22px;
+  padding: 10px 0 22px;
+}
+
+.chat-input-notice {
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto 4px;
 }
 
 .chat-step--project-inline .chat-input-stack--anchored {
-  position: fixed;
-  left: 50%;
+  position: relative;
+  left: auto;
   right: auto;
-  bottom: 28px;
-  width: min(900px, calc(100vw - 96px));
-  transform: translateX(-50%);
+  bottom: auto;
+  width: 100%;
+  transform: none;
 }
 
 .chat-step--project-inline .chat-input-stack::before {
   content: "";
   position: absolute;
-  inset: -44px -44px 0;
+  inset: -32px -44px 0;
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(ellipse at 50% 100%, rgba(226, 239, 248, 0.72), transparent 68%),
-    linear-gradient(180deg, rgba(240, 247, 252, 0), rgba(240, 247, 252, 0.34) 56%, rgba(240, 247, 252, 0.62));
+    radial-gradient(ellipse at 50% 100%, rgba(226, 239, 248, 0.56), transparent 68%),
+    linear-gradient(180deg, rgba(240, 247, 252, 0), rgba(240, 247, 252, 0.4) 52%, rgba(240, 247, 252, 0.74));
   filter: blur(0.2px);
 }
 
@@ -1100,11 +1129,11 @@
   }
 
   .chat-step--project-inline .chat-main {
-    min-height: inherit;
+    min-height: 0;
   }
 
   .chat-step--project-inline .chat-main--active {
-    min-height: inherit;
+    min-height: 0;
   }
 
   .chat-input-bar { align-items: stretch; flex-direction: column; }
@@ -1127,10 +1156,10 @@
   }
 
   .chat-step--project-inline .chat-input-stack--anchored {
-    left: 14px;
-    right: 14px;
-    bottom: 12px;
-    width: auto;
+    left: auto;
+    right: auto;
+    bottom: auto;
+    width: 100%;
     transform: none;
   }
 
@@ -1168,8 +1197,8 @@
 
 @media (min-width: 861px) and (max-width: 920px) {
   .chat-step--project-inline .chat-input-stack--anchored {
-    left: 50%;
-    width: min(900px, calc(100vw - 48px));
-    transform: translateX(-50%);
+    left: auto;
+    width: 100%;
+    transform: none;
   }
 }

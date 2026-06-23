@@ -81,7 +81,7 @@ class ChatResponse(BaseModel):
     message: str                       # AI 的下一个追问 / 复述确认 / 收尾语
     done: bool = False                 # True = 用户已确认问题地图，可进问卷生成
     phase: str = "intake"              # "intake" | "confirm" | "done"
-    problem_map: ProblemMap | None = None   # phase 为 confirm/done 时返回
+    problem_map: ProblemMap | None = None   # intake 返回草稿；confirm/done 返回可确认版本
     # 向后兼容：在 done 时同步填一份 summary
     summary: ProblemSummary | None = None
 

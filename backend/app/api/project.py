@@ -4,6 +4,7 @@
 随时间持续更新——这是从一次性诊断走向持续诊断的载体。
 """
 import json
+import re
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -89,7 +90,7 @@ class ProjectDeliveryStatus(BaseModel):
 
 # ── 事实档案：把老板填写/上传的客观信息整理归档（不含任何诊断/信号/问题判断）──
 
-# 6 大板块固定顺序与中文名（与前端 modules.ts 对齐）
+# 经营域目录：前 6 个是通用种子，不代表每个项目都必须展示。
 ARCHIVE_MODULES: list[tuple[str, str]] = [
     ("market", "市场与客户"),
     ("product", "产品与服务"),
@@ -97,7 +98,46 @@ ARCHIVE_MODULES: list[tuple[str, str]] = [
     ("ops", "运营与供应链"),
     ("org", "组织与人才"),
     ("finance", "财务与资本"),
+    ("channel_franchise", "渠道与加盟"),
+    ("legal_compliance", "法务合规"),
+    ("policy", "政策与监管"),
+    ("supply_chain", "供应链"),
+    ("manufacturing", "生产制造"),
+    ("service_delivery", "交付与售后"),
+    ("data_systems", "数据系统"),
+    ("tax", "税务合规"),
+    ("ip", "知识产权"),
+    ("ecommerce", "电商与内容"),
 ]
+ARCHIVE_MODULE_LABELS = dict(ARCHIVE_MODULES)
+ARCHIVE_MODULE_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "market": ("市场", "客户", "客群", "用户", "需求", "定位", "流量", "获客", "推广", "品牌"),
+    "product": ("产品", "服务", "功能", "卖点", "研发", "体验", "质量", "型号", "sku"),
+    "sales": ("销售", "成交", "转化", "线索", "报价", "复购", "回款", "客单", "直播间"),
+    "ops": ("运营", "交付", "履约", "库存", "排产", "流程", "效率", "门店", "店铺"),
+    "org": ("组织", "团队", "人才", "招聘", "绩效", "激励", "负责人", "人员"),
+    "finance": ("财务", "资金", "现金流", "毛利", "利润", "营收", "成本", "预算", "账期"),
+    "channel_franchise": ("招商", "加盟", "代理", "经销", "渠道商", "招商页", "回本", "保证金"),
+    "legal_compliance": ("合规", "合同", "资质", "法务", "许可", "风险条款", "宣传承诺"),
+    "policy": ("政策", "监管", "补贴", "标准", "认证", "地方政策", "行业规范"),
+    "supply_chain": ("供应链", "供应商", "采购", "原料", "物流", "仓储", "交期"),
+    "manufacturing": ("生产", "制造", "工厂", "产能", "代工", "品控", "良率", "设备"),
+    "service_delivery": ("售后", "安装", "维修", "客服", "培训", "履约", "交付"),
+    "data_systems": ("数据", "系统", "crm", "erp", "后台", "看板", "埋点", "投放账号"),
+    "tax": ("税务", "发票", "税负", "进项", "销项", "税筹"),
+    "ip": ("专利", "商标", "著作权", "知识产权", "侵权"),
+    "ecommerce": ("抖音", "快手", "小红书", "淘宝", "天猫", "京东", "视频号", "内容", "直播"),
+}
+ARCHIVE_DEFAULT_SEED_MODULES = ("market", "product", "sales")
+ARCHIVE_DEFAULT_RECOMMENDED_MODULES = (
+    "channel_franchise",
+    "legal_compliance",
+    "policy",
+    "supply_chain",
+    "data_systems",
+    "service_delivery",
+)
+ARCHIVE_IGNORED_MODULES = ("conversation", "uploaded_context", "misc", "profile", "supplement")
 
 # 企业画像字段（problem_map 里的英文 key → 中文 label），固定展示顺序
 PROFILE_FIELDS: list[tuple[str, str]] = [
@@ -109,6 +149,24 @@ PROFILE_FIELDS: list[tuple[str, str]] = [
     ("stage", "发展阶段"),
 ]
 PROFILE_LABELS = {label for _, label in PROFILE_FIELDS}
+ARCHIVE_FIELD_LABELS: dict[str, str] = {
+    **dict(PROFILE_FIELDS),
+    "core_problem": "核心问题",
+    "goal": "目标",
+    "constraints": "约束条件",
+    "success_criteria": "成功标准",
+    "impact": "业务影响",
+    "context": "背景情况",
+    "suspected_cause": "疑似原因",
+    "tried": "已尝试动作",
+    "data_readiness": "可用数据",
+    "diagnosis_focus": "优先诊断方向",
+    "scenario_label": "业务场景",
+    "sub_problems": "子问题",
+    "information_score": "信息完整度",
+    "missing_fields": "待补信息",
+    "next_question_reason": "追问原因",
+}
 
 
 class ProfileField(BaseModel):
@@ -121,6 +179,12 @@ class ModuleFacts(BaseModel):
     label: str
     facts: list[ProfileField]
     has_data: bool
+
+
+class ArchiveModuleOption(BaseModel):
+    module: str
+    label: str
+    reason: str = ""
 
 
 class ArchiveFile(BaseModel):
@@ -151,8 +215,15 @@ class ArchiveExtractionConfirmRequest(BaseModel):
 class ProjectArchive(BaseModel):
     profile: list[ProfileField]
     modules: list[ModuleFacts]
+    recommended_modules: list[ArchiveModuleOption] = []
+    hidden_modules: list[ArchiveModuleOption] = []
     files: list[ArchiveFile]
     last_updated: datetime | None = None
+
+
+class AddArchiveModuleRequest(BaseModel):
+    module: str
+    label: str | None = None
 
 
 def _build_archive(
@@ -169,6 +240,11 @@ def _build_archive(
     """
     profile_raw: dict[str, str] = {}          # company_name -> value（最新）
     module_facts_raw: dict[str, dict[str, str]] = {}  # module -> {字段key: value}（最新）
+    project_text_parts: list[str] = []
+    record_modules: set[str] = set()
+    enabled_from_memory: dict[str, str] = {}
+    hidden_from_memory: dict[str, str] = {}
+    module_visibility_seen: set[str] = set()
 
     for record in records:  # 已是 created_at desc
         try:
@@ -182,6 +258,7 @@ def _build_archive(
                 val = str(problem_map.get(key) or "").strip()
                 if val and key not in profile_raw:   # 先到先得=最新
                     profile_raw[key] = val
+            project_text_parts.extend(str(value) for value in problem_map.values() if value)
 
         for answer in payload.get("answers") or []:
             if not isinstance(answer, dict):
@@ -189,6 +266,7 @@ def _build_archive(
             module = str(answer.get("module") or "").strip()
             if not module:
                 continue
+            record_modules.add(module)
             facts = answer.get("facts") or {}
             if not isinstance(facts, dict):
                 continue
@@ -198,8 +276,10 @@ def _build_archive(
                 if key.startswith("file_") or "_file_" in key:
                     continue  # 文件解析摘要，不是用户直接填的字段
                 value = str(fval or "").strip()
-                if value and key not in bucket:   # 先到先得=最新
-                    bucket[key] = value
+                label = _archive_field_label(key)
+                if value and label not in bucket:   # 先到先得=最新
+                    bucket[label] = value
+                    project_text_parts.append(f"{key} {value}")
 
     def merge_highlights(module_key: str, highlights: list[ProfileField]) -> None:
         if module_key == "profile":
@@ -209,18 +289,29 @@ def _build_archive(
             return
         bucket = module_facts_raw.setdefault(module_key, {})
         for item in highlights:
-            if item.label not in bucket and item.value.strip():
-                bucket[item.label] = item.value.strip()
+            label = _archive_field_label(item.label)
+            if label not in bucket and item.value.strip():
+                bucket[label] = item.value.strip()
 
     # 文件删除后，已确认沉淀的结构化事实仍应从项目长期记忆中保留。
-    for entry in archive_memory_entries or []:
-        if entry.entry_type != "archive_file_extract":
-            continue
+    for entry in sorted(archive_memory_entries or [], key=_archive_entry_sort_key, reverse=True):
         try:
             payload = json.loads(entry.payload_json)
         except (ValueError, TypeError):
             continue
         if not isinstance(payload, dict):
+            continue
+        if entry.entry_type in {"archive_module_enabled", "archive_module_hidden"}:
+            module_key = str(payload.get("module") or "").strip()
+            label = str(payload.get("label") or "").strip()
+            if module_key and module_key not in module_visibility_seen:
+                module_visibility_seen.add(module_key)
+                if entry.entry_type == "archive_module_hidden":
+                    hidden_from_memory[module_key] = label or _archive_module_label(module_key)
+                    continue
+                enabled_from_memory[module_key] = label or _archive_module_label(module_key)
+            continue
+        if entry.entry_type != "archive_file_extract":
             continue
         module_key = str(payload.get("module") or "").strip()
         if not module_key:
@@ -228,15 +319,20 @@ def _build_archive(
         highlights = _load_archive_highlights_from_payload(payload)
         if highlights:
             merge_highlights(module_key, highlights)
+            project_text_parts.extend(f"{item.label} {item.value}" for item in highlights)
 
     # 兼容历史数据：没有长期记忆的已确认文件重点，也纳入长期档案。
     for uploaded in sorted(files, key=lambda item: item.created_at, reverse=True):
+        if uploaded.module_key:
+            record_modules.add(uploaded.module_key)
+            project_text_parts.append(f"{uploaded.module_key} {uploaded.field_key} {uploaded.original_name}")
         if (uploaded.archive_extraction_status or "none") != "confirmed":
             continue
         highlights = _load_archive_highlights(uploaded.archive_extraction_json)
         if not highlights:
             continue
         merge_highlights(uploaded.module_key, highlights)
+        project_text_parts.extend(f"{item.label} {item.value}" for item in highlights)
 
     profile = [
         ProfileField(label=label, value=profile_raw[key])
@@ -250,8 +346,27 @@ def _build_archive(
     ]
     profile.extend(extra_profile)
 
+    enabled_modules = _enabled_archive_modules(
+        module_facts_raw=module_facts_raw,
+        files=files,
+        record_modules=record_modules,
+        enabled_from_memory=enabled_from_memory,
+        hidden_modules=set(hidden_from_memory),
+    )
+    recommended_modules = _recommended_archive_modules(
+        enabled_modules=enabled_modules,
+        hidden_modules=set(hidden_from_memory),
+        project_text=" ".join(project_text_parts),
+    )
+    hidden_modules = [
+        ArchiveModuleOption(module=module, label=label, reason="已隐藏，可随时恢复。")
+        for module, label in hidden_from_memory.items()
+        if _is_archive_business_module(module)
+    ]
+
     modules: list[ModuleFacts] = []
-    for module, label in ARCHIVE_MODULES:
+    for module in enabled_modules:
+        label = enabled_from_memory.get(module) or _archive_module_label(module)
         bucket = module_facts_raw.get(module, {})
         facts = [ProfileField(label=k, value=v) for k, v in bucket.items()]
         modules.append(
@@ -276,6 +391,8 @@ def _build_archive(
     return ProjectArchive(
         profile=profile,
         modules=modules,
+        recommended_modules=recommended_modules,
+        hidden_modules=hidden_modules,
         files=archive_files,
         last_updated=last_updated,
     )
@@ -572,27 +689,86 @@ async def confirm_archive_file_extraction(
     session.add(project)
     await session.commit()
 
-    records = list((await session.scalars(
-        select(DiagnosisRecord)
-        .where(DiagnosisRecord.project_id == project_id)
-        .order_by(DiagnosisRecord.created_at.desc())
-    )).all())
-    all_session_ids = [
-        sid for (sid,) in (
-            await session.execute(
-                select(DiagnosisSession.id).where(DiagnosisSession.project_id == project_id)
-            )
-        ).all()
-    ]
-    files: list[UploadedFile] = []
-    if all_session_ids:
-        files = list(await session.scalars(select(UploadedFile).where(UploadedFile.session_id.in_(all_session_ids))))
-    archive_memory_entries = list((await session.scalars(
+    return await _load_project_archive(session, project_id)
+
+
+@router.post("/{project_id}/archive/modules", response_model=ProjectArchive)
+async def add_archive_module(
+    project_id: str,
+    body: AddArchiveModuleRequest,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> ProjectArchive:
+    project = await session.get(Project, project_id)
+    if project is None or project.user_id != user.id:
+        raise HTTPException(status_code=404, detail="项目不存在")
+
+    module = body.module.strip()
+    if not module:
+        raise HTTPException(status_code=400, detail="经营域不能为空")
+    label = (body.label or _archive_module_label(module)).strip() or _archive_module_label(module)
+
+    visibility_stmt = (
         select(ProjectMemoryEntry)
         .where(ProjectMemoryEntry.project_id == project_id)
+        .where(ProjectMemoryEntry.entry_type.in_(["archive_module_enabled", "archive_module_hidden"]))
         .order_by(ProjectMemoryEntry.created_at.desc())
-    )).all())
-    return _build_archive(records, files, archive_memory_entries)
+    )
+    for entry in (await session.scalars(visibility_stmt)).all():
+        try:
+            payload = json.loads(entry.payload_json or "{}")
+        except (TypeError, ValueError):
+            payload = {}
+        if payload.get("module") != module:
+            continue
+        if entry.entry_type == "archive_module_enabled":
+            return await _load_project_archive(session, project_id)
+        break
+
+    entry = ProjectMemoryEntry(
+        project_id=project_id,
+        user_id=user.id,
+        entry_type="archive_module_enabled",
+        summary=f"启用经营域：{label}",
+        payload_json=json.dumps({"module": module, "label": label}, ensure_ascii=False),
+        source_id=None,
+    )
+    project.updated_at = _now()
+    session.add(entry)
+    session.add(project)
+    await session.commit()
+    return await _load_project_archive(session, project_id)
+
+
+@router.delete("/{project_id}/archive/modules/{module}", response_model=ProjectArchive)
+async def hide_archive_module(
+    project_id: str,
+    module: str,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> ProjectArchive:
+    project = await session.get(Project, project_id)
+    if project is None or project.user_id != user.id:
+        raise HTTPException(status_code=404, detail="项目不存在")
+
+    module_key = module.strip()
+    if not module_key or not _is_archive_business_module(module_key):
+        raise HTTPException(status_code=400, detail="经营域无效")
+
+    label = _archive_module_label(module_key)
+    entry = ProjectMemoryEntry(
+        project_id=project_id,
+        user_id=user.id,
+        entry_type="archive_module_hidden",
+        summary=f"隐藏经营域：{label}",
+        payload_json=json.dumps({"module": module_key, "label": label}, ensure_ascii=False),
+        source_id=None,
+    )
+    project.updated_at = _now()
+    session.add(entry)
+    session.add(project)
+    await session.commit()
+    return await _load_project_archive(session, project_id)
 
 
 @router.get("/{project_id}/war-room", response_model=WarRoomPlan)
@@ -700,6 +876,138 @@ def _delivery_status(
         rejected_count=rejected,
         latest_review_status=latest,
     )
+
+
+async def _load_project_archive(session: AsyncSession, project_id: str) -> ProjectArchive:
+    records = list((await session.scalars(
+        select(DiagnosisRecord)
+        .where(DiagnosisRecord.project_id == project_id)
+        .order_by(DiagnosisRecord.created_at.desc())
+    )).all())
+    all_session_ids = [
+        sid for (sid,) in (
+            await session.execute(
+                select(DiagnosisSession.id).where(DiagnosisSession.project_id == project_id)
+            )
+        ).all()
+    ]
+    files: list[UploadedFile] = []
+    if all_session_ids:
+        files = list(await session.scalars(select(UploadedFile).where(UploadedFile.session_id.in_(all_session_ids))))
+    archive_memory_entries = list((await session.scalars(
+        select(ProjectMemoryEntry)
+        .where(ProjectMemoryEntry.project_id == project_id)
+        .order_by(ProjectMemoryEntry.created_at.desc())
+    )).all())
+    return _build_archive(records, files, archive_memory_entries)
+
+
+def _archive_module_label(module: str) -> str:
+    if module in ARCHIVE_MODULE_LABELS:
+        return ARCHIVE_MODULE_LABELS[module]
+    cleaned = re.sub(r"[_-]+", " ", module).strip()
+    return cleaned or module
+
+
+def _archive_field_label(field: str) -> str:
+    key = str(field or "").strip()
+    if key in ARCHIVE_FIELD_LABELS:
+        return ARCHIVE_FIELD_LABELS[key]
+    # 兼容历史/模型生成的英文技术字段，避免在老板侧直接显示 snake_case。
+    if re.fullmatch(r"[a-zA-Z][a-zA-Z0-9_-]*", key) and ("_" in key or "-" in key):
+        return re.sub(r"[_-]+", " ", key).strip().title()
+    return key
+
+
+def _is_archive_business_module(module: str) -> bool:
+    return bool(module.strip()) and module not in ARCHIVE_IGNORED_MODULES
+
+
+def _archive_entry_sort_key(entry: ProjectMemoryEntry) -> float:
+    created_at = entry.created_at
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    return created_at.timestamp()
+
+
+def _enabled_archive_modules(
+    *,
+    module_facts_raw: dict[str, dict[str, str]],
+    files: list[UploadedFile],
+    record_modules: set[str],
+    enabled_from_memory: dict[str, str],
+    hidden_modules: set[str] | None = None,
+) -> list[str]:
+    enabled: list[str] = []
+    hidden = hidden_modules or set()
+
+    def add(module: str) -> None:
+        module = str(module or "").strip()
+        if not _is_archive_business_module(module):
+            return
+        if module in hidden:
+            return
+        if module and module not in enabled:
+            enabled.append(module)
+
+    for module in ARCHIVE_DEFAULT_SEED_MODULES:
+        add(module)
+
+    for module, _label in ARCHIVE_MODULES:
+        if (
+            module in module_facts_raw
+            or module in enabled_from_memory
+            or module in record_modules
+            or any(file.module_key == module for file in files)
+        ):
+            add(module)
+
+    for module in record_modules:
+        add(module)
+    for module in enabled_from_memory:
+        add(module)
+
+    return enabled
+
+
+def _recommended_archive_modules(
+    *,
+    enabled_modules: list[str],
+    hidden_modules: set[str] | None = None,
+    project_text: str,
+    limit: int = 8,
+) -> list[ArchiveModuleOption]:
+    enabled = set(enabled_modules) | (hidden_modules or set())
+    normalized = project_text.lower()
+    scored: list[tuple[int, int, str, str]] = []
+    for index, (module, label) in enumerate(ARCHIVE_MODULES):
+        if module in enabled:
+            continue
+        keywords = ARCHIVE_MODULE_KEYWORDS.get(module, ())
+        hits = [keyword for keyword in keywords if keyword.lower() in normalized]
+        if hits:
+            scored.append((len(hits), -index, module, f"项目内容提到：{'、'.join(hits[:3])}"))
+
+    scored.sort(reverse=True)
+    options = [
+        ArchiveModuleOption(module=module, label=_archive_module_label(module), reason=reason)
+        for _score, _order, module, reason in scored
+    ]
+
+    for module in ARCHIVE_DEFAULT_RECOMMENDED_MODULES:
+        if module in enabled or any(option.module == module for option in options):
+            continue
+        options.append(
+            ArchiveModuleOption(
+                module=module,
+                label=_archive_module_label(module),
+                reason="常见专项经营域，可按项目需要启用。",
+            )
+        )
+        if len(options) >= limit:
+            break
+
+    return options[:limit]
 
 
 def _load_archive_highlights(raw: str | None) -> list[ProfileField]:

@@ -72,6 +72,64 @@ def _format_history(req: ChatRequest) -> str:
     return "\n".join(lines)
 
 
+def _draft_problem_map_from_history(messages: list[ChatMessage]) -> ProblemMap | None:
+    """When the LLM is still asking questions, keep a conservative visible draft.
+
+    The draft only uses text the user has already provided. Completeness scoring
+    still runs afterwards, so the UI can show what is known and what is missing
+    without pretending the map is final.
+    """
+    user_texts = [
+        _clean_card_text(message.content)
+        for message in messages
+        if message.role == "user" and _clean_card_text(message.content)
+    ]
+    if not user_texts:
+        return None
+
+    joined = "；".join(user_texts[-3:])
+    all_text = "；".join(user_texts)
+    core_problem = _clip_text(joined or user_texts[-1], 96)
+    problem_map = ProblemMap(
+        core_problem=core_problem,
+        context=_clip_text(all_text, 220) if len(user_texts) > 1 else "",
+        impact=_clip_text(_pick_signal_text(user_texts, ("成本", "亏", "收入", "利润", "下降", "下滑", "高", "低", "持续", "多久")), 140),
+        constraints=_clip_text(_pick_signal_text(user_texts, ("不能", "没有", "暂无", "缺", "限制", "预算", "人手", "库存")), 140),
+        data_readiness=_clip_text(_pick_signal_text(user_texts, ("数据", "报表", "账号", "后台", "文件", "资料", "截图", "上传")), 140),
+        diagnosis_focus=_guess_focus(all_text),
+    )
+    return annotate_problem_map(problem_map)
+
+
+def _clip_text(text: str, limit: int) -> str:
+    text = _clean_card_text(text)
+    if len(text) <= limit:
+        return text
+    return f"{text[:limit].rstrip()}…"
+
+
+def _pick_signal_text(texts: list[str], keywords: tuple[str, ...]) -> str:
+    for text in reversed(texts):
+        if any(keyword in text for keyword in keywords):
+            return text
+    return ""
+
+
+def _guess_focus(text: str) -> str:
+    rules = (
+        ("market", ("获客", "流量", "投放", "广告", "推广", "渠道", "招商", "线索", "客户")),
+        ("finance", ("利润", "现金流", "亏损", "预算", "成本", "毛利")),
+        ("ops", ("库存", "供应链", "交付", "发货", "生产", "仓库")),
+        ("sales", ("成交", "销售", "转化", "回款", "客单", "跟进")),
+        ("product", ("产品", "定价", "sku", "服务", "功能", "体验")),
+        ("org", ("团队", "员工", "组织", "岗位", "绩效", "招聘")),
+    )
+    for focus, keywords in rules:
+        if any(keyword in text for keyword in keywords):
+            return focus
+    return ""
+
+
 async def _project_context_for_free_chat(
     session: AsyncSession,
     project_id: str | None,
@@ -368,7 +426,7 @@ async def run_chat_turn(
         except ValidationError:
             problem_map = None
 
-    problem_map = annotate_problem_map(problem_map)
+    problem_map = annotate_problem_map(problem_map) or _draft_problem_map_from_history(messages)
     if phase in ("confirm", "done"):
         completeness = evaluate_problem_map(problem_map)
         if not completeness.can_confirm:

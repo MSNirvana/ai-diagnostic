@@ -1,5 +1,5 @@
-import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { type ChangeEvent, type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { deleteBrainstormSession, deleteSession, updateBrainstormSession, updateSession } from "../../api/client";
 import { useAuth } from "../../auth/useAuth";
 import type { ProjectBrainstormBrief, ProjectDetail, ProjectSessionBrief } from "../../types";
@@ -53,6 +53,28 @@ function formatDate(iso: string) {
   });
 }
 
+function projectLogoStorageKey(projectId: string) {
+  return `ruice:project-logo:${projectId}`;
+}
+
+function defaultProjectLogo(name: string) {
+  const trimmed = name.trim();
+  if (!trimmed) return "睿";
+  const latin = trimmed.match(/[A-Za-z]/);
+  if (latin) return latin[0].toUpperCase();
+  return Array.from(trimmed)[0] ?? "睿";
+}
+
+function readProjectLogo(projectId: string) {
+  try {
+    if (typeof window.localStorage?.getItem !== "function") return "";
+    const stored = window.localStorage.getItem(projectLogoStorageKey(projectId));
+    return stored?.startsWith("data:image/") ? stored : "";
+  } catch {
+    return "";
+  }
+}
+
 export function ProjectWorkspaceShell({
   project,
   activeSection,
@@ -80,6 +102,9 @@ export function ProjectWorkspaceShell({
   const [sessionError, setSessionError] = useState("");
   const [brainstormError, setBrainstormError] = useState("");
   const [historyMode, setHistoryMode] = useState<"conversation" | "brainstorm">("conversation");
+  const defaultLogo = defaultProjectLogo(project.name);
+  const [projectLogo, setProjectLogo] = useState(() => readProjectLogo(project.id));
+  const logoInputRef = useRef<HTMLInputElement | null>(null);
   const sessionSignature = useMemo(
     () => (project.sessions ?? []).map((s) => `${s.id}:${s.title}:${s.updated_at}:${s.is_pinned ? 1 : 0}`).join("|"),
     [project.sessions]
@@ -105,6 +130,10 @@ export function ProjectWorkspaceShell({
   useEffect(() => {
     setBrainstorms(sortBrainstorms(project.brainstorm_sessions ?? []));
   }, [project.id, brainstormSignature]);
+
+  useEffect(() => {
+    setProjectLogo(readProjectLogo(project.id));
+  }, [project.id, project.name]);
 
   useEffect(() => {
     if (!openMenuId && !openBrainstormMenuId) return;
@@ -138,6 +167,41 @@ export function ProjectWorkspaceShell({
       state: { projectSnapshot, ...state },
     });
     return true;
+  };
+
+  const openProjectLogoPicker = () => {
+    logoInputRef.current?.click();
+  };
+
+  const changeProjectLogo = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (!file || !file.type.startsWith("image/")) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = typeof reader.result === "string" ? reader.result : "";
+      if (!dataUrl.startsWith("data:image/")) return;
+      setProjectLogo(dataUrl);
+      try {
+        if (typeof window.localStorage?.setItem === "function") {
+          window.localStorage.setItem(projectLogoStorageKey(project.id), dataUrl);
+        }
+      } catch {
+        // Local custom logo is optional; ignore storage failures.
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const clearProjectLogo = () => {
+    setProjectLogo("");
+    try {
+      if (typeof window.localStorage?.removeItem === "function") {
+        window.localStorage.removeItem(projectLogoStorageKey(project.id));
+      }
+    } catch {
+      // Local custom logo is optional; ignore storage failures.
+    }
   };
 
   const openNewConversation = () => {
@@ -548,14 +612,36 @@ export function ProjectWorkspaceShell({
     <div className="project-workspace-shell">
       <aside className="project-workspace-sidebar" aria-label={`${project.name} 项目导航`}>
         <div className="project-workspace-brand">
-          <Link to="/projects" className="project-workspace-back">
-            项目工作台
-          </Link>
-          <div>
-            <span>AI咨询项目</span>
-            <strong>{project.name}</strong>
+          <div className="project-workspace-project-card">
+            <input
+              ref={logoInputRef}
+              type="file"
+              accept="image/*"
+              className="project-workspace-logo-input"
+              onChange={changeProjectLogo}
+            />
+            <button
+              type="button"
+              className={projectLogo ? "project-workspace-logo has-image" : "project-workspace-logo"}
+              onClick={openProjectLogoPicker}
+              title="点击更换项目 Logo 图片"
+              aria-label="更换项目 Logo"
+            >
+              {projectLogo ? <img src={projectLogo} alt="" /> : defaultLogo}
+            </button>
+            <div className="project-workspace-project-copy">
+              <span>AI咨询项目</span>
+              <strong>{project.name}</strong>
+            </div>
           </div>
-          {project.status === "archived" && <em>已归档</em>}
+          <div className="project-workspace-brand__meta">
+            {projectLogo && (
+              <button type="button" onClick={clearProjectLogo}>
+                恢复默认 Logo
+              </button>
+            )}
+            {project.status === "archived" && <em>已归档</em>}
+          </div>
         </div>
 
         <nav className="project-workspace-menu" aria-label="项目功能">

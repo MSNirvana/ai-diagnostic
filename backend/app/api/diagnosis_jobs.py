@@ -2,6 +2,7 @@ import json
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.jwt import get_optional_user
@@ -66,6 +67,26 @@ async def create_diagnosis_job(
     return CreateDiagnosisJobResponse(job_id=job.id, status=job.status)
 
 
+@router.get("/session/{session_id}/latest", response_model=DiagnosisJobStatus | None)
+async def get_latest_session_diagnosis_job(
+    session_id: str,
+    user: User | None = Depends(get_optional_user),
+    session: AsyncSession = Depends(get_session),
+) -> DiagnosisJobStatus | None:
+    stmt = (
+        select(DiagnosisJob)
+        .where(DiagnosisJob.session_id == session_id)
+        .order_by(DiagnosisJob.created_at.desc())
+        .limit(1)
+    )
+    job = await session.scalar(stmt)
+    if job is None:
+        return None
+    if job.user_id and (user is None or user.id != job.user_id):
+        return None
+    return _job_status(job)
+
+
 @router.get("/{job_id}", response_model=DiagnosisJobStatus)
 async def get_diagnosis_job(
     job_id: str,
@@ -73,22 +94,7 @@ async def get_diagnosis_job(
     session: AsyncSession = Depends(get_session),
 ) -> DiagnosisJobStatus:
     job = await _load_job(session, job_id, user)
-    result_summary = None
-    if job.result_summary_json:
-        try:
-            result_summary = json.loads(job.result_summary_json)
-        except Exception:
-            result_summary = None
-    return DiagnosisJobStatus(
-        id=job.id,
-        status=job.status,
-        current_step=job.current_step,
-        progress=job.progress,
-        record_id=job.record_id,
-        project_id=job.project_id,
-        error=job.error,
-        result_summary=result_summary,
-    )
+    return _job_status(job)
 
 
 @router.get("/{job_id}/evidence", response_model=list[ResearchEvidenceOut])
@@ -128,3 +134,22 @@ async def _load_job(
     if job.user_id and (user is None or user.id != job.user_id):
         raise HTTPException(status_code=404, detail="尽调任务不存在")
     return job
+
+
+def _job_status(job: DiagnosisJob) -> DiagnosisJobStatus:
+    result_summary = None
+    if job.result_summary_json:
+        try:
+            result_summary = json.loads(job.result_summary_json)
+        except Exception:
+            result_summary = None
+    return DiagnosisJobStatus(
+        id=job.id,
+        status=job.status,
+        current_step=job.current_step,
+        progress=job.progress,
+        record_id=job.record_id,
+        project_id=job.project_id,
+        error=job.error,
+        result_summary=result_summary,
+    )

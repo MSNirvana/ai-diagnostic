@@ -1,9 +1,9 @@
-"""事实档案构建测试：同字段取最新 / 未填板块 has_data=false / 文件聚合 / 跳过文件摘要。"""
+"""事实档案构建测试：同字段取最新 / 动态经营域 / 文件聚合 / 跳过文件摘要。"""
 import json
 from datetime import datetime, timedelta, timezone
 
-from app.api.project import _build_archive, ARCHIVE_MODULES
-from app.db.models import DiagnosisRecord, UploadedFile
+from app.api.project import _build_archive
+from app.db.models import DiagnosisRecord, ProjectMemoryEntry, UploadedFile
 
 
 def _now(offset_min: int = 0) -> datetime:
@@ -39,11 +39,11 @@ def test_archive_profile_and_module_facts():
     assert by_module["finance"].has_data is True
     fin = {f.label: f.value for f in by_module["finance"].facts}
     assert fin["上年度营收"] == "6000万元"
-    # 未填板块灰显
+    # 默认三个基础经营域始终保留，项目数据域追加在后面。
+    assert [m.module for m in archive.modules] == ["market", "product", "sales", "finance"]
+    assert by_module["market"].has_data is False
     assert by_module["product"].has_data is False
-    assert by_module["product"].facts == []
-    # 固定 6 板块顺序
-    assert [m.module for m in archive.modules] == [k for k, _ in ARCHIVE_MODULES]
+    assert by_module["sales"].has_data is True
 
 
 def test_archive_latest_value_wins():
@@ -66,6 +66,31 @@ def test_archive_latest_value_wins():
     profile = {f.label: f.value for f in archive.profile}
     assert profile["公司名称"] == "华火科技"  # 画像也取最新
     assert archive.last_updated == _now(60)
+
+
+def test_archive_translates_technical_fact_keys_to_chinese_labels():
+    rec = _record(
+        _now(),
+        problem_map={},
+        answers=[{"module": "sales", "facts": {
+            "core_problem": "尚未跑通可持续销售模式",
+            "goal": "建立可复制的销售模型",
+            "constraints": "预算和团队能力有限",
+            "impact": "现金流持续承压",
+            "data_readiness": "可提供直播与成交数据",
+        }}],
+    )
+    archive = _build_archive([rec], [])
+    sales = next(m for m in archive.modules if m.module == "sales")
+    facts = {f.label: f.value for f in sales.facts}
+
+    assert facts["核心问题"] == "尚未跑通可持续销售模式"
+    assert facts["目标"] == "建立可复制的销售模型"
+    assert facts["约束条件"] == "预算和团队能力有限"
+    assert facts["业务影响"] == "现金流持续承压"
+    assert facts["可用数据"] == "可提供直播与成交数据"
+    assert "core_problem" not in facts
+    assert "data_readiness" not in facts
 
 
 def test_archive_skips_file_summary_facts():
@@ -99,7 +124,9 @@ def test_archive_empty_project():
     assert archive.profile == []
     assert archive.files == []
     assert archive.last_updated is None
+    assert [m.module for m in archive.modules] == ["market", "product", "sales"]
     assert all(m.has_data is False for m in archive.modules)
+    assert "channel_franchise" in {m.module for m in archive.recommended_modules}
 
 
 def test_archive_tolerates_bad_json():
@@ -107,3 +134,94 @@ def test_archive_tolerates_bad_json():
     archive = _build_archive([bad], [])
     assert archive.profile == []
     assert all(not m.has_data for m in archive.modules)
+
+
+def test_archive_manual_enabled_module_persists_without_data():
+    entry = ProjectMemoryEntry(
+        project_id="p1",
+        user_id="u1",
+        entry_type="archive_module_enabled",
+        summary="启用经营域：法务合规",
+        payload_json=json.dumps({"module": "legal_compliance", "label": "法务合规"}, ensure_ascii=False),
+        created_at=_now(),
+    )
+    archive = _build_archive([], [], [entry])
+    by_module = {m.module: m for m in archive.modules}
+
+    assert [m.module for m in archive.modules[:3]] == ["market", "product", "sales"]
+    assert by_module["legal_compliance"].label == "法务合规"
+    assert by_module["legal_compliance"].has_data is False
+    assert "legal_compliance" not in {m.module for m in archive.recommended_modules}
+
+
+def test_archive_hidden_module_is_not_displayed_or_recommended():
+    entry = ProjectMemoryEntry(
+        project_id="p1",
+        user_id="u1",
+        entry_type="archive_module_hidden",
+        summary="隐藏经营域：产品与服务",
+        payload_json=json.dumps({"module": "product", "label": "产品与服务"}, ensure_ascii=False),
+        created_at=_now(),
+    )
+    archive = _build_archive([], [], [entry])
+
+    assert [m.module for m in archive.modules] == ["market", "sales"]
+    assert [m.module for m in archive.hidden_modules] == ["product"]
+    assert "product" not in {m.module for m in archive.recommended_modules}
+
+
+def test_archive_latest_visibility_action_wins():
+    hidden = ProjectMemoryEntry(
+        project_id="p1",
+        user_id="u1",
+        entry_type="archive_module_hidden",
+        summary="隐藏经营域：产品与服务",
+        payload_json=json.dumps({"module": "product", "label": "产品与服务"}, ensure_ascii=False),
+        created_at=_now(10),
+    )
+    enabled = ProjectMemoryEntry(
+        project_id="p1",
+        user_id="u1",
+        entry_type="archive_module_enabled",
+        summary="启用经营域：产品与服务",
+        payload_json=json.dumps({"module": "product", "label": "产品与服务"}, ensure_ascii=False),
+        created_at=_now(20),
+    )
+    archive = _build_archive([], [], [hidden, enabled])
+
+    assert "product" in {m.module for m in archive.modules}
+    assert archive.hidden_modules == []
+
+
+def test_archive_recommends_modules_from_project_keywords():
+    rec = _record(
+        _now(),
+        problem_map={
+            "company_name": "华火",
+            "industry": "新能源厨电",
+            "main_business": "电火灶招商加盟，涉及代理合同、政策监管和售后安装",
+        },
+        answers=[{"module": "sales", "facts": {"线索来源": "招商页"}}],
+    )
+    archive = _build_archive([rec], [])
+    recommended = {item.module for item in archive.recommended_modules}
+
+    assert "channel_franchise" in recommended
+    assert "legal_compliance" in recommended
+    assert "policy" in recommended
+    assert "service_delivery" in recommended
+
+
+def test_archive_ignores_internal_upload_modules():
+    f = UploadedFile(
+        session_id="s1",
+        module_key="conversation",
+        field_key="uploaded_context",
+        original_name="项目资料.docx",
+        stored_path="x",
+        created_at=_now(),
+    )
+    archive = _build_archive([], [f])
+
+    assert "conversation" not in {m.module for m in archive.modules}
+    assert [m.module for m in archive.modules] == ["market", "product", "sales"]

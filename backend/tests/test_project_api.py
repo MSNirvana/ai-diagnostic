@@ -457,6 +457,54 @@ def test_archive_file_extraction_requires_confirm_before_updating_archive(db_ses
     )
 
 
+def test_add_archive_module_persists_custom_project_domain(db_session):
+    token = _register("archive-module@b.com")
+    auth = {"Authorization": f"Bearer {token}"}
+    pid = client.post("/project/", json={"name": "动态经营域"}, headers=auth).json()["id"]
+
+    before = client.get(f"/project/{pid}", headers=auth).json()
+    assert "legal_compliance" not in {module["module"] for module in before["archive"]["modules"]}
+
+    added = client.post(
+        f"/project/{pid}/archive/modules",
+        json={"module": "legal_compliance", "label": "法务合规"},
+        headers=auth,
+    )
+    assert added.status_code == 200
+    modules = {module["module"]: module for module in added.json()["modules"]}
+    assert [module["module"] for module in added.json()["modules"][:3]] == ["market", "product", "sales"]
+    assert modules["legal_compliance"]["label"] == "法务合规"
+    assert modules["legal_compliance"]["has_data"] is False
+
+    detail = client.get(f"/project/{pid}", headers=auth).json()
+    assert [module["module"] for module in detail["archive"]["modules"][:3]] == ["market", "product", "sales"]
+    assert "legal_compliance" in {module["module"] for module in detail["archive"]["modules"]}
+    assert all(option["module"] != "legal_compliance" for option in detail["archive"]["recommended_modules"])
+
+
+def test_hide_archive_module_only_affects_project_archive_visibility(db_session):
+    token = _register("archive-module-hide@b.com")
+    auth = {"Authorization": f"Bearer {token}"}
+    pid = client.post("/project/", json={"name": "隐藏经营域"}, headers=auth).json()["id"]
+
+    hidden = client.delete(f"/project/{pid}/archive/modules/product", headers=auth)
+    assert hidden.status_code == 200
+    hidden_body = hidden.json()
+    assert "product" not in {module["module"] for module in hidden_body["modules"]}
+    assert "product" in {module["module"] for module in hidden_body["hidden_modules"]}
+    assert "product" not in {module["module"] for module in hidden_body["recommended_modules"]}
+
+    restored = client.post(
+        f"/project/{pid}/archive/modules",
+        json={"module": "product", "label": "产品与服务"},
+        headers=auth,
+    )
+    assert restored.status_code == 200
+    restored_body = restored.json()
+    assert "product" in {module["module"] for module in restored_body["modules"]}
+    assert restored_body["hidden_modules"] == []
+
+
 def test_archive_file_extraction_uses_active_archive_skill(db_session):
     token = _register("archive-skill@b.com")
     auth = {"Authorization": f"Bearer {token}"}

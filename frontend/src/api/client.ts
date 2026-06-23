@@ -106,6 +106,12 @@ export async function getDiagnosisJob(jobId: string): Promise<DiagnosisJobStatus
   return (await resp.json()) as DiagnosisJobStatus;
 }
 
+export async function getLatestDiagnosisJobForSession(sessionId: string): Promise<DiagnosisJobStatus | null> {
+  const resp = await fetch(`${BASE}/diagnosis-jobs/session/${sessionId}/latest`, { headers: { ...authHeaders() } });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "获取会话诊断任务失败"));
+  return (await resp.json()) as DiagnosisJobStatus | null;
+}
+
 export async function getDiagnosisJobEvidence(jobId: string): Promise<ResearchEvidenceOut[]> {
   const resp = await fetch(`${BASE}/diagnosis-jobs/${jobId}/evidence`, { headers: { ...authHeaders() } });
   if (!resp.ok) throw new Error(await errorMessage(resp, "获取尽调证据失败"));
@@ -532,6 +538,31 @@ export async function confirmArchiveFileExtraction(
     body: JSON.stringify(body),
   });
   if (!resp.ok) throw new Error(await errorMessage(resp, "确认沉淀失败"));
+  return (await resp.json()) as ProjectArchive;
+}
+
+export async function addArchiveModule(
+  projectId: string,
+  body: { module: string; label?: string },
+): Promise<ProjectArchive> {
+  const resp = await fetch(`${BASE}/project/${projectId}/archive/modules`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "新增经营域失败"));
+  return (await resp.json()) as ProjectArchive;
+}
+
+export async function hideArchiveModule(
+  projectId: string,
+  module: string,
+): Promise<ProjectArchive> {
+  const resp = await fetch(`${BASE}/project/${projectId}/archive/modules/${encodeURIComponent(module)}`, {
+    method: "DELETE",
+    headers: { ...authHeaders() },
+  });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "隐藏经营域失败"));
   return (await resp.json()) as ProjectArchive;
 }
 

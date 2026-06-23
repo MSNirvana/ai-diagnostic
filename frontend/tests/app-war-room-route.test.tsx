@@ -109,7 +109,18 @@ vi.mock("../src/api/client", () => {
     status: body.status ?? "active",
     memory_summary: "",
   })),
-  getProjectWarRoom: vi.fn(async () => warRoomPlan),
+  getProjectWarRoom: vi.fn(async (projectId: string) => {
+    if (projectId === "proj-empty") {
+      throw new Error("获取项目作战室失败: 404");
+    }
+    if (projectId === "proj-pending") {
+      throw new Error("获取项目作战室失败: 403");
+    }
+    if (projectId === "proj-rejected") {
+      throw new Error("获取项目作战室失败: 409");
+    }
+    return warRoomPlan;
+  }),
   getProjectEvidence: vi.fn(async () => []),
   fetchRecord: vi.fn(async (recordId: string) => (
     recordId === "rec-rejected"
@@ -141,7 +152,70 @@ vi.mock("../src/api/client", () => {
   runDiagnoseWithFiles: vi.fn(),
   sendBrainstormMessage: vi.fn(async () => ({ message: "我们先拆核心假设。" })),
   getProject: vi.fn(async (projectId: string) => ({
-    ...(projectId === "proj-rejected" ? {
+    ...(projectId === "proj-empty" ? {
+    id: "proj-empty",
+    name: "未诊断项目",
+    created_at: "2026-06-23T00:00:00Z",
+    updated_at: "2026-06-23T00:00:00Z",
+    status: "active",
+    memory_summary: "",
+    memory_entries: [],
+    sessions: [],
+    records: [],
+    archive: {
+      profile: [],
+      modules: [
+        { module: "market", label: "市场与客户", facts: [], has_data: false },
+        { module: "product", label: "产品与服务", facts: [], has_data: false },
+        { module: "sales", label: "销售与增长", facts: [], has_data: false },
+        { module: "ops", label: "运营与供应链", facts: [], has_data: false },
+        { module: "org", label: "组织与人才", facts: [], has_data: false },
+        { module: "finance", label: "财务与资本", facts: [], has_data: false },
+      ],
+      files: [],
+      last_updated: null,
+    },
+    delivery_status: {
+      state: "empty",
+      approved_count: 0,
+      pending_review_count: 0,
+      rejected_count: 0,
+      latest_review_status: null,
+    },
+    war_room_plan: null,
+  } : projectId === "proj-pending" ? {
+    id: "proj-pending",
+    name: "顾问审核中项目",
+    created_at: "2026-06-23T00:00:00Z",
+    updated_at: "2026-06-23T00:00:00Z",
+    status: "active",
+    memory_summary: "",
+    memory_entries: [],
+    sessions: [],
+    records: [
+      {
+        id: "rec-pending",
+        created_at: "2026-06-23T00:00:00Z",
+        module_count: 1,
+        has_war_room_plan: false,
+        review_status: "pending_review",
+      },
+    ],
+    archive: {
+      profile: [],
+      modules: [],
+      files: [],
+      last_updated: null,
+    },
+    delivery_status: {
+      state: "pending_review",
+      approved_count: 0,
+      pending_review_count: 1,
+      rejected_count: 0,
+      latest_review_status: "pending_review",
+    },
+    war_room_plan: null,
+  } : projectId === "proj-rejected" ? {
     id: "proj-rejected",
     name: "被打回项目",
     created_at: "2026-06-13T00:00:00Z",
@@ -256,7 +330,7 @@ function LocationProbe() {
 }
 
 describe("project diagnosis war room routing", () => {
-  it("returns to the project workspace after a project diagnosis enters review", async () => {
+  it("redirects legacy diagnosis URLs into the project workspace", async () => {
     render(
       <MemoryRouter initialEntries={["/projects/proj-1/diagnose"]}>
         <App />
@@ -264,19 +338,38 @@ describe("project diagnosis war room routing", () => {
       </MemoryRouter>
     );
 
-    fireEvent.click(screen.getByText("模拟完成诊断"));
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/projects/proj-1"
+      )
+    );
+    expect(await screen.findByText("模拟完成诊断")).toBeTruthy();
+    expect(screen.getByText("对话记录")).toBeTruthy();
+    expect(screen.queryByText("推进路径")).toBeNull();
+    expect(screen.queryByText("深度尽调任务已启动")).toBeNull();
+    expect(screen.queryByText(/系统正在进行外部预研、多专家诊断和证据整理/)).toBeNull();
+    expect(screen.queryByText("当前状态")).toBeNull();
+  });
+
+  it("opens a fresh project conversation from the war room iteration button", async () => {
+    render(
+      <MemoryRouter initialEntries={["/projects/proj-1/war-room"]}>
+        <Routes>
+          <Route path="/projects/:projectId/war-room" element={<ProjectWarRoomPage />} />
+          <Route path="/projects/:projectId" element={<p>项目主工作区</p>} />
+        </Routes>
+        <LocationProbe />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => screen.getByText("本次会议先处理"));
+    fireEvent.click(screen.getByRole("button", { name: "新增诊断迭代" }));
 
     await waitFor(() =>
       expect(screen.getByTestId("location").textContent).toBe(
         "/projects/proj-1"
       )
     );
-    expect(await screen.findByRole("button", { name: /新对话/ })).toBeTruthy();
-    expect(screen.getByText("对话记录")).toBeTruthy();
-    expect(screen.queryByText("推进路径")).toBeNull();
-    expect(screen.queryByText("深度尽调任务已启动")).toBeNull();
-    expect(screen.queryByText(/系统正在进行外部预研、多专家诊断和证据整理/)).toBeNull();
-    expect(screen.queryByText("当前状态")).toBeNull();
   });
 
   it("routes from the project war room overview into a functional section", async () => {
@@ -303,6 +396,54 @@ describe("project diagnosis war room routing", () => {
     expect(screen.getByText("重分线索池")).toBeTruthy();
   });
 
+  it("shows a friendly prompt when a project has not created its first war room", async () => {
+    render(
+      <MemoryRouter initialEntries={["/projects/proj-empty/war-room"]}>
+        <Routes>
+          <Route path="/projects/:projectId" element={<p>项目主工作区</p>} />
+          <Route path="/projects/:projectId/war-room" element={<ProjectWarRoomPage />} />
+        </Routes>
+        <LocationProbe />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText("请先进行对话，完成初次咨询。")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "开始新对话" })).toBeTruthy();
+    expect(screen.queryByText(/获取项目作战室失败/)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "开始新对话" }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/projects/proj-empty"
+      )
+    );
+  });
+
+  it("shows consultant review progress instead of a 403 error for pending war rooms", async () => {
+    render(
+      <MemoryRouter initialEntries={["/projects/proj-pending/war-room"]}>
+        <Routes>
+          <Route path="/projects/:projectId" element={<p>项目主工作区</p>} />
+          <Route path="/projects/:projectId/war-room" element={<ProjectWarRoomPage />} />
+        </Routes>
+        <LocationProbe />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText("顾问深度判断中")).toBeTruthy();
+    expect(screen.getByText(/系统已完成资料整理、外部预研和多专家诊断/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "回到对话继续补充" })).toBeTruthy();
+    expect(screen.queryByText(/获取项目作战室失败/)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "回到对话继续补充" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/projects/proj-pending"
+      )
+    );
+  });
+
   it("opens the brainstorm route from the main app", async () => {
     render(
       <MemoryRouter initialEntries={["/brainstorm"]}>
@@ -322,9 +463,15 @@ describe("project diagnosis war room routing", () => {
         state: { rejectedRecordId: "rec-rejected", projectId: "proj-1" },
       }]}>
         <App />
+        <LocationProbe />
       </MemoryRouter>
     );
 
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/projects/proj-1"
+      )
+    );
     expect(await screen.findByText("顾问打回补充")).toBeTruthy();
     expect(screen.getByText("证据包混入无关来源，请补充真实推广账号、渠道消耗和线索转化数据。")).toBeTruthy();
     expect(screen.getByText("推广账号后台截图或导出数据")).toBeTruthy();
@@ -343,7 +490,7 @@ describe("project diagnosis war room routing", () => {
 
     await waitFor(() =>
       expect(screen.getByTestId("location").textContent).toBe(
-        "/projects/proj-rejected/diagnose"
+        "/projects/proj-rejected"
       )
     );
     expect(await screen.findByText("顾问打回补充")).toBeTruthy();

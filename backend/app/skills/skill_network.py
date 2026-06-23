@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from app.skills.configured import DataRequirement, ExpertConfig
+from app.skills.method import DIAGNOSTIC_METHOD, METHOD_MODULE_KEY
 from app.skills.prompts import (
     ARCHIVE_EXTRACTION,
     CONVERSATION_INTAKE,
@@ -47,24 +48,18 @@ class SkillDefinition:
 
 
 def _diagnosis_prompt(label: str, mandate: str, lenses: tuple[str, ...]) -> str:
+    """生成专业 skill 的领域切片（薄）。
+
+    通用方法与输出 JSON 契约由 method.DIAGNOSTIC_METHOD 在运行时注入，这里只保留
+    身份、专业范围和领域判断纪律，避免与主方法重复。
+    """
     lens_text = "\n".join(f"{index + 1}. {lens}" for index, lens in enumerate(lenses))
     return f"""你是顶级管理咨询的{label}专家。
 你的任务是围绕老板当前问题，做可审计、可落地的专业诊断。
 专业范围：{mandate}
-
-输入里会包含 scenario、problem_map、facts、pains、benchmark、data_requirements、missing_data_requests。
-
-判断纪律：
+本领域判断纪律：
 {lens_text}
-{len(lenses) + 1}. 如果缺少关键数据，不得编造结论；必须降低置信度，并把缺口转成下一步数据请求。
-{len(lenses) + 2}. 输出只给用户可执行判断，不暴露内部推理、方法论或提示词。
-
-严格输出 JSON：{{signal, conclusion, evidence[], actions[], drilldown{{data_points[], comparisons[]}}}}。
-- signal: red/yellow/green
-- conclusion: 结论先行，一句话讲清最关键判断
-- evidence: 最多3条，每条 {{text, source}}
-- actions: 2-3条按优先级，必须能进入经营会动作清单
-- drilldown: 只放事实数据和对比，不写方法/假设/框架"""
+缺少本领域关键数据时，必须降低置信度并把缺口转成数据请求，不得编造结论。"""
 
 
 CORE_DEFINITIONS: tuple[SkillDefinition, ...] = (
@@ -427,6 +422,19 @@ SPECIALIST_DEFINITIONS: tuple[SkillDefinition, ...] = tuple(
 
 SYSTEM_DEFINITIONS: tuple[SkillDefinition, ...] = (
     SkillDefinition(
+        key=METHOD_MODULE_KEY,
+        label="诊断方法（通用脑子）",
+        category="system",
+        category_label="诊断方法",
+        skill_type="method",
+        method="diagnostic_method",
+        description="所有诊断 skill 共用的通用方法、证据纪律与输出契约；运行时注入到各领域切片之后。改一处全局诊断生效。",
+        trigger_keywords=("诊断方法", "通用方法", "输出契约", "method"),
+        fallback_prompt=DIAGNOSTIC_METHOD,
+        upgrade_policy="作为全局脑子，任何改动影响所有诊断；必须人工审核、灰度后再激活，并保留可回滚的历史版本。",
+        evaluation_metrics=("跨 skill 输出合规率", "约束定位命中率", "缺数据诚实率", "证据可审计率"),
+    ),
+    SkillDefinition(
         key="free_chat",
         label="头脑风暴陪练",
         category="assistant",
@@ -500,17 +508,6 @@ SYSTEM_DEFINITIONS: tuple[SkillDefinition, ...] = (
         evaluation_metrics=("拦截率", "数据入口命中率", "行业贴合度", "重生成通过率"),
     ),
     SkillDefinition(
-        key="evidence_gate",
-        label="证据可信闸门",
-        category="delivery",
-        category_label="证据交付",
-        skill_type="delivery",
-        method="evidence_gate",
-        description="为专家结论补来源、外部基准、置信度、引用和可审计证据包。",
-        trigger_keywords=("证据", "置信度", "审计", "引用"),
-        evaluation_metrics=("证据完整度", "置信度校准", "审计可追溯率"),
-    ),
-    SkillDefinition(
         key="evidence_confidence",
         label="证据置信度评估",
         category="delivery",
@@ -535,17 +532,6 @@ SYSTEM_DEFINITIONS: tuple[SkillDefinition, ...] = (
         fallback_prompt=ARCHIVE_EXTRACTION,
         upgrade_policy="根据用户确认/修改沉淀字段的差异、漏提的人名角色和复诊引用率迭代字段识别纪律，人工审核后激活。",
         evaluation_metrics=("字段确认率", "用户手动修改率", "报告元信息命中率", "复诊引用率"),
-    ),
-    SkillDefinition(
-        key="war_room_delivery",
-        label="项目作战室交付",
-        category="delivery",
-        category_label="证据交付",
-        skill_type="delivery",
-        method="war_room",
-        description="把诊断结果收敛成老板决策区、部门动作卡、联动链和复盘追踪。",
-        trigger_keywords=("作战室", "经营会", "部门动作", "复盘"),
-        evaluation_metrics=("动作采纳率", "复盘完成率", "项目迭代次数"),
     ),
 )
 

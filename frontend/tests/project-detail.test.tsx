@@ -1,14 +1,20 @@
-import { afterEach, describe, it, expect, vi } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 import {
+  addArchiveModule,
   confirmArchiveFileExtraction,
+  createDiagnosisJob,
   deleteSessionFile,
   deleteSession,
   extractArchiveFile,
   getBrainstormSession,
+  getDiagnosisJob,
+  getLatestDiagnosisJobForSession,
   getProject,
+  hideArchiveModule,
   sendBrainstormMessage,
+  sessionChat,
   startSession,
   updateSession,
   uploadSessionFile,
@@ -100,6 +106,11 @@ const baseProjectDetail: ProjectDetail = {
       { module: "org", label: "组织与人才", has_data: false, facts: [] },
       { module: "finance", label: "财务与资本", has_data: false, facts: [] },
     ],
+    recommended_modules: [
+      { module: "legal_compliance", label: "法务合规", reason: "项目涉及合同与宣传承诺。" },
+      { module: "channel_franchise", label: "渠道与加盟", reason: "项目涉及招商加盟。" },
+    ],
+    hidden_modules: [],
     files: [],
     last_updated: "2026-06-02T00:00:00Z",
   },
@@ -189,6 +200,17 @@ vi.mock("../src/api/client", () => ({
     },
   ]),
   createDiagnosisJob: vi.fn(async () => ({ job_id: "job-1", status: "queued" })),
+  getDiagnosisJob: vi.fn(async () => ({
+    id: "job-1",
+    status: "pending_review",
+    current_step: "顾问审核中",
+    progress: 1,
+    record_id: "rec-2",
+    project_id: "proj-1",
+    error: null,
+    result_summary: null,
+  })),
+  getLatestDiagnosisJobForSession: vi.fn(async () => null),
   sendBrainstormMessage: vi.fn(async () => ({
     message: "好的，先看两个关键点： 1. **你现在卖的是什么？** 要给谁？ 2. **当前获客卡在哪里？** 是没人知道，还是来了不转化？",
     brainstorm_session_id: "brain-1",
@@ -245,7 +267,26 @@ vi.mock("../src/api/client", () => ({
     is_pinned: body.is_pinned ?? false,
   })),
   deleteSession: vi.fn(async () => {}),
-  generateFromSummary: vi.fn(async () => ({ modules: [] })),
+  generateFromSummary: vi.fn(async () => ({
+    modules: [
+      {
+        key: "market",
+        label: "市场与客户",
+        subtitle: "先补齐渠道、投放和转化数据，再进入深度尽调。",
+        fields: [
+          {
+            key: "channel_cost",
+            label: "近 30 天渠道花费",
+            placeholder: "例如：抖音 8 万，小红书 2 万。",
+            hint: "用于判断获客成本上升来自渠道价格、素材效率还是承接转化。",
+            accept_file: true,
+          },
+        ],
+        pains: ["投放 ROI 下滑"],
+        free_text_label: "还有哪些市场与客户侧资料需要补充？",
+      },
+    ],
+  })),
   saveSessionDraft: vi.fn(async () => {}),
   uploadSessionFile: vi.fn(async (_sessionId: string, moduleKey: string, fieldKey: string, file: File) => ({
     id: "file-brainstorm-1",
@@ -303,6 +344,27 @@ vi.mock("../src/api/client", () => ({
       },
     ],
   })),
+  addArchiveModule: vi.fn(async (_projectId: string, body: { module: string; label?: string }) => ({
+    ...baseProjectDetail.archive,
+    modules: [
+      ...baseProjectDetail.archive.modules,
+      { module: body.module, label: body.label ?? body.module, has_data: false, facts: [] },
+    ],
+    recommended_modules: baseProjectDetail.archive.recommended_modules?.filter((item) => item.module !== body.module) ?? [],
+    hidden_modules: baseProjectDetail.archive.hidden_modules?.filter((item) => item.module !== body.module) ?? [],
+  })),
+  hideArchiveModule: vi.fn(async (_projectId: string, module: string) => ({
+    ...baseProjectDetail.archive,
+    modules: baseProjectDetail.archive.modules.filter((item) => item.module !== module),
+    hidden_modules: [
+      ...(baseProjectDetail.archive.hidden_modules ?? []),
+      {
+        module,
+        label: baseProjectDetail.archive.modules.find((item) => item.module === module)?.label ?? module,
+        reason: "已隐藏，可随时恢复。",
+      },
+    ],
+  })),
   listSessionFiles: vi.fn(async () => []),
   deleteSessionFile: vi.fn(async () => {}),
   getProject: vi.fn(async () => structuredClone(baseProjectDetail)),
@@ -312,12 +374,34 @@ vi.mock("../src/auth/useAuth", () => ({
   useAuth: () => ({ token: "test-token", isAuthenticated: true, login: vi.fn(), logout: vi.fn() }),
 }));
 
+const testStorage = new Map<string, string>();
+
+beforeEach(() => {
+  testStorage.clear();
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: vi.fn((key: string) => testStorage.get(key) ?? null),
+      setItem: vi.fn((key: string, value: string) => {
+        testStorage.set(key, value);
+      }),
+      removeItem: vi.fn((key: string) => {
+        testStorage.delete(key);
+      }),
+      clear: vi.fn(() => {
+        testStorage.clear();
+      }),
+    },
+  });
+});
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   vi.clearAllMocks();
   try {
     window.localStorage?.removeItem?.("ruice:pinned-projects");
+    window.localStorage?.removeItem?.("ruice:inline-diagnosis:proj-1");
   } catch {
     // localStorage may be partially stubbed in the test runner.
   }
@@ -351,7 +435,8 @@ describe("ProjectDetailPage memory timeline", () => {
     expect(screen.getByText("低成本获客动作")).toBeTruthy();
     fireEvent.click(screen.getByRole("tab", { name: "对话记录 1" }));
     expect(screen.getByText("获客成本过高")).toBeTruthy();
-    expect(screen.getByText("项目工作台")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "更换项目 Logo" }).textContent).toBe("星");
+    expect(screen.queryByText("返回工作台")).toBeNull();
     expect(screen.queryByRole("button", { name: "返回项目组合" })).toBeNull();
     expect(screen.queryByText("当前状态")).toBeNull();
     expect(screen.queryByText("推进路径")).toBeNull();
@@ -437,6 +522,154 @@ describe("ProjectDetailPage memory timeline", () => {
 
     fireEvent.pointerDown(screen.getByText("今天，你想解决什么？"));
     await waitFor(() => expect(screen.queryByRole("menuitem", { name: "重命名" })).toBeNull());
+  });
+
+  it("locks the mode switch after restoring an AI consulting conversation", async () => {
+    render(
+      <MemoryRouter initialEntries={["/projects/proj-1"]}>
+        <Routes>
+          <Route path="/projects/:id" element={<ProjectDetailPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    fireEvent.click(await screen.findByText("获客成本过高"));
+
+    expect(await screen.findByText("你好，我是你的诊断顾问。")).toBeTruthy();
+    const modeTabs = screen.getByLabelText("对话模式");
+    expect(within(modeTabs).getByText("AI咨询")).toBeTruthy();
+    expect(within(modeTabs).queryByRole("button", { name: "头脑风暴" })).toBeNull();
+    expect(within(modeTabs).queryByText("头脑风暴")).toBeNull();
+  });
+
+  it("starts deep diagnosis from the confirmed problem map", async () => {
+    vi.mocked(sessionChat).mockResolvedValueOnce({
+      message: "我已经整理出问题地图，请确认是否开始诊断。",
+      done: false,
+      phase: "confirm",
+      summary: null,
+      problem_map: {
+        company_name: "星麦直播",
+        industry: "直播电商",
+        main_business: "直播带货",
+        business_model: "投流获客后直播转化",
+        scale: "",
+        stage: "",
+        core_problem: "获客成本过高",
+        sub_problems: ["投放 ROI 下滑"],
+        goal: "降低获客成本",
+        constraints: "预算不能继续翻倍",
+        success_criteria: "ROI 回到 1.5 以上",
+        impact: "近半年预算翻倍但 ROI 下降",
+        context: "直播电商项目",
+        suspected_cause: "",
+        tried: "",
+        data_readiness: "有投放后台数据",
+        diagnosis_focus: "market",
+        information_score: 82,
+        missing_fields: [],
+        next_question_reason: "",
+      },
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/projects/proj-1"]}>
+        <Routes>
+          <Route path="/projects/:id" element={<ProjectDetailPage />} />
+          <Route path="/projects/:id/war-room" element={<span>作战室页面</span>} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const input = await screen.findByPlaceholderText("输入消息...");
+    fireEvent.change(input, { target: { value: "获客成本过高，ROI 下滑。" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送消息" }));
+
+    await waitFor(() => expect(screen.getByText("确认无误，开始诊断")).toBeTruthy());
+    fireEvent.click(screen.getByText("确认无误，开始诊断"));
+
+    await waitFor(() => expect(createDiagnosisJob).toHaveBeenCalledTimes(1));
+    expect(createDiagnosisJob).toHaveBeenCalledWith(
+      [],
+      "sess-new",
+      "proj-1",
+      expect.objectContaining({ core_problem: "获客成本过高" })
+    );
+    expect(await screen.findByText(/正在基于你的问题定制诊断方案/)).toBeTruthy();
+    expect(screen.getByPlaceholderText("还有要补充或纠正的吗？直接说…")).toBeTruthy();
+    expect(screen.getByLabelText("诊断流程")).toBeTruthy();
+    expect(getDiagnosisJob).not.toHaveBeenCalled();
+  });
+
+  it("restores the session-bound diagnosis planning task after remount", async () => {
+    window.localStorage.setItem("ruice:inline-diagnosis:proj-1", JSON.stringify({
+      sessionId: "sess-new",
+      jobId: "job-1",
+    }));
+
+    render(
+      <MemoryRouter initialEntries={["/projects/proj-1"]}>
+        <Routes>
+          <Route path="/projects/:id" element={<ProjectDetailPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(getDiagnosisJob).toHaveBeenCalledWith("job-1"));
+    expect(await screen.findByText("资料与证据已整理完成，顾问正在深度判断中。")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "查看进度" })).toBeTruthy();
+    expect(screen.getByPlaceholderText("输入消息...")).toBeTruthy();
+  });
+
+  it("keeps the problem map visible while the diagnosis plan keeps progressing", async () => {
+    vi.mocked(sessionChat).mockResolvedValueOnce({
+      message: "问题地图已成型，我会在后台继续推进诊断方案。",
+      done: true,
+      phase: "done",
+      summary: null,
+      problem_map: {
+        company_name: "星麦直播",
+        industry: "直播电商",
+        main_business: "直播带货",
+        business_model: "投流获客后直播转化",
+        scale: "",
+        stage: "",
+        core_problem: "获客成本翻倍",
+        sub_problems: ["投放 ROI 下滑"],
+        goal: "降低获客成本",
+        constraints: "预算不能继续翻倍",
+        success_criteria: "ROI 回到 1.5 以上",
+        impact: "近半年预算翻倍但 ROI 下降",
+        context: "直播电商项目",
+        suspected_cause: "",
+        tried: "",
+        data_readiness: "有投放后台数据",
+        diagnosis_focus: "market",
+        information_score: 88,
+        missing_fields: [],
+        next_question_reason: "",
+      },
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/projects/proj-1"]}>
+        <Routes>
+          <Route path="/projects/:id" element={<ProjectDetailPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const input = await screen.findByPlaceholderText("输入消息...");
+    fireEvent.change(input, { target: { value: "获客成本越来越高" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送消息" }));
+
+    await waitFor(() => expect(createDiagnosisJob).toHaveBeenCalledTimes(1));
+    expect(screen.getByText(/正在基于你的问题定制诊断方案/)).toBeTruthy();
+    expect(screen.queryByText("确认无误，开始诊断")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /问题地图/ }));
+    expect(await screen.findByRole("dialog", { name: "问题地图" })).toBeTruthy();
+    expect(screen.getByText("获客成本翻倍")).toBeTruthy();
+    expect(screen.getByLabelText("诊断流程")).toBeTruthy();
   });
 
   it("lets project brainstorm examples fill the draft and toggles project context", async () => {
@@ -663,6 +896,89 @@ describe("ProjectDetailPage memory timeline", () => {
     fireEvent.change(input, { target: { files: [file] } });
 
     await waitFor(() => expect(uploadSessionFile).toHaveBeenCalledWith("sess-new", "market", "archive_upload", file));
+  });
+
+  it("enables a recommended business domain from the archive", async () => {
+    const addArchiveModuleMock = vi.mocked(addArchiveModule);
+    render(
+      <MemoryRouter initialEntries={["/projects/proj-1?page=archive&section=modules"]}>
+        <Routes>
+          <Route path="/projects/:id" element={<ProjectDetailPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getByLabelText("建议新增经营域")).toBeTruthy());
+    fireEvent.click(within(screen.getByLabelText("建议新增经营域")).getByRole("button", { name: "法务合规" }));
+
+    await waitFor(() =>
+      expect(addArchiveModuleMock).toHaveBeenCalledWith("proj-1", {
+        module: "legal_compliance",
+        label: "法务合规",
+      })
+    );
+    await waitFor(() => expect(screen.getAllByText("法务合规").length).toBeGreaterThan(0));
+    expect(screen.getByText("这个领域还没有形成可复用的项目档案。")).toBeTruthy();
+  });
+
+  it("lets users customize the project logo image locally", async () => {
+    const originalFileReader = window.FileReader;
+    class MockFileReader {
+      result: string | ArrayBuffer | null = null;
+      onload: null | (() => void) = null;
+      readAsDataURL() {
+        this.result = "data:image/png;base64,ZmFrZS1sb2dv";
+        this.onload?.();
+      }
+    }
+    Object.defineProperty(window, "FileReader", {
+      configurable: true,
+      value: MockFileReader,
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/projects/proj-1?page=archive&section=modules"]}>
+        <Routes>
+          <Route path="/projects/:id" element={<ProjectDetailPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const logoButton = await screen.findByRole("button", { name: "更换项目 Logo" });
+    expect(logoButton.textContent).toBe("星");
+    const input = document.querySelector<HTMLInputElement>(".project-workspace-logo-input");
+    expect(input).toBeTruthy();
+    const file = new File(["fake"], "logo.png", { type: "image/png" });
+    fireEvent.change(input as HTMLInputElement, { target: { files: [file] } });
+
+    expect(window.localStorage.getItem("ruice:project-logo:proj-1")).toBe("data:image/png;base64,ZmFrZS1sb2dv");
+    expect(logoButton.querySelector("img")).toBeTruthy();
+
+    Object.defineProperty(window, "FileReader", {
+      configurable: true,
+      value: originalFileReader,
+    });
+  });
+
+  it("hides an enabled archive domain without deleting archive data", async () => {
+    const hideArchiveModuleMock = vi.mocked(hideArchiveModule);
+    render(
+      <MemoryRouter initialEntries={["/projects/proj-1?page=archive&section=modules"]}>
+        <Routes>
+          <Route path="/projects/:id" element={<ProjectDetailPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /产品与服务/ })).toBeTruthy());
+    const productDomain = screen.getByRole("button", { name: /产品与服务/ }).closest(".project-archive-domain-chip");
+    expect(productDomain).toBeTruthy();
+    fireEvent.click(within(productDomain as HTMLElement).getByRole("button", { name: "隐藏此经营域" }));
+
+    await waitFor(() => expect(hideArchiveModuleMock).toHaveBeenCalledWith("proj-1", "product"));
+    const hiddenDomains = await screen.findByLabelText("已隐藏经营域");
+    expect(within(hiddenDomains).getByRole("button", { name: "产品与服务" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /产品与服务.*数据/ })).toBeNull();
   });
 
   it("extracts archive highlights and confirms before updating the archive", async () => {

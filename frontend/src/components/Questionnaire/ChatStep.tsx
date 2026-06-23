@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { ChatMessage, ProblemMap } from "../../types";
 import { deleteSessionFile, startSession, sessionChat, uploadSessionFile } from "../../api/client";
 import { ProblemMapPanel } from "./ProblemMapPanel";
@@ -221,6 +221,10 @@ interface ChatStepProps {
   variant?: "default" | "project-inline";
   projectMode?: ProjectChatMode;
   onProjectModeChange?: (mode: ProjectChatMode) => void;
+  inputNotice?: ReactNode;
+  diagnosisPlanActive?: boolean;
+  initialProblemMap?: ProblemMap | null;
+  onProblemMapChange?: (problemMap: ProblemMap) => void;
   brainstormMessages?: ChatMessage[];
   brainstormDraft?: string;
   brainstormLoading?: boolean;
@@ -241,6 +245,10 @@ export function ChatStep({
   variant = "default",
   projectMode = "consulting",
   onProjectModeChange,
+  inputNotice,
+  diagnosisPlanActive = false,
+  initialProblemMap = null,
+  onProblemMapChange,
   brainstormMessages = [],
   brainstormDraft = "",
   brainstormLoading = false,
@@ -267,7 +275,7 @@ export function ChatStep({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>("intake");
-  const [problemMap, setProblemMap] = useState<ProblemMap | null>(null);
+  const [problemMap, setProblemMap] = useState<ProblemMap | null>(initialProblemMap);
   const [mapPopoverOpen, setMapPopoverOpen] = useState(false);
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [memoryEnabled, setMemoryEnabled] = useState(initialMemoryEnabled);
@@ -297,6 +305,7 @@ export function ChatStep({
     || Boolean(initialPrompt?.trim())
     || Boolean(uploadingFileName)
     || uploadedFiles.length > 0;
+  const shouldLockProjectMode = isProjectInline && hasStartedConversation;
 
   // 续聊用已有 session；新诊断不在挂载时建空会话，避免用户只点进页面就污染历史。
   useEffect(() => {
@@ -312,6 +321,12 @@ export function ChatStep({
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [hasConversation, isProjectInline, displayedMessages, displayedLoading, phase, problemMap]);
+
+  useEffect(() => {
+    if (initialProblemMap) {
+      setProblemMap(initialProblemMap);
+    }
+  }, [initialProblemMap]);
 
   useEffect(() => {
     if (!problemMap) setMapPopoverOpen(false);
@@ -371,7 +386,10 @@ export function ChatStep({
       const resp = await sessionChat(activeSessionId, text, memoryEnabled);
       setMessages([...next, { role: "assistant", content: resp.message }]);
       setPhase(resp.phase);
-      if (resp.problem_map) setProblemMap(resp.problem_map);
+      if (resp.problem_map) {
+        setProblemMap(resp.problem_map);
+        onProblemMapChange?.(resp.problem_map);
+      }
       if (resp.phase === "done" && resp.problem_map) {
         onComplete(resp.problem_map, activeSessionId);
       }
@@ -521,7 +539,7 @@ export function ChatStep({
               </div>
             )}
 
-            {!isBrainstormMode && phase === "confirm" && problemMap && (
+            {!isBrainstormMode && !diagnosisPlanActive && phase === "confirm" && problemMap && (
               <div className="confirm-banner">
                 <p className="confirm-banner__hint">
                   我已经整理出问题地图。对吗？不对可以在下方继续补充；没问题就开始诊断。
@@ -567,22 +585,35 @@ export function ChatStep({
         {displayedError && <p className="chat-error">{displayedError}</p>}
 
         <div className={isProjectInline && hasStartedConversation ? "chat-input-stack chat-input-stack--anchored" : isProjectInline ? "chat-input-stack" : "chat-input-stack chat-input-stack--default"}>
+          {isProjectInline && inputNotice && (
+            <div className="chat-input-notice">
+              {inputNotice}
+            </div>
+          )}
           {isProjectInline && (
             <div className="chat-mode-tabs" aria-label="对话模式">
-              <button
-                type="button"
-                className={projectMode === "consulting" ? "chat-mode-tab is-active" : "chat-mode-tab"}
-                onClick={() => onProjectModeChange?.("consulting")}
-              >
-                <span>{PROJECT_CHAT_MODES.consulting.label}</span>
-              </button>
-              <button
-                type="button"
-                className={projectMode === "brainstorm" ? "chat-mode-tab is-active" : "chat-mode-tab"}
-                onClick={() => onProjectModeChange?.("brainstorm")}
-              >
-                <span>{PROJECT_CHAT_MODES.brainstorm.label}</span>
-              </button>
+              {shouldLockProjectMode ? (
+                <span className="chat-mode-tab chat-mode-tab--locked is-active">
+                  <span>{activeModeConfig.label}</span>
+                </span>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className={projectMode === "consulting" ? "chat-mode-tab is-active" : "chat-mode-tab"}
+                    onClick={() => onProjectModeChange?.("consulting")}
+                  >
+                    <span>{PROJECT_CHAT_MODES.consulting.label}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={projectMode === "brainstorm" ? "chat-mode-tab is-active" : "chat-mode-tab"}
+                    onClick={() => onProjectModeChange?.("brainstorm")}
+                  >
+                    <span>{PROJECT_CHAT_MODES.brainstorm.label}</span>
+                  </button>
+                </>
+              )}
             </div>
           )}
           {isProjectInline && mapPopoverOpen && (

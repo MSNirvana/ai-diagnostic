@@ -494,7 +494,9 @@ def test_chat_phase_intake_to_confirm_to_done(db_session):
     }).json()
     assert r1["phase"] == "intake"
     assert r1["done"] is False
-    assert r1["problem_map"] is None
+    assert r1["problem_map"]["core_problem"] == "获客越来越贵"
+    assert r1["problem_map"]["information_score"] < 70
+    assert r1["problem_map"]["missing_fields"]
 
     r2 = client.post("/conversation/chat", json={
         "messages": [
@@ -596,6 +598,33 @@ def test_chat_blocks_premature_done_without_complete_problem_map(db_session):
     assert body["done"] is False
     assert body["summary"] is None
     assert body["problem_map"]["information_score"] < 70
+    assert body["problem_map"]["missing_fields"]
+
+
+def test_chat_returns_visible_problem_map_draft_during_intake(db_session):
+    class NullMapIntakeLLM:
+        async def complete(self, system: str, prompt: str) -> str:
+            return json.dumps({
+                "phase": "intake",
+                "done": False,
+                "message": "这个问题最希望先解决什么？",
+                "problem_map": None,
+            }, ensure_ascii=False)
+
+    app.dependency_overrides[get_llm_client] = lambda: NullMapIntakeLLM()
+    resp = client.post("/conversation/chat", json={
+        "messages": [
+            {"role": "user", "content": "我是电火灶代理商，现在推广成本很高，缺投放账号数据。"}
+        ]
+    })
+    app.dependency_overrides.pop(get_llm_client, None)
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["phase"] == "intake"
+    assert body["problem_map"]["core_problem"] == "我是电火灶代理商，现在推广成本很高，缺投放账号数据。"
+    assert body["problem_map"]["diagnosis_focus"] == "market"
+    assert body["problem_map"]["information_score"] > 0
     assert body["problem_map"]["missing_fields"]
 
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type {
   ModuleAnswer,
   GeneratedModule,
@@ -145,7 +145,7 @@ interface QuestionnaireProps {
     sessionId?: string,
     projectId?: string,
     problemMap?: ProblemMap
-  ) => void;
+  ) => void | Promise<void>;
   projectId?: string;          // 当前所属项目（从项目页进入）
   resumeSessionId?: string;    // 续聊：要恢复的会话 id（从项目/历史页进入）
   supplementRecord?: DiagnosisDetail | null; // 顾问打回后补充材料复审
@@ -153,6 +153,8 @@ interface QuestionnaireProps {
   variant?: "default" | "project-inline";
   projectMode?: ProjectChatMode;
   onProjectModeChange?: (mode: ProjectChatMode) => void;
+  inputNotice?: ReactNode;
+  diagnosisPlanActive?: boolean;
   brainstormMessages?: ChatMessage[];
   brainstormDraft?: string;
   brainstormLoading?: boolean;
@@ -161,6 +163,7 @@ interface QuestionnaireProps {
   onBrainstormDraftChange?: (value: string) => void;
   onBrainstormSend?: () => void;
   onBrainstormContextChange?: (enabled: boolean) => void;
+  onProblemMapConfirmed?: (problemMap: ProblemMap, sessionId: string) => void | Promise<void>;
 }
 
 type Mode = "chatting" | "generating" | "ready" | "gen_error";
@@ -174,6 +177,8 @@ export function Questionnaire({
   variant = "default",
   projectMode,
   onProjectModeChange,
+  inputNotice,
+  diagnosisPlanActive,
   brainstormMessages,
   brainstormDraft,
   brainstormLoading,
@@ -182,6 +187,7 @@ export function Questionnaire({
   onBrainstormDraftChange,
   onBrainstormSend,
   onBrainstormContextChange,
+  onProblemMapConfirmed,
 }: QuestionnaireProps) {
   const { token } = useAuth();
   const userId = token ? token.slice(0, 16) : "anon";
@@ -368,9 +374,9 @@ export function Questionnaire({
   const anyFilled = filled.some(Boolean);
 
   // 应用生成好的问卷模块，进入填写。二次诊断的 prefilled_value 注入 facts（不覆盖已填）。
-  const applyModules = (modules: GeneratedModule[]) => {
+  const applyModules = (modules: GeneratedModule[], enterReady = true) => {
     setActiveModules(modules);
-    setMode("ready");
+    if (enterReady) setMode("ready");
     setCurrent(0);
     setFacts((prev) => {
       const next = { ...prev };
@@ -385,6 +391,14 @@ export function Questionnaire({
     });
   };
 
+  const generateModules = async (
+    summary: ProblemSummary,
+    problemMap: ProblemMap,
+  ): Promise<GeneratedModule[]> => {
+    const generated = await generateFromSummary(summary, projectId, problemMap);
+    return generated.modules;
+  };
+
   const runGeneration = async (
     summary: ProblemSummary,
     problemMap: ProblemMap,
@@ -393,8 +407,8 @@ export function Questionnaire({
     setGenError(null);
     try {
       // 单份动态问卷（后端已做质量把关，保证不比基础模板差）
-      const generated = await generateFromSummary(summary, projectId, problemMap);
-      applyModules(generated.modules);
+      const modules = await generateModules(summary, problemMap);
+      applyModules(modules);
     } catch (e) {
       // 不降级到固定问卷——固定模块让用户填无关字段、填了也白填。
       // 直接报错，保留对话会话，让用户可重试生成或返回继续聊。
@@ -421,6 +435,12 @@ export function Questionnaire({
       stage: problemMap.stage,
     };
     setStoredSummary(summary);
+    if (isProjectInline) {
+      await (onProblemMapConfirmed
+        ? onProblemMapConfirmed(problemMap, sessionId)
+        : onSubmit([], [], sessionId, projectId, problemMap));
+      return;
+    }
     await runGeneration(summary, problemMap);
   };
 
@@ -503,7 +523,7 @@ export function Questionnaire({
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const answers: ModuleAnswer[] = [];
     for (const m of activeModules) {
       if (!moduleFilled(m.key)) continue;
@@ -522,13 +542,16 @@ export function Questionnaire({
     }
     // 提交即视为完成，清掉草稿
     clearDraft(userId, projectId);
-    onSubmit(
+    await onSubmit(
       answers,
       files,
       storedSessionId ?? undefined,
       projectId,
       storedProblemMap ?? undefined
     );
+    if (isProjectInline) {
+      setMode("chatting");
+    }
   };
 
   const resumeBanner = pendingDraft && (
@@ -585,7 +608,8 @@ export function Questionnaire({
         </div>
       );
     }
-    const sid = resumeSessionId ?? storedSessionId ?? undefined;
+    const sid = resumeSessionId ?? (isProjectInline ? undefined : storedSessionId ?? undefined);
+    const chatStepKey = sid ?? (isProjectInline ? "project-inline-new" : "new");
     const msgs =
       resumeMessages ?? (chatMessages.length > 0 ? chatMessages : undefined);
     return (
@@ -593,7 +617,7 @@ export function Questionnaire({
         {supplementBanner}
         {!isProjectInline && resumeBanner}
         <ChatStep
-          key={sid ?? "new"}
+          key={chatStepKey}
           onComplete={handleChatComplete}
           resumeSessionId={sid}
           resumeMessages={msgs}
@@ -603,6 +627,10 @@ export function Questionnaire({
           variant={variant}
           projectMode={projectMode}
           onProjectModeChange={onProjectModeChange}
+          inputNotice={inputNotice}
+          diagnosisPlanActive={diagnosisPlanActive}
+          initialProblemMap={storedProblemMap}
+          onProblemMapChange={setStoredProblemMap}
           brainstormMessages={brainstormMessages}
           brainstormDraft={brainstormDraft}
           brainstormLoading={brainstormLoading}
@@ -813,7 +841,7 @@ export function Questionnaire({
                 type="button"
                 className="btn-primary btn-primary--final"
                 disabled={!anyFilled}
-                onClick={handleSubmit}
+                onClick={() => void handleSubmit()}
               >
                 开始诊断
               </button>

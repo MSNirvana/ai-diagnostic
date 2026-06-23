@@ -1,6 +1,7 @@
 """深度尽调 Job API：创建任务、后台执行、进入审核队列。"""
 import json
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.config import get_llm_client
@@ -9,6 +10,14 @@ from app.research.models import ResearchEvidenceItem
 from app.research.jobs import run_deep_diligence_job
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _disable_api_background_job(monkeypatch):
+    async def _noop(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("app.api.diagnosis_jobs.run_deep_diligence_job", _noop)
 
 
 class DiagLLM:
@@ -87,6 +96,30 @@ def test_create_deep_diligence_job_runs_to_pending_review(db_session, monkeypatc
     detail = client.get(f"/project/{pid}", headers=auth).json()
     assert detail["delivery_status"]["state"] == "pending_review"
     assert detail["war_room_plan"] is None
+
+
+def test_get_latest_diagnosis_job_by_session(db_session):
+    token = _register("deep-session-latest@b.com")
+    auth = {"Authorization": f"Bearer {token}"}
+    pid = client.post("/project/", json={"name": "会话任务绑定"}, headers=auth).json()["id"]
+    sid = client.post("/session/start", json={"project_id": pid}, headers=auth).json()["session_id"]
+
+    created = client.post(
+        "/diagnosis-jobs/",
+        json={
+            "session_id": sid,
+            "project_id": pid,
+            "answers": [{"module": "market", "facts": {"核心问题": "获客成本高"}, "pains": []}],
+            "problem_map": {"core_problem": "获客成本高", "diagnosis_focus": "market"},
+        },
+        headers=auth,
+    )
+    assert created.status_code == 202
+
+    latest = client.get(f"/diagnosis-jobs/session/{sid}/latest", headers=auth)
+    assert latest.status_code == 200
+    assert latest.json()["id"] == created.json()["job_id"]
+    assert latest.json()["project_id"] == pid
 
 
 def test_job_runs_expert_supplemental_research_and_exposes_review_evidence(db_session, monkeypatch):

@@ -17,6 +17,7 @@ from app.eval.assertions import EvalContext, evaluate_result
 from app.models.questionnaire import ModuleAnswer
 from app.skills.config_loader import CONFIGS_DIR, load_config, load_config_meta
 from app.skills.configured import ConfiguredExpertSkill
+from app.skills.method import compose_preview
 
 TESTS_DIR = CONFIGS_DIR / "_tests"
 EVAL_DIR = CONFIGS_DIR / "_eval"
@@ -37,8 +38,8 @@ async def run_eval(key: str, use_fake: bool = False) -> dict:
 
     industry_kpis = tuple(meta.get("industry_kpis", ()))
     requirements = config.data_requirements
-    # skill prompt 正文 + KPI 词：内含行业基准锚点数字，C2 视为合法来源
-    anchor_text = config.fallback_prompt + " " + " ".join(industry_kpis)
+    # 完整 system prompt（领域切片 + 注入的通用方法）+ KPI 词：内含锚点数字，C2 视为合法来源
+    anchor_text = compose_preview(config.fallback_prompt) + " " + " ".join(industry_kpis)
 
     if use_fake:
         from app.eval._fake_llm import FakeDiagnosisLLM

@@ -1,16 +1,100 @@
 import { type ChangeEvent, useEffect, useRef, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { confirmArchiveFileExtraction, createDiagnosisJob, deleteSessionFile, extractArchiveFile, getBrainstormSession, getProject, getProjectEvidence, patchProject, sendBrainstormMessage, startSession, uploadSessionFile } from "../../api/client";
+import { addArchiveModule, confirmArchiveFileExtraction, createDiagnosisJob, deleteSessionFile, extractArchiveFile, fetchRecord, getBrainstormSession, getDiagnosisJob, getLatestDiagnosisJobForSession, getProject, getProjectEvidence, hideArchiveModule, patchProject, sendBrainstormMessage, startSession, uploadSessionFile } from "../../api/client";
 import { EvidencePackPanel } from "../Evidence/EvidencePackPanel";
 import { Questionnaire } from "../Questionnaire/Questionnaire";
 import type { ProjectChatMode, UploadedChatFile } from "../Questionnaire/ChatStep";
 import { ProjectWorkspaceShell } from "./ProjectWorkspaceShell";
-import type { ArchiveExtractionPreview, ChatMessage, ModuleAnswer, ProblemMap, ProjectArchive, ProjectDetail, ResearchEvidenceOut } from "../../types";
+import type { ArchiveExtractionPreview, ChatMessage, DiagnosisDetail, DiagnosisJobStatus, ModuleAnswer, ProblemMap, ProjectArchive, ProjectDetail, ResearchEvidenceOut } from "../../types";
 import "./ProjectDetailPage.css";
 
 type ProjectPageKey = "start" | "archive" | "brainstorm";
 type ArchiveSectionKey = "modules" | "assets" | "iterations";
 type ChatAttachment = { id: string; name: string };
+type InlineDiagnosisState = {
+  jobId: string;
+  status: "queued" | "researching" | "completed" | "failed" | string;
+  currentStep: string;
+  recordId?: string | null;
+  error?: string | null;
+};
+
+type InlineDiagnosisStage = {
+  key: "collecting_data" | "researching" | "diagnosing" | "composing_war_room" | "pending_review" | "ready";
+  label: string;
+  detail: string;
+  active: boolean;
+};
+
+const TERMINAL_DIAGNOSIS_JOB_STATUSES = new Set(["completed", "pending_review", "anonymous_complete", "failed"]);
+const SUCCESS_DIAGNOSIS_JOB_STATUSES = new Set(["completed", "anonymous_complete"]);
+const REVIEW_DIAGNOSIS_JOB_STATUSES = new Set(["pending_review"]);
+const INLINE_DIAGNOSIS_CACHE_PREFIX = "ruice:inline-diagnosis:";
+
+function inlineDiagnosisCacheKey(projectId: string): string {
+  return `${INLINE_DIAGNOSIS_CACHE_PREFIX}${projectId}`;
+}
+
+function buildInlineDiagnosisStages(status: string, currentStep: string): InlineDiagnosisStage[] {
+  const normalized = `${status} ${currentStep}`;
+  const isCollecting = /collecting_data|合并上传文件|整理资料|资料采集/.test(normalized);
+  const isResearching = /researching|系统预研|补充追搜|外部证据/.test(normalized);
+  const isDiagnosing = /diagnosing|多专家|复判|诊断/.test(normalized);
+  const isComposing = /composing_war_room|作战室草稿|作战室/.test(normalized);
+  const isReview = /pending_review|顾问审核|深度判断/.test(normalized);
+  const isReady = /completed|anonymous_complete/.test(normalized);
+
+  const activeStage = isReady
+    ? "ready"
+    : isReview
+      ? "pending_review"
+      : isComposing
+        ? "composing_war_room"
+        : isDiagnosing
+          ? "diagnosing"
+          : isResearching
+            ? "researching"
+            : "collecting_data";
+
+  return [
+    {
+      key: "collecting_data",
+      label: "资料采集",
+      detail: "整理会话、上传文件和可复用的基础资料。",
+      active: activeStage === "collecting_data",
+    },
+    {
+      key: "researching",
+      label: "外部核验",
+      detail: "抓竞品、行业、政策、新闻和公开页面证据。",
+      active: activeStage === "researching",
+    },
+    {
+      key: "diagnosing",
+      label: "多专家诊断",
+      detail: "并行 skill 交叉比对，形成结论和分歧。",
+      active: activeStage === "diagnosing",
+    },
+    {
+      key: "composing_war_room",
+      label: "作战室生成",
+      detail: "把诊断整理成老板能直接开会的交付。",
+      active: activeStage === "composing_war_room",
+    },
+    {
+      key: "pending_review",
+      label: "顾问判断",
+      detail: "顾问在后台复核证据、结论和动作。",
+      active: activeStage === "pending_review",
+    },
+    {
+      key: "ready",
+      label: "正式交付",
+      detail: "审核通过后，作战室正式可查看。",
+      active: activeStage === "ready",
+    },
+  ];
+}
 
 function InfoTip({ content }: { content: string }) {
   return (
@@ -19,6 +103,43 @@ function InfoTip({ content }: { content: string }) {
       <span className="pd-info-tip__bubble" role="tooltip">{content}</span>
     </span>
   );
+}
+
+function toInlineDiagnosisState(status: DiagnosisJobStatus): InlineDiagnosisState {
+  return {
+    jobId: status.id,
+    status: status.status,
+    currentStep: status.current_step,
+    recordId: status.record_id,
+    error: status.error,
+  };
+}
+
+function readInlineDiagnosisCache(projectId: string): { sessionId?: string; jobId?: string } | null {
+  try {
+    const raw = window.localStorage.getItem(inlineDiagnosisCacheKey(projectId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return typeof parsed === "object" && parsed ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeInlineDiagnosisCache(projectId: string, payload: { sessionId: string; jobId: string }) {
+  try {
+    window.localStorage.setItem(inlineDiagnosisCacheKey(projectId), JSON.stringify(payload));
+  } catch {
+    // localStorage can be unavailable in private windows; backend session binding still works.
+  }
+}
+
+function clearInlineDiagnosisCache(projectId: string) {
+  try {
+    window.localStorage.removeItem(inlineDiagnosisCacheKey(projectId));
+  } catch {
+    // ignore storage failures
+  }
 }
 
 const MODULE_LABELS: Record<string, string> = {
@@ -42,6 +163,35 @@ const ARCHIVE_PROFILE_SEQUENCE = [
 const REQUIRED_ARCHIVE_MODULES = 4;
 const REQUIRED_ARCHIVE_EVIDENCE = 6;
 const REQUIRED_ARCHIVE_ITERATIONS = 3;
+const ARCHIVE_FIELD_LABELS: Record<string, string> = {
+  company_name: "公司名称",
+  industry: "所属行业",
+  main_business: "主营业务",
+  business_model: "商业模式",
+  scale: "规模",
+  stage: "发展阶段",
+  core_problem: "核心问题",
+  goal: "目标",
+  constraints: "约束条件",
+  success_criteria: "成功标准",
+  impact: "业务影响",
+  context: "背景情况",
+  suspected_cause: "疑似原因",
+  tried: "已尝试动作",
+  data_readiness: "可用数据",
+  diagnosis_focus: "优先诊断方向",
+  scenario_label: "业务场景",
+  sub_problems: "子问题",
+};
+
+function archiveFieldLabel(label: string) {
+  const trimmed = label.trim();
+  if (ARCHIVE_FIELD_LABELS[trimmed]) return ARCHIVE_FIELD_LABELS[trimmed];
+  if (/^[A-Za-z][A-Za-z0-9_-]*$/.test(trimmed) && /[_-]/.test(trimmed)) {
+    return trimmed.replace(/[_-]+/g, " ");
+  }
+  return trimmed;
+}
 
 const EMPTY_ARCHIVE: ProjectArchive = {
   profile: [],
@@ -49,10 +199,9 @@ const EMPTY_ARCHIVE: ProjectArchive = {
     { module: "market", label: "市场与客户", facts: [], has_data: false },
     { module: "product", label: "产品与服务", facts: [], has_data: false },
     { module: "sales", label: "销售与增长", facts: [], has_data: false },
-    { module: "ops", label: "运营与供应链", facts: [], has_data: false },
-    { module: "org", label: "组织与人才", facts: [], has_data: false },
-    { module: "finance", label: "财务与资本", facts: [], has_data: false },
   ],
+  recommended_modules: [],
+  hidden_modules: [],
   files: [],
   last_updated: null,
 };
@@ -68,7 +217,12 @@ export function ProjectDetailPage() {
   const pageFromQuery = query.get("page");
   const archiveSectionFromQuery = query.get("section");
   const brainstormIdFromQuery = query.get("brainstormId");
-  const navState = (location.state as { resumeSessionId?: string } | null) ?? {};
+  const navState = (location.state as {
+    resumeSessionId?: string;
+    newConversation?: boolean;
+    rejectedRecordId?: string;
+    initialPrompt?: string;
+  } | null) ?? {};
   const activePage = VALID_PAGES.includes(pageFromQuery as ProjectPageKey)
     ? (pageFromQuery as ProjectPageKey)
     : "start";
@@ -88,6 +242,8 @@ export function ProjectDetailPage() {
   const [inlineResetKey, setInlineResetKey] = useState(0);
   const [inlineError, setInlineError] = useState<string | null>(null);
   const [inlineLoading, setInlineLoading] = useState(false);
+  const [inlineDiagnosis, setInlineDiagnosis] = useState<InlineDiagnosisState | null>(null);
+  const [supplementRecord, setSupplementRecord] = useState<DiagnosisDetail | null>(null);
   const [projectChatMode, setProjectChatMode] = useState<ProjectChatMode>(
     pageFromQuery === "brainstorm" ? "brainstorm" : "consulting"
   );
@@ -105,11 +261,23 @@ export function ProjectDetailPage() {
   const [archiveUploadError, setArchiveUploadError] = useState<string | null>(null);
   const [archiveExtractingFileId, setArchiveExtractingFileId] = useState<string | null>(null);
   const [archiveDeletingFileId, setArchiveDeletingFileId] = useState<string | null>(null);
+  const [archiveAddingModule, setArchiveAddingModule] = useState<string | null>(null);
+  const [archiveHidingModule, setArchiveHidingModule] = useState<string | null>(null);
   const [archiveExtractionDraft, setArchiveExtractionDraft] = useState<ArchiveExtractionPreview | null>(null);
   const [archiveExtractionSummary, setArchiveExtractionSummary] = useState("");
   const [archiveConfirming, setArchiveConfirming] = useState(false);
   const archiveFileInputRef = useRef<HTMLInputElement | null>(null);
   const justSavedBrainstormIdRef = useRef<string | null>(null);
+
+  const restoreInlineDiagnosisFromSession = (sessionId: string, projectId: string) => {
+    getLatestDiagnosisJobForSession(sessionId)
+      .then((status) => {
+        if (!status) return;
+        setInlineDiagnosis(toInlineDiagnosisState(status));
+        writeInlineDiagnosisCache(projectId, { sessionId, jobId: status.id });
+      })
+      .catch(() => {});
+  };
 
   useEffect(() => {
     if (!id) return;
@@ -120,6 +288,40 @@ export function ProjectDetailPage() {
       .then(setEvidencePack)
       .catch((e) => setEvidenceError(e instanceof Error ? e.message : "证据加载失败"));
   }, [id]);
+
+  useEffect(() => {
+    if (!id || inlineDiagnosis) return;
+    const cached = readInlineDiagnosisCache(id);
+    if (!cached?.jobId) return;
+    if (cached.sessionId) setActiveInlineSessionId(cached.sessionId);
+    setInlineDiagnosis({
+      jobId: cached.jobId,
+      status: "queued",
+      currentStep: "正在恢复诊断方案任务",
+    });
+    getDiagnosisJob(cached.jobId)
+      .then((status) => {
+        setInlineDiagnosis(toInlineDiagnosisState(status));
+        if (cached.sessionId) {
+          writeInlineDiagnosisCache(id, { sessionId: cached.sessionId, jobId: status.id });
+        }
+      })
+      .catch(() => {
+        if (cached.sessionId) {
+          restoreInlineDiagnosisFromSession(cached.sessionId, id);
+        } else {
+          clearInlineDiagnosisCache(id);
+          setInlineDiagnosis(null);
+        }
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+  useEffect(() => {
+    if (!id || !activeInlineSessionId || inlineDiagnosis) return;
+    restoreInlineDiagnosisFromSession(activeInlineSessionId, id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, activeInlineSessionId, inlineDiagnosis]);
 
   useEffect(() => {
     setProjectChatMode(pageFromQuery === "brainstorm" ? "brainstorm" : "consulting");
@@ -148,6 +350,54 @@ export function ProjectDetailPage() {
   }, [navState.resumeSessionId]);
 
   useEffect(() => {
+    if (!navState.newConversation || !project?.id) return;
+    resetInlineConversation();
+    if (navState.initialPrompt) {
+      setInlineInitialPrompt(navState.initialPrompt);
+    }
+    if (navState.rejectedRecordId) {
+      setInlineError(null);
+    }
+    navigate(`/projects/${project.id}`, {
+      replace: true,
+      preventScrollReset: true,
+      state: {
+        projectSnapshot: project,
+        newConversation: false,
+        rejectedRecordId: navState.rejectedRecordId,
+        initialPrompt: navState.initialPrompt,
+      },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navState.newConversation, navState.initialPrompt, navState.rejectedRecordId, project?.id]);
+
+  useEffect(() => {
+    if (!navState.rejectedRecordId) {
+      setSupplementRecord(null);
+      return;
+    }
+    let cancelled = false;
+    fetchRecord(navState.rejectedRecordId)
+      .then((record) => {
+        if (!cancelled) setSupplementRecord(record);
+      })
+      .catch(() => {
+        if (!cancelled) setSupplementRecord(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [navState.rejectedRecordId]);
+
+  useEffect(() => {
+    const modules = project?.archive?.modules ?? [];
+    if (modules.length === 0) return;
+    if (!modules.some((module) => module.module === activeArchiveDomain)) {
+      setActiveArchiveDomain(modules[0].module);
+    }
+  }, [activeArchiveDomain, project?.archive?.modules]);
+
+  useEffect(() => {
     if (activePage !== "brainstorm" || !brainstormIdFromQuery) return;
     if (justSavedBrainstormIdRef.current === brainstormIdFromQuery) {
       justSavedBrainstormIdRef.current = null;
@@ -166,6 +416,39 @@ export function ProjectDetailPage() {
       });
     return () => { cancelled = true; };
   }, [activePage, brainstormIdFromQuery]);
+
+  useEffect(() => {
+    if (!project?.id || !inlineDiagnosis?.jobId || TERMINAL_DIAGNOSIS_JOB_STATUSES.has(inlineDiagnosis.status)) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const poll = async () => {
+      try {
+        const status = await getDiagnosisJob(inlineDiagnosis.jobId);
+        if (cancelled) return;
+        setInlineDiagnosis(toInlineDiagnosisState(status));
+        if (TERMINAL_DIAGNOSIS_JOB_STATUSES.has(status.status)) {
+          getProject(project.id).then(setProject).catch(() => {});
+          return;
+        }
+        timer = setTimeout(poll, 3500);
+      } catch (e) {
+        if (!cancelled) {
+          setInlineDiagnosis((current) => current ? {
+            ...current,
+            status: "failed",
+            error: e instanceof Error ? e.message : "诊断方案状态获取失败",
+          } : current);
+        }
+      }
+    };
+
+    timer = setTimeout(poll, 1800);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [inlineDiagnosis?.jobId, inlineDiagnosis?.status, project?.id]);
 
   const fmtDate = (iso: string) => new Date(iso).toLocaleDateString("zh-CN");
   const fmtDateTime = (iso: string) => new Date(iso).toLocaleString("zh-CN");
@@ -187,6 +470,8 @@ export function ProjectDetailPage() {
     setInlineInitialPrompt(undefined);
     setActiveInlineSessionId(sessionId);
     setInlineError(null);
+    setInlineDiagnosis(null);
+    restoreInlineDiagnosisFromSession(sessionId, project.id);
   };
   const submitInlineDiagnosis = async (
     answers: ModuleAnswer[],
@@ -200,11 +485,42 @@ export function ProjectDetailPage() {
     try {
       const targetProjectId = pid ?? project.id;
       const job = await createDiagnosisJob(answers, sessionId, targetProjectId, problemMap);
+      if (sessionId) {
+        setActiveInlineSessionId(sessionId);
+        writeInlineDiagnosisCache(targetProjectId, { sessionId, jobId: job.job_id });
+      }
+      setInlineDiagnosis({
+        jobId: job.job_id,
+        status: job.status,
+        currentStep: "资料已提交，正在启动深度尽调",
+      });
       navigate(`/projects/${targetProjectId}`, {
         replace: true,
         state: { deliveryStatus: "researching", jobId: job.job_id },
       });
       getProject(targetProjectId).then(setProject).catch(() => {});
+    } catch (e) {
+      setInlineError(e instanceof Error ? e.message : "创建诊断任务失败");
+    } finally {
+      setInlineLoading(false);
+    }
+  };
+  const startInlineDiagnosisPlan = async (problemMap: ProblemMap, sessionId: string) => {
+    setInlineLoading(true);
+    setInlineError(null);
+    try {
+      const job = await createDiagnosisJob([], sessionId, project.id, problemMap);
+      writeInlineDiagnosisCache(project.id, { sessionId, jobId: job.job_id });
+      setInlineDiagnosis({
+        jobId: job.job_id,
+        status: job.status,
+        currentStep: "资料已提交，正在启动深度尽调",
+      });
+      navigate(`/projects/${project.id}`, {
+        replace: true,
+        state: { deliveryStatus: "researching", jobId: job.job_id },
+      });
+      getProject(project.id).then(setProject).catch(() => {});
     } catch (e) {
       setInlineError(e instanceof Error ? e.message : "创建诊断任务失败");
     } finally {
@@ -233,6 +549,8 @@ export function ProjectDetailPage() {
     setActiveInlineSessionId(undefined);
     setInlineInitialPrompt(undefined);
     setInlineError(null);
+    setInlineDiagnosis(null);
+    clearInlineDiagnosisCache(project.id);
     setInlineResetKey((key) => key + 1);
   };
   const openArchiveFilePicker = (target?: { moduleKey?: string; fieldKey?: string }) => {
@@ -292,6 +610,39 @@ export function ProjectDetailPage() {
       setArchiveUploadError(e instanceof Error ? e.message : "删除资料失败");
     } finally {
       setArchiveDeletingFileId(null);
+    }
+  };
+  const enableArchiveModule = async (module: string, label: string) => {
+    if (isArchived || archiveAddingModule) return;
+    setArchiveUploadError(null);
+    setArchiveAddingModule(module);
+    try {
+      const nextArchive = await addArchiveModule(project.id, { module, label });
+      setProject((current) => current ? { ...current, archive: nextArchive } : current);
+      setActiveArchiveDomain(module);
+      setOpenModule(null);
+    } catch (e) {
+      setArchiveUploadError(e instanceof Error ? e.message : "新增经营域失败");
+    } finally {
+      setArchiveAddingModule(null);
+    }
+  };
+  const hideArchiveDomain = async (module: string) => {
+    if (isArchived || archiveHidingModule) return;
+    setArchiveUploadError(null);
+    setArchiveHidingModule(module);
+    try {
+      const nextArchive = await hideArchiveModule(project.id, module);
+      setProject((current) => current ? { ...current, archive: nextArchive } : current);
+      const nextActive = nextArchive.modules.find((item) => item.module !== module)?.module;
+      if (activeArchiveDomain === module && nextActive) {
+        setActiveArchiveDomain(nextActive);
+      }
+      setOpenModule(null);
+    } catch (e) {
+      setArchiveUploadError(e instanceof Error ? e.message : "隐藏经营域失败");
+    } finally {
+      setArchiveHidingModule(null);
     }
   };
   const updateExtractionHighlight = (index: number, key: "label" | "value", value: string) => {
@@ -420,8 +771,9 @@ export function ProjectDetailPage() {
   const archiveCompleteness = Math.min(96, Math.round(rawArchiveCompleteness * 100));
   const archiveModuleSnapshots = archive.modules.map((module) => ({
     ...module,
-    preview: module.facts.slice(0, 3),
-    remainder: module.facts.slice(3),
+    facts: module.facts.map((fact) => ({ ...fact, label: archiveFieldLabel(fact.label) })),
+    preview: module.facts.slice(0, 3).map((fact) => ({ ...fact, label: archiveFieldLabel(fact.label) })),
+    remainder: module.facts.slice(3).map((fact) => ({ ...fact, label: archiveFieldLabel(fact.label) })),
   }));
   const archiveDomainCards = archiveModuleSnapshots.map((module) => {
     const moduleFiles = archive.files.filter((file) => file.module === module.module);
@@ -432,6 +784,8 @@ export function ProjectDetailPage() {
     };
   });
   const activeArchiveDomainCard = archiveDomainCards.find((module) => module.module === activeArchiveDomain) ?? archiveDomainCards[0];
+  const recommendedArchiveModules = archive.recommended_modules ?? [];
+  const hiddenArchiveModules = archive.hidden_modules ?? [];
   const archiveActiveModules = archiveModuleSnapshots.filter((module) => module.has_data).length;
   const archiveSectionCards = [
     {
@@ -473,6 +827,46 @@ export function ProjectDetailPage() {
       { preventScrollReset: true }
     );
   };
+  const inlineDiagnosisReady = inlineDiagnosis ? SUCCESS_DIAGNOSIS_JOB_STATUSES.has(inlineDiagnosis.status) : false;
+  const inlineDiagnosisInReview = inlineDiagnosis ? REVIEW_DIAGNOSIS_JOB_STATUSES.has(inlineDiagnosis.status) : false;
+  const inlineDiagnosisStages = inlineDiagnosis ? buildInlineDiagnosisStages(inlineDiagnosis.status, inlineDiagnosis.currentStep) : [];
+  const inlineDiagnosisNotice = inlineDiagnosis ? (
+    <div className={inlineDiagnosisReady ? "project-diagnosis-inline-status is-ready" : inlineDiagnosis.status === "failed" ? "project-diagnosis-inline-status is-error" : inlineDiagnosisInReview ? "project-diagnosis-inline-status is-review" : "project-diagnosis-inline-status"}>
+      <div className="project-diagnosis-inline-status__copy">
+        <span>
+          {inlineDiagnosisReady
+            ? "正式作战室已生成，可以查看交付。"
+            : inlineDiagnosis.status === "failed"
+              ? `诊断方案生成失败：${inlineDiagnosis.error || "请稍后重试"}`
+              : inlineDiagnosisInReview
+                ? "资料与证据已整理完成，顾问正在深度判断中。"
+                : "正在基于你的问题定制诊断方案…（这需要几分钟）"}
+        </span>
+        <small>
+          {inlineDiagnosisReady
+            ? "如果你还想继续追问，可以直接在当前会话里补充。"
+            : inlineDiagnosisInReview
+              ? "你可以继续对话，系统会继续保留问题地图并更新资料。"
+              : "你可以继续输入，系统会先把资料采集和外部核验跑完。"}
+        </small>
+      </div>
+      {(inlineDiagnosisReady || inlineDiagnosisInReview) && (
+        <button type="button" onClick={() => navigate(`/projects/${project.id}/war-room`)}>
+          {inlineDiagnosisReady ? "查看作战室" : "查看进度"}
+        </button>
+      )}
+      {!inlineDiagnosisReady && !inlineDiagnosisInReview && (
+        <div className="project-diagnosis-inline-status__stages" aria-label="诊断流程">
+          {inlineDiagnosisStages.map((stage) => (
+            <span key={stage.key} className={stage.active ? "is-active" : ""}>
+              <strong>{stage.label}</strong>
+              <em>{stage.detail}</em>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  ) : null;
 
   return (
     <ProjectWorkspaceShell
@@ -504,15 +898,24 @@ export function ProjectDetailPage() {
           aria-label="新对话"
         >
           <section className="project-chat-console">
-            {inlineLoading && <p className="project-inline-state">诊断任务创建中，正在进入深度尽调…</p>}
             {inlineError && <p className="project-inline-state project-inline-state--error">{inlineError}</p>}
             {needsSupplement && (
               <button
                 type="button"
                 className="project-supplement-link"
-                onClick={() => navigate(`/projects/${project.id}/diagnose`, {
-                  state: { projectId: project.id, rejectedRecordId: latestRejectedRecord?.id },
-                })}
+                onClick={() => {
+                  resetInlineConversation();
+                  setInlineInitialPrompt("顾问已打回，请根据顾问意见补充资料并重新诊断。");
+                  navigate(`/projects/${project.id}`, {
+                    preventScrollReset: true,
+                    state: {
+                      projectSnapshot: project,
+                      newConversation: true,
+                      rejectedRecordId: latestRejectedRecord?.id,
+                      initialPrompt: "顾问已打回，请根据顾问意见补充资料并重新诊断。",
+                    },
+                  });
+                }}
                 disabled={isArchived}
               >
                 顾问已打回，点击补充资料再诊断。
@@ -523,10 +926,13 @@ export function ProjectDetailPage() {
               onSubmit={submitInlineDiagnosis}
               projectId={project.id}
               resumeSessionId={activeInlineSessionId}
+              supplementRecord={supplementRecord}
               initialPrompt={inlineInitialPrompt}
               variant="project-inline"
               projectMode={projectChatMode}
               onProjectModeChange={changeProjectChatMode}
+              inputNotice={inlineDiagnosisNotice}
+              diagnosisPlanActive={Boolean(inlineDiagnosis)}
               brainstormMessages={brainstormMessages}
               brainstormDraft={brainstormDraft}
               brainstormLoading={brainstormLoading}
@@ -535,6 +941,7 @@ export function ProjectDetailPage() {
               onBrainstormDraftChange={setBrainstormDraft}
               onBrainstormSend={(attachments?: UploadedChatFile[]) => void sendBrainstorm(attachments ?? [])}
               onBrainstormContextChange={setBrainstormUseProjectContext}
+              onProblemMapConfirmed={startInlineDiagnosisPlan}
             />
           </section>
         </div>
@@ -636,22 +1043,72 @@ export function ProjectDetailPage() {
                   </div>
                 </div>
               </div>
+              {recommendedArchiveModules.length > 0 && (
+                <div className="project-archive-module-suggestions" aria-label="建议新增经营域">
+                  <span>建议新增</span>
+                  <div>
+                    {recommendedArchiveModules.map((module) => (
+                      <button
+                        key={module.module}
+                        type="button"
+                        onClick={() => void enableArchiveModule(module.module, module.label)}
+                        disabled={isArchived || archiveAddingModule === module.module}
+                        title={module.reason || undefined}
+                      >
+                        {archiveAddingModule === module.module ? "加入中..." : module.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="project-archive-domain-tabs" aria-label="经营领域">
                 {archiveDomainCards.map((module) => (
-                  <button
+                  <div
                     key={module.module}
-                    type="button"
-                    className={activeArchiveDomainCard?.module === module.module ? "project-archive-domain-tab is-active" : "project-archive-domain-tab"}
-                    onClick={() => {
-                      setActiveArchiveDomain(module.module);
-                      setOpenModule(null);
-                    }}
+                    className={activeArchiveDomainCard?.module === module.module ? "project-archive-domain-chip is-active" : "project-archive-domain-chip"}
                   >
-                    <span>{module.label}</span>
-                    <em>{module.facts.length} 数据 · {module.files.length} 资料</em>
-                  </button>
+                    <button
+                      type="button"
+                      className="project-archive-domain-tab"
+                      onClick={() => {
+                        setActiveArchiveDomain(module.module);
+                        setOpenModule(null);
+                      }}
+                    >
+                      <span>{module.label}</span>
+                      <em>{module.facts.length} 数据 · {module.files.length} 资料</em>
+                    </button>
+                    <button
+                      type="button"
+                      className="project-archive-domain-hide"
+                      onClick={() => void hideArchiveDomain(module.module)}
+                      disabled={isArchived || archiveHidingModule === module.module}
+                      aria-label="隐藏此经营域"
+                      title={`隐藏 ${module.label}`}
+                    >
+                      ×
+                    </button>
+                  </div>
                 ))}
               </div>
+              {hiddenArchiveModules.length > 0 && (
+                <div className="project-archive-hidden-modules" aria-label="已隐藏经营域">
+                  <span>已隐藏</span>
+                  <div>
+                    {hiddenArchiveModules.map((module) => (
+                      <button
+                        key={module.module}
+                        type="button"
+                        onClick={() => void enableArchiveModule(module.module, module.label)}
+                        disabled={isArchived || archiveAddingModule === module.module}
+                        title={`点击恢复 ${module.label}`}
+                      >
+                        {archiveAddingModule === module.module ? "处理中..." : module.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               {activeArchiveDomainCard && (() => {
                 const module = activeArchiveDomainCard;
                 const isOpen = openModule === module.module;

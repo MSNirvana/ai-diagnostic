@@ -10,6 +10,7 @@ from app.models.questionnaire import ModuleAnswer
 from app.models.result import DataRequest, ModuleResult
 from app.skills.base import Skill
 from app.skills.evidence import build_evidence_package
+from app.skills.method import compose_system_prompt
 from app.skills.parsing import parse_json_object, to_actions, to_drilldown, to_evidence
 from app.skills.scenario_catalog import detect_business_scenario, render_problem_text
 from app.skills.store import get_active_skill_version
@@ -52,7 +53,10 @@ class ConfiguredExpertSkill(Skill):
         session: AsyncSession | None = None,
     ) -> tuple[ModuleResult, str]:
         skill_ver = await get_active_skill_version(session, self.module)
-        system_prompt = skill_ver.system_prompt if skill_ver else self.config.fallback_prompt
+        domain_prompt = skill_ver.system_prompt if skill_ver else self.config.fallback_prompt
+        # 注入通用诊断方法（脑子，本身是可版本化的 DB skill）：领域切片在前，通用方法+输出契约在后。
+        # 单一来源、可在后台升级，改一处全局诊断生效。
+        system_prompt = await compose_system_prompt(domain_prompt, session)
         version_id = skill_ver.id if skill_ver else "fallback"
         evidence_skill_ver = await get_active_skill_version(session, "evidence_confidence")
         evidence_skill_version_id = evidence_skill_ver.id if evidence_skill_ver else "fallback"

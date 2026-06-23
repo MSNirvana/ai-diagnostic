@@ -412,6 +412,12 @@ export interface ModuleFacts {
   has_data: boolean;
 }
 
+export interface ArchiveModuleOption {
+  module: string;
+  label: string;
+  reason?: string;
+}
+
 export interface ArchiveFile {
   id: string;
   name: string;
@@ -435,6 +441,8 @@ export interface ArchiveExtractionPreview {
 export interface ProjectArchive {
   profile: ProfileField[];
   modules: ModuleFacts[];
+  recommended_modules?: ArchiveModuleOption[];
+  hidden_modules?: ArchiveModuleOption[];
   files: ArchiveFile[];
   last_updated: string | null;
 }

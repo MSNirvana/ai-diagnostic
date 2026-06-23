@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { Questionnaire } from "../src/components/Questionnaire/Questionnaire";
-import { sessionChat, startSession, uploadSessionFile } from "../src/api/client";
+import { getSessionDetail, sessionChat, startSession, uploadSessionFile } from "../src/api/client";
 import { formatChatBlocks } from "../src/components/Questionnaire/ChatStep";
 
 const fakeModule = {
@@ -56,6 +56,7 @@ vi.mock("../src/api/client", () => ({
   })),
   deleteSessionFile: vi.fn(async () => {}),
   getSessionDetail: vi.fn(),
+  listSessionFiles: vi.fn(async () => []),
   generateFromSummary: vi.fn(async () => ({
     modules: [fakeModule],
   })),
@@ -147,6 +148,45 @@ describe("Questionnaire conversation flow", () => {
     expect(screen.getByRole("dialog", { name: "问题地图" })).toBeTruthy();
     expect(screen.getAllByText("92/100").length).toBeGreaterThan(0);
     expect(screen.getByText("核心问题")).toBeTruthy();
+    expect(screen.getByText("获客成本翻倍")).toBeTruthy();
+  });
+
+  it("诊断任务启动后仍从会话历史恢复并展示问题地图", async () => {
+    vi.mocked(getSessionDetail).mockResolvedValueOnce({
+      id: "sess-with-map",
+      created_at: "2026-06-23T00:00:00Z",
+      updated_at: "2026-06-23T00:00:00Z",
+      title: "获客成本翻倍",
+      status: "diagnosed",
+      messages: [
+        { role: "user", content: "获客成本越来越高" },
+        { role: "assistant", content: "我已经整理出问题地图。" },
+      ],
+      problem_map: fakeProblemMap,
+      diagnosis_record_id: null,
+      draft_json: null,
+      memory_enabled: true,
+    });
+
+    render(
+      <MemoryRouter>
+        <Questionnaire
+          onSubmit={vi.fn()}
+          projectId="proj-1"
+          variant="project-inline"
+          resumeSessionId="sess-with-map"
+          diagnosisPlanActive
+        />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /问题地图/ })).toBeTruthy());
+    expect(screen.getByText("获客成本越来越高")).toBeTruthy();
+    expect(screen.queryByText("确认无误，开始诊断")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /问题地图/ }));
+    expect(screen.getByRole("dialog", { name: "问题地图" })).toBeTruthy();
+    expect(screen.getAllByText("92/100").length).toBeGreaterThan(0);
     expect(screen.getByText("获客成本翻倍")).toBeTruthy();
   });
 
