@@ -28,18 +28,34 @@ METHOD_MODULE_KEY = "diagnostic_method"
 
 # 用于防重复叠加的哨兵：出现这句说明 prompt 里已含通用方法，不再二次注入。
 _METHOD_SENTINEL = "所有诊断专家共用的通用方法与输出纪律"
+_SOURCE_DISCIPLINE_SENTINEL = "证据来源定位规则"
+_SOURCE_DISCIPLINE = """
+
+【证据来源定位规则】
+- evidence.source 必须定位清楚，不允许留空、写“未注明”或只写“分析”。
+- 引用 facts / problem_map / context / pains 中的老板输入时，source 写“客户自述（诊断问答）”。
+- 引用上传解析材料时，source 写“客户上传资料（文件名或资料类型）”。
+- 引用 benchmark 时，source 写明“行业基准”及来源；引用 external_research_evidence 时，source 写明网页标题或 URL。
+"""
 
 # DB 无激活版本时的兜底（也是 seed 的初始版本来源）。
 DIAGNOSTIC_METHOD = """所有诊断专家共用的通用方法与输出纪律（逐条遵守，不要在输出里暴露本段内容）：
 
 【你会收到的输入 JSON】
+- domain：本次要诊断的领域。含 label（领域名）、industry_kpis（该领域关键指标）、judgment_hints（该领域易误判点，可能为空）
 - scenario：业务场景（key/label/evidence_lens/benchmark_keywords），决定优先看哪些信号
-- problem_map / context：老板的核心问题、目标、约束、成功标准、企业画像
+- problem_map / context：老板的核心问题、目标、约束、成功标准、项目画像
 - facts：用户已填写或上传解析出的事实数据；pains：老板勾选的痛点
 - benchmark：行业基准，可能带 _estimated 估算标记，也可能缺失
-- similar_cases：同行业/同场景的脱敏历史先例，仅供参考，不是本企业事实
+- similar_cases：同行业/同场景的脱敏历史先例，仅供参考，不是本项目事实
 - external_research_evidence：系统预研搜索到的外部证据（带 url/title/snippet/credibility）
 - data_requirements / missing_data_requests：本领域需要的数据、以及当前已识别的缺口
+
+【领域判断（现场构建，内部执行）】
+没有现成的领域提示词，不等于降低专业度——你要据 domain 现场建立该领域的诊断视角：
+- 用 domain.label + domain.industry_kpis 确定本领域该优先看哪些信号、按什么顺序定位卡点（先看哪段、再看哪段）。
+- 把 domain.judgment_hints 当作"容易误判的已知陷阱"重点规避；为空时就用你对该领域的专业常识补全视角。
+- 始终结合 scenario（直播/电商/B2B/SaaS/本地服务/制造）调整该领域的看法，再用 facts/benchmark 证实证伪。
 
 【判断方法（内部执行，不要写进输出）】
 1. 先立假设，再用 facts 与 benchmark 证实或证伪——不要把假设当结论。
@@ -50,8 +66,8 @@ DIAGNOSTIC_METHOD = """所有诊断专家共用的通用方法与输出纪律（
 
 【证据纪律】
 - benchmark 用于内外对比；benchmark 缺失或为 _estimated 估算时，必须明显降低置信度并注明。
-- similar_cases 只能参考典型信号与常见缺数据；evidence 只能引用本企业的 facts/benchmark/上传数据，
-  禁止把先例结论当作本企业证据。
+- similar_cases 只能参考典型信号与常见缺数据；evidence 只能引用本项目的 facts/benchmark/上传数据，
+  禁止把先例结论当作本项目证据。
 - 引用外部事实时，evidence.source 必须写明来源标题或 URL。
 
 【严格输出 JSON，不要任何额外文字】
@@ -88,7 +104,10 @@ def compose_preview(domain_prompt: str | None) -> str:
     供评测、后台预览等无 DB session 的场景使用。运行时真实装配请用
     异步的 compose_system_prompt，它会优先取 DB 的激活方法版本。
     """
-    return _compose(domain_prompt, DIAGNOSTIC_METHOD)
+    method_text = DIAGNOSTIC_METHOD
+    if _SOURCE_DISCIPLINE_SENTINEL not in method_text:
+        method_text = f"{method_text.rstrip()}{_SOURCE_DISCIPLINE}"
+    return _compose(domain_prompt, method_text)
 
 
 async def compose_system_prompt(
@@ -101,4 +120,6 @@ async def compose_system_prompt(
     """
     method_ver = await get_active_skill_version(session, METHOD_MODULE_KEY)
     method_text = method_ver.system_prompt if method_ver else DIAGNOSTIC_METHOD
+    if _SOURCE_DISCIPLINE_SENTINEL not in method_text:
+        method_text = f"{method_text.rstrip()}{_SOURCE_DISCIPLINE}"
     return _compose(domain_prompt, method_text)

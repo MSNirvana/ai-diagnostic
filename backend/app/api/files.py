@@ -5,8 +5,11 @@
 """
 import os
 import json
+import mimetypes
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -55,6 +58,17 @@ async def _check_session(session: AsyncSession, session_id: str, user: User | No
     if s.user_id is not None and (user is None or s.user_id != user.id):
         raise HTTPException(status_code=404, detail="会话不存在")
     return s
+
+
+async def _get_accessible_file(file_id: str, user: User | None, session: AsyncSession) -> UploadedFile:
+    f = await session.get(UploadedFile, file_id)
+    if f is None:
+        raise HTTPException(status_code=404, detail="文件不存在")
+    if f.user_id is not None and (user is None or f.user_id != user.id):
+        raise HTTPException(status_code=404, detail="文件不存在")
+    if not f.stored_path or not os.path.exists(f.stored_path):
+        raise HTTPException(status_code=404, detail="文件不存在")
+    return f
 
 
 @router.post("/session/{session_id}/files", response_model=UploadedFileOut, status_code=201)
@@ -126,3 +140,25 @@ async def delete_file(
         pass
     await session.delete(f)
     await session.commit()
+
+
+@router.get("/files/{file_id}/content")
+async def get_file_content(
+    file_id: str,
+    download: bool = Query(False),
+    user: User | None = Depends(get_optional_user),
+    session: AsyncSession = Depends(get_session),
+) -> FileResponse:
+    f = await _get_accessible_file(file_id, user, session)
+    media_type = mimetypes.guess_type(f.original_name)[0] or "application/octet-stream"
+    disposition_type = "attachment" if download else "inline"
+    quoted_name = quote(f.original_name)
+    headers = {
+        "Content-Disposition": f"{disposition_type}; filename*=UTF-8''{quoted_name}",
+    }
+    return FileResponse(
+        f.stored_path,
+        media_type=media_type,
+        filename=f.original_name if download else None,
+        headers=headers,
+    )

@@ -31,11 +31,68 @@ class ExpertConfig:
     module: str
     method: str
     label: str
-    fallback_prompt: str
+    fallback_prompt: str  # 诊断域为空：判断由 diagnostic_method 脑子按 domain 数据现场生成
     data_requirements: tuple[DataRequirement, ...] = ()
     scenarios: tuple[str, ...] = ()
     scenario_notes: dict[str, str] = None  # type: ignore[assignment]
     additional_fields: tuple[str, ...] = ()
+    # 域数据注册表：注入给脑子现场构建领域视角（零 prose 的来源）
+    industry_kpis: tuple[str, ...] = ()
+    judgment_hints: tuple[str, ...] = ()
+
+
+_CARD_KEYS = ("industry_kpis", "judgment_hints", "data_requirements")
+
+
+def serialize_card(config: ExpertConfig) -> dict:
+    """把一张诊断卡的可治理数据（KPI/避坑提示/取数项）导出成 JSON，供后台编辑/版本化。"""
+    return {
+        "industry_kpis": list(config.industry_kpis),
+        "judgment_hints": list(config.judgment_hints),
+        "data_requirements": [
+            {
+                "key": req.key,
+                "label": req.label,
+                "reason": req.reason,
+                "source_hint": req.source_hint,
+                "keywords": list(req.keywords),
+                "required": req.required,
+            }
+            for req in config.data_requirements
+        ],
+    }
+
+
+def card_from_version(system_prompt: str | None) -> dict | None:
+    """DB 版本里若存的是「卡片数据」JSON 则解析返回；否则（prose/空/坏 JSON）返回 None。"""
+    text = (system_prompt or "").strip()
+    if not text or text[0] != "{":
+        return None
+    try:
+        data = json.loads(text)
+    except Exception:  # noqa: BLE001
+        return None
+    if isinstance(data, dict) and any(k in data for k in _CARD_KEYS):
+        return data
+    return None
+
+
+def card_requirements(card: dict) -> tuple[DataRequirement, ...]:
+    out: list[DataRequirement] = []
+    for req in card.get("data_requirements") or []:
+        if not isinstance(req, dict) or not req.get("key") or not req.get("label"):
+            continue
+        out.append(
+            DataRequirement(
+                key=str(req["key"]),
+                label=str(req["label"]),
+                reason=str(req.get("reason", "")),
+                source_hint=str(req.get("source_hint", "")),
+                keywords=tuple(req.get("keywords", ()) or ()),
+                required=bool(req.get("required", True)),
+            )
+        )
+    return tuple(out)
 
 
 class ConfiguredExpertSkill(Skill):
@@ -53,11 +110,18 @@ class ConfiguredExpertSkill(Skill):
         session: AsyncSession | None = None,
     ) -> tuple[ModuleResult, str]:
         skill_ver = await get_active_skill_version(session, self.module)
-        domain_prompt = skill_ver.system_prompt if skill_ver else self.config.fallback_prompt
+        # 诊断卡：DB 激活版本若存「卡片数据」JSON（kpis/避坑提示/取数项），则覆盖文件默认——
+        # 后台可改/留痕/回滚。卡片版本零 prose（判断仍由脑子生成）；非卡片文本走 prose 逃生通道。
+        card = card_from_version(skill_ver.system_prompt) if skill_ver else None
+        domain_prompt = "" if card is not None else (
+            skill_ver.system_prompt if skill_ver else self.config.fallback_prompt
+        )
         # 注入通用诊断方法（脑子，本身是可版本化的 DB skill）：领域切片在前，通用方法+输出契约在后。
-        # 单一来源、可在后台升级，改一处全局诊断生效。
         system_prompt = await compose_system_prompt(domain_prompt, session)
         version_id = skill_ver.id if skill_ver else "fallback"
+        card_kpis = card["industry_kpis"] if card and isinstance(card.get("industry_kpis"), list) else list(self.config.industry_kpis)
+        card_hints = card["judgment_hints"] if card and isinstance(card.get("judgment_hints"), list) else list(self.config.judgment_hints)
+        card_reqs = card_requirements(card) if card and card.get("data_requirements") is not None else self.config.data_requirements
         evidence_skill_ver = await get_active_skill_version(session, "evidence_confidence")
         evidence_skill_version_id = evidence_skill_ver.id if evidence_skill_ver else "fallback"
 
@@ -83,7 +147,7 @@ class ConfiguredExpertSkill(Skill):
             industry=answer.context.get("industry", ""),
             scenario_key=scenario.key,
         )
-        data_requests = missing_data_requests(answer, self.config.data_requirements)
+        data_requests = missing_data_requests(answer, card_reqs)
         external_research = _research_for_module(
             answer.context.get("research_evidence", []),
             self.module,
@@ -91,6 +155,12 @@ class ConfiguredExpertSkill(Skill):
         prompt = json.dumps(
             {
                 "module": self.module,
+                # 域数据注册表：脑子据此现场构建领域诊断视角（零 prose）。卡片数据可被 DB 版本覆盖。
+                "domain": {
+                    "label": self.config.label,
+                    "industry_kpis": list(card_kpis),
+                    "judgment_hints": list(card_hints),
+                },
                 "scenario": {
                     "key": scenario.key,
                     "label": scenario.label,
@@ -111,9 +181,9 @@ class ConfiguredExpertSkill(Skill):
                 "similar_cases": similar_cases,
                 "similar_cases_usage": (
                     "以上 similar_cases 是同行业/同场景的脱敏历史诊断先例，"
-                    "仅供参考典型信号与常见缺数据，不是本企业的事实。"
-                    "可借鉴判断方向，但 evidence 只能来自本企业 facts/上传数据，"
-                    "禁止把先例结论当作本企业证据引用。"
+                    "仅供参考典型信号与常见缺数据，不是本项目的事实。"
+                    "可借鉴判断方向，但 evidence 只能来自本项目 facts/上传数据，"
+                    "禁止把先例结论当作本项目证据引用。"
                 ) if similar_cases else "",
                 "data_requirements": [
                     {
@@ -123,7 +193,7 @@ class ConfiguredExpertSkill(Skill):
                         "source_hint": req.source_hint,
                         "required": req.required,
                     }
-                    for req in self.config.data_requirements
+                    for req in card_reqs
                 ],
                 "missing_data_requests": [req.model_dump() for req in data_requests],
             },

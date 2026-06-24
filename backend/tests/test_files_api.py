@@ -56,6 +56,17 @@ def test_upload_list_delete_file(db_session):
     assert len(files) == 1
     assert files[0]["original_name"] == "sales.csv"
 
+    # 原始文件可在线查看，也可按原文件下载
+    inline = client.get(f"/files/{file_id}/content", headers=auth)
+    assert inline.status_code == 200
+    assert inline.content == csv
+    assert "inline" in inline.headers["content-disposition"]
+
+    downloaded = client.get(f"/files/{file_id}/content?download=true", headers=auth)
+    assert downloaded.status_code == 200
+    assert downloaded.content == csv
+    assert "attachment" in downloaded.headers["content-disposition"]
+
     # 删除
     assert client.delete(f"/files/{file_id}", headers=auth).status_code == 204
     assert len(client.get(f"/session/{sid}/files", headers=auth).json()) == 0

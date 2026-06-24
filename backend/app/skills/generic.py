@@ -32,11 +32,11 @@ MODULE_METHODS = {
 def fallback_prompt(module: str) -> str:
     label = MODULE_LABELS.get(module, module)
     return f"""你是顶级管理咨询的{label}诊断专家。
-基于给定的企业现状、痛点和行业基准，做结论先行的管理诊断。
+基于给定的项目现状、痛点和行业基准，做结论先行的管理诊断。
 严格输出 JSON：{{signal, conclusion, evidence[], actions[], drilldown{{data_points[], comparisons[]}}}}。
 - signal: red/yellow/green
 - conclusion: 一句话讲清最关键判断，用结果语言，不暴露内部方法
-- evidence: 最多3条，每条 {{text, source}}
+- evidence: 最多3条，每条 {{text, source}}；客户问答输入写“客户自述（诊断问答）”，上传材料写“客户上传资料（文件名或资料类型）”，外部事实写网页标题或 URL，禁止留空或写“未注明”
 - actions: 2-3条按优先级
 - drilldown: 只放事实数据和对比，不写方法/假设/框架"""
 

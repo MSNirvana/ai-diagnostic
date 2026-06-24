@@ -12,11 +12,13 @@ from app.db.models import SkillVersion
 
 
 class SpyLLM:
-    """记录收到的 system prompt，用于断言用了哪份。"""
+    """记录收到的 system / user prompt，用于断言用了哪份。"""
     seen_system = ""
+    seen_prompt = ""
 
     async def complete(self, system: str, prompt: str) -> str:
         SpyLLM.seen_system = system
+        SpyLLM.seen_prompt = prompt
         return json.dumps({
             "signal": "green",
             "conclusion": "ok",
@@ -56,4 +58,6 @@ async def test_skill_falls_back_without_active_version(db_session):
             ModuleAnswer(module="market", pains=["x"]), llm=SpyLLM(), session=session
         )
     assert version_id == "fallback"
-    assert "市场与客户诊断专家" in SpyLLM.seen_system   # 用了代码兜底
+    # 诊断域零 prose：兜底 system 就是纯脑子；领域身份改从 user prompt 的 domain 块进。
+    assert _METHOD_SENTINEL in SpyLLM.seen_system
+    assert "市场与客户" in SpyLLM.seen_prompt

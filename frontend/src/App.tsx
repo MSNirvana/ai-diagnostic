@@ -7,6 +7,7 @@ import { ProjectWarRoomPage } from "./components/Project/ProjectWarRoomPage";
 import { RecordDetailPage } from "./components/Project/RecordDetailPage";
 import { AdminPage } from "./components/Admin/AdminPage";
 import { FreeChatPage } from "./components/FreeChat/FreeChatPage";
+import { PublicSupplementPage } from "./components/Supplement/PublicSupplementPage";
 import "./App.css";
 
 function ProjectDiagnoseRedirect() {
@@ -31,6 +32,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/supplement/:token" element={<PublicSupplementPage />} />
       <Route
         path="/projects"
         element={

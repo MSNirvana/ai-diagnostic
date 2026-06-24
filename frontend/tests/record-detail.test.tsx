@@ -69,6 +69,16 @@ vi.mock("../src/api/client", () => ({
       { window: "30d", title: "30 天验收与转向", checks: ["目标是否改善"] },
     ],
   })),
+  listWarRoomFeedback: vi.fn(async () => []),
+  submitWarRoomFeedback: vi.fn(async (_projectId: string, body: any) => ({
+    id: "fb-1",
+    project_id: "proj-1",
+    created_at: "2026-06-23T00:00:00Z",
+    ...body,
+    note: body.note ?? "",
+    owner: body.owner ?? "",
+    attachments: body.attachments ?? [],
+  })),
   fetchRecord: vi.fn(async () => ({
     id: "rec-1",
     created_at: "2026-06-13T00:00:00Z",
@@ -150,17 +160,16 @@ describe("RecordDetailPage", () => {
     await waitFor(() =>
     expect(screen.getAllByText("本轮经营会先围绕销售承接链路定动作。").length).toBeGreaterThan(0)
     );
-    expect(screen.getAllByText("老板作战室").length).toBeGreaterThan(0);
-    expect(screen.getByText("当前生效版本 · V1")).toBeTruthy();
-    expect(screen.getAllByText("V1").length).toBeGreaterThan(0);
-    expect(screen.getByText("本次会议先处理")).toBeTruthy();
-    expect(screen.getByText("查看拍板事项")).toBeTruthy();
-    expect(screen.queryByText("作战室迭代轨迹")).toBeNull();
+    expect(screen.getByText("项目总览")).toBeTruthy();
+    expect(screen.getByText(/咨询把握度/)).toBeTruthy();
+    expect(screen.getByText("当前第 1 版")).toBeTruthy();
+    expect(screen.getByText("查看全部建议")).toBeTruthy();
+    expect(screen.queryByText("历史版本")).toBeNull();
   });
 
   it("opens a project war room functional section", async () => {
     render(
-      <MemoryRouter initialEntries={["/projects/proj-1/war-room/view/iterations"]}>
+      <MemoryRouter initialEntries={["/projects/proj-1/war-room/view/review"]}>
         <Routes>
           <Route
             path="/projects/:projectId/war-room/view/:section"
@@ -170,9 +179,9 @@ describe("RecordDetailPage", () => {
       </MemoryRouter>
     );
 
-    await waitFor(() => expect(screen.getByText("作战室迭代轨迹")).toBeTruthy());
+    await waitFor(() => expect(screen.getAllByText("历史版本").length).toBeGreaterThan(0));
     expect(screen.getByText("返回作战室总览")).toBeTruthy();
-    expect(screen.getByText(/V1 · 第 1 轮 · 当前生效/)).toBeTruthy();
+    expect(screen.getByText(/第 1 版 · 当前/)).toBeTruthy();
     expect(screen.getByText("本轮经营会先围绕销售承接链路定动作。")).toBeTruthy();
   });
 });

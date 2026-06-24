@@ -1,7 +1,7 @@
 """parse_json_object 加固测试：真实 LLM 输出的常见毛病应被修复或如实暴露。"""
 import pytest
 
-from app.skills.parsing import parse_json_object
+from app.skills.parsing import parse_json_object, to_evidence
 
 
 def test_plain_json():
@@ -35,3 +35,17 @@ def test_unescaped_inner_quote_raises_honestly():
     # 字符串内未转义双引号无法安全自动修复，应如实抛错而非静默返回错误结构
     with pytest.raises(Exception):
         parse_json_object('{"c": "他说"你好"就走了"}')
+
+
+def test_to_evidence_defaults_missing_source_to_customer_self_report():
+    evidence = to_evidence({"text": "20 个注册用户主要来自创始人朋友圈。"})
+
+    assert evidence.text == "20 个注册用户主要来自创始人朋友圈。"
+    assert evidence.source == "客户自述（诊断问答）"
+
+
+def test_to_evidence_accepts_chinese_source_fields():
+    evidence = to_evidence({"内容": "公开招商页强调回本周期。", "来源": "官网招商页"})
+
+    assert evidence.text == "公开招商页强调回本周期。"
+    assert evidence.source == "官网招商页"

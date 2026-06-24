@@ -1,13 +1,18 @@
 from app.skills.configured import ConfiguredExpertSkill, DataRequirement, ExpertConfig
-from app.skills.prompts import OPS_DIAGNOSIS
 
 
+# 诊断判断由 diagnostic_method 脑子按 domain 数据现场生成；本域只提供数据骨架（零 prose）。
 OPS_CONFIG = ExpertConfig(
     module="ops",
     method="operations-evidence",
     label="运营与供应链",
-    fallback_prompt=OPS_DIAGNOSIS,
+    fallback_prompt="",
     scenarios=("manufacturing", "local_service", "ecommerce_retail", "b2b_solution"),
+    industry_kpis=("库存周转", "交付准时率", "产能利用率", "履约时效", "良率", "缺货率"),
+    judgment_hints=(
+        "先定位瓶颈在排产/履约/库存/供应稳定/异常返工哪一段。",
+        "制造看产能利用率/良率/排产/交付准时率；电商/零售看履约时效/缺货/退货/仓配成本；本地服务看门店执行一致性与区域波动。",
+    ),
     data_requirements=(
         DataRequirement(
             key="process_metrics",

@@ -150,8 +150,11 @@ def test_compose_war_room_plan_maps_actions_gaps_priorities_and_checkpoints():
     assert plan.department_actions[0].risk_note
     assert plan.department_actions[0].confidence_reason == "样本覆盖核心链路"
     assert "拉取近 30 天推广账号数据" in plan.priority_board.now
-    assert "设置两周投放预算红线" in plan.priority_board.soon
-    assert "保持交付排期周检查" in plan.priority_board.later
+    # A：作战室只放有真信号(red)的域出部门卡；yellow(finance)/green(ops) 不再各摊一张卡，
+    #    它们的缺数据归到「待补数据」与风险提示，避免一摊无关作业。
+    assert {action.department for action in plan.department_actions} == {"market"}
+    assert "设置两周投放预算红线" not in plan.priority_board.soon
+    assert "保持交付排期周检查" not in plan.priority_board.later
     assert [checkpoint.window for checkpoint in plan.checkpoints] == ["7d", "14d", "30d"]
     assert any("推广账号数据" in risk for risk in plan.risk_summary)
 

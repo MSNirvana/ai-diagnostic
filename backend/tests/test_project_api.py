@@ -251,6 +251,147 @@ def test_project_war_room_is_one_project_state_with_iterations(db_session):
     assert "条沉淀" in project_plan["accumulation_note"]
 
 
+def test_war_room_stage_feedback_writes_event_and_memory(db_session):
+    from app.config import get_llm_client
+
+    app.dependency_overrides[get_llm_client] = lambda: DiagLLM()
+    token = _register("war-room-feedback@b.com")
+    auth = {"Authorization": f"Bearer {token}"}
+    pid = client.post("/project/", json={"name": "阶段反馈项目"}, headers=auth).json()["id"]
+
+    diagnosis = client.post(
+        "/diagnose",
+        json={
+            "answers": [{"module": "market", "facts": {}, "pains": ["获客贵"]}],
+            "project_id": pid,
+            "problem_map": {"diagnosis_focus": "market", "goal": "降低获客成本"},
+        },
+        headers=auth,
+    ).json()
+    app.dependency_overrides.pop(get_llm_client, None)
+
+    client.post(
+        f"/admin/review/{diagnosis['record_id']}",
+        json={"action": "approve", "reviewer": "顾问A"},
+    )
+    plan = client.get(f"/project/{pid}/war-room", headers=auth).json()
+
+    resp = client.post(
+        f"/project/{pid}/war-room/feedback",
+        headers=auth,
+        json={
+            "war_room_plan_id": plan["id"],
+            "record_id": plan["record_id"],
+            "card_type": "decision",
+            "card_id": "decision:0:清理低效渠道",
+            "card_title": "清理低效渠道",
+            "adoption_status": "adopted",
+            "feedback_result": "new_issue",
+            "owner": "老板本人",
+            "note": "线索量下降，但质量变好，需要重判投放预算。",
+        },
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["adoption_status"] == "adopted"
+    assert body["feedback_result"] == "new_issue"
+    assert body["owner"] == "老板本人"
+
+    rows = client.get(f"/project/{pid}/war-room/feedback", headers=auth).json()
+    assert len(rows) == 1
+    assert rows[0]["card_title"] == "清理低效渠道"
+
+    detail = client.get(f"/project/{pid}", headers=auth).json()
+    memory = [e for e in detail["memory_entries"] if e["entry_type"] == "war_room_feedback"]
+    assert memory
+    assert "阶段反馈：已采纳" in memory[0]["summary"]
+    assert "出现新问题" in memory[0]["summary"]
+    assert "需要重判投放预算" in memory[0]["summary"]
+
+
+def test_public_data_supplement_link_accepts_repeat_uploads(db_session):
+    from app.config import get_llm_client
+
+    app.dependency_overrides[get_llm_client] = lambda: DiagLLM()
+    token = _register("supplement-link@b.com")
+    auth = {"Authorization": f"Bearer {token}"}
+    pid = client.post("/project/", json={"name": "补资料链接项目"}, headers=auth).json()["id"]
+
+    diagnosis = client.post(
+        "/diagnose",
+        json={
+            "answers": [{"module": "market", "facts": {}, "pains": ["获客贵"]}],
+            "project_id": pid,
+            "problem_map": {"diagnosis_focus": "market", "goal": "降低获客成本"},
+        },
+        headers=auth,
+    ).json()
+    app.dependency_overrides.pop(get_llm_client, None)
+    client.post(
+        f"/admin/review/{diagnosis['record_id']}",
+        json={"action": "approve", "reviewer": "顾问A"},
+    )
+    plan = client.get(f"/project/{pid}/war-room", headers=auth).json()
+
+    created = client.post(
+        f"/data-supplement/project/{pid}/requests",
+        headers=auth,
+        json={
+            "war_room_plan_id": plan["id"],
+            "data_request": {
+                "key": "ad_report",
+                "label": "近90天投放报表",
+                "reason": "核验真实获客成本",
+                "source_hint": "投放后台导出",
+                "required": True,
+                "typical_owner": "投放负责人",
+            },
+        },
+    )
+    assert created.status_code == 201
+    public = created.json()
+    assert public["public_url"].startswith("/supplement/")
+    public_token = public["token"]
+
+    submit = client.post(
+        f"/data-supplement/public/{public_token}/submit",
+        data={"submitter_name": "投放负责人", "note": "先上传最近 30 天，90 天还在导出。"},
+        files={"files": ("ad.csv", io.BytesIO("date,cost\n2026-06,100".encode("utf-8")), "text/csv")},
+    )
+    assert submit.status_code == 201
+    assert submit.json()["files"][0]["original_name"] == "ad.csv"
+
+    second = client.post(
+        f"/data-supplement/public/{public_token}/submit",
+        data={"submitter_name": "投放负责人", "note": "补充90天完整说明。"},
+    )
+    assert second.status_code == 201
+
+    public_after = client.get(f"/data-supplement/public/{public_token}")
+    assert public_after.status_code == 200
+    assert len(public_after.json()["submissions"]) == 2
+    assert public_after.json()["submissions"][0]["note"] == "补充90天完整说明。"
+
+    owner_view = client.get(f"/data-supplement/project/{pid}/requests", headers=auth)
+    assert owner_view.status_code == 200
+    first_file = owner_view.json()[0]["submissions"][1]["files"][0]
+    assert first_file["original_name"] == "ad.csv"
+    assert first_file["is_deleted"] is False
+
+    deleted = client.delete(
+        f"/data-supplement/project/{pid}/requests/{public['id']}/submissions/{owner_view.json()[0]['submissions'][1]['id']}/files/{first_file['id']}",
+        headers=auth,
+    )
+    assert deleted.status_code == 200
+    deleted_submission = deleted.json()["submissions"][1]
+    assert deleted_submission["files"][0]["original_name"] == "ad.csv"
+    assert deleted_submission["files"][0]["is_deleted"] is True
+
+    detail = client.get(f"/project/{pid}", headers=auth).json()
+    assert any("补充资料" in entry["summary"] for entry in detail["memory_entries"])
+    assert any("补资料文件已删除留痕" in entry["summary"] for entry in detail["memory_entries"])
+
+
 def test_feedback_writes_project_memory(db_session):
     from app.config import get_llm_client
     app.dependency_overrides[get_llm_client] = lambda: DiagLLM()

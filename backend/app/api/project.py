@@ -4,6 +4,7 @@
 随时间持续更新——这是从一次性诊断走向持续诊断的载体。
 """
 import json
+import mimetypes
 import re
 from datetime import datetime, timezone
 
@@ -15,7 +16,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.jwt import get_current_user
 from app.config import get_llm_client
 from app.db.database import get_session
-from app.db.models import User, Project, BrainstormSession, DiagnosisSession, DiagnosisRecord, ProjectMemoryEntry, UploadedFile
+from app.db.models import (
+    User,
+    Project,
+    BrainstormSession,
+    DiagnosisSession,
+    DiagnosisRecord,
+    ProjectMemoryEntry,
+    UploadedFile,
+    WarRoomFeedbackEvent,
+)
+from app.memory.project_memory import append_memory_entry
 from app.memory.session_visibility import is_meaningful_session
 from app.memory.session_title import display_session_title
 from app.llm.base import LLMClient
@@ -105,6 +116,7 @@ ARCHIVE_MODULES: list[tuple[str, str]] = [
     ("manufacturing", "生产制造"),
     ("service_delivery", "交付与售后"),
     ("data_systems", "数据系统"),
+    ("retention_churn", "留存与流失"),
     ("tax", "税务合规"),
     ("ip", "知识产权"),
     ("ecommerce", "电商与内容"),
@@ -124,6 +136,7 @@ ARCHIVE_MODULE_KEYWORDS: dict[str, tuple[str, ...]] = {
     "manufacturing": ("生产", "制造", "工厂", "产能", "代工", "品控", "良率", "设备"),
     "service_delivery": ("售后", "安装", "维修", "客服", "培训", "履约", "交付"),
     "data_systems": ("数据", "系统", "crm", "erp", "后台", "看板", "埋点", "投放账号"),
+    "retention_churn": ("留存", "流失", "复购", "续费", "退订", "召回", "生命周期", "沉默用户"),
     "tax": ("税务", "发票", "税负", "进项", "销项", "税筹"),
     "ip": ("专利", "商标", "著作权", "知识产权", "侵权"),
     "ecommerce": ("抖音", "快手", "小红书", "淘宝", "天猫", "京东", "视频号", "内容", "直播"),
@@ -139,9 +152,9 @@ ARCHIVE_DEFAULT_RECOMMENDED_MODULES = (
 )
 ARCHIVE_IGNORED_MODULES = ("conversation", "uploaded_context", "misc", "profile", "supplement")
 
-# 企业画像字段（problem_map 里的英文 key → 中文 label），固定展示顺序
+# 项目画像字段（problem_map 里的英文 key → 中文 label），固定展示顺序
 PROFILE_FIELDS: list[tuple[str, str]] = [
-    ("company_name", "公司名称"),
+    ("company_name", "项目/品牌名称"),
     ("industry", "所属行业"),
     ("main_business", "主营业务"),
     ("business_model", "商业模式"),
@@ -172,6 +185,8 @@ ARCHIVE_FIELD_LABELS: dict[str, str] = {
 class ProfileField(BaseModel):
     label: str
     value: str
+    display: dict | None = None
+    source_labels: list[str] = []
 
 
 class ModuleFacts(BaseModel):
@@ -193,8 +208,12 @@ class ArchiveFile(BaseModel):
     module: str
     field: str
     uploaded_at: datetime
+    content_type: str = ""
+    media_type: str = ""
     extraction_status: str = "none"
     extracted_highlights: list[ProfileField] = []
+    preview_text: str = ""
+    preview_blocks: list[dict] = []
 
 
 class ArchiveExtractionPreview(BaseModel):
@@ -245,8 +264,14 @@ def _build_archive(
     enabled_from_memory: dict[str, str] = {}
     hidden_from_memory: dict[str, str] = {}
     module_visibility_seen: set[str] = set()
+    refined_source_ids: set[str] = {
+        entry.source_id
+        for entry in (archive_memory_entries or [])
+        if entry.entry_type == "archive_refinement" and entry.source_id
+    }
 
     for record in records:  # 已是 created_at desc
+        use_raw_answer_facts = record.id not in refined_source_ids
         try:
             payload = json.loads(record.answers_json)
         except (ValueError, TypeError):
@@ -267,6 +292,8 @@ def _build_archive(
             if not module:
                 continue
             record_modules.add(module)
+            if not use_raw_answer_facts:
+                continue
             facts = answer.get("facts") or {}
             if not isinstance(facts, dict):
                 continue
@@ -281,17 +308,25 @@ def _build_archive(
                     bucket[label] = value
                     project_text_parts.append(f"{key} {value}")
 
-    def merge_highlights(module_key: str, highlights: list[ProfileField]) -> None:
+    fact_meta_raw: dict[str, dict[str, dict]] = {}
+
+    def merge_highlights(module_key: str, highlights: list[ProfileField], *, display_hints: list[dict] | None = None) -> None:
         if module_key == "profile":
             for item in highlights:
                 if item.label not in profile_raw and item.value.strip():
                     profile_raw[item.label] = item.value.strip()
             return
         bucket = module_facts_raw.setdefault(module_key, {})
-        for item in highlights:
+        meta_bucket = fact_meta_raw.setdefault(module_key, {})
+        for index, item in enumerate(highlights):
             label = _archive_field_label(item.label)
             if label not in bucket and item.value.strip():
                 bucket[label] = item.value.strip()
+                display = item.display or ((display_hints or [])[index] if index < len(display_hints or []) else None)
+                meta_bucket[label] = {
+                    "display": display,
+                    "source_labels": item.source_labels,
+                }
 
     # 文件删除后，已确认沉淀的结构化事实仍应从项目长期记忆中保留。
     for entry in sorted(archive_memory_entries or [], key=_archive_entry_sort_key, reverse=True):
@@ -311,14 +346,15 @@ def _build_archive(
                     continue
                 enabled_from_memory[module_key] = label or _archive_module_label(module_key)
             continue
-        if entry.entry_type != "archive_file_extract":
+        if entry.entry_type not in {"archive_file_extract", "archive_refinement"}:
             continue
         module_key = str(payload.get("module") or "").strip()
         if not module_key:
             continue
         highlights = _load_archive_highlights_from_payload(payload)
         if highlights:
-            merge_highlights(module_key, highlights)
+            display_hints = payload.get("display_hints") if entry.entry_type == "archive_refinement" else None
+            merge_highlights(module_key, highlights, display_hints=display_hints if isinstance(display_hints, list) else None)
             project_text_parts.extend(f"{item.label} {item.value}" for item in highlights)
 
     # 兼容历史数据：没有长期记忆的已确认文件重点，也纳入长期档案。
@@ -368,7 +404,16 @@ def _build_archive(
     for module in enabled_modules:
         label = enabled_from_memory.get(module) or _archive_module_label(module)
         bucket = module_facts_raw.get(module, {})
-        facts = [ProfileField(label=k, value=v) for k, v in bucket.items()]
+        meta_bucket = fact_meta_raw.get(module, {})
+        facts = [
+            ProfileField(
+                label=k,
+                value=v,
+                display=meta_bucket.get(k, {}).get("display"),
+                source_labels=meta_bucket.get(k, {}).get("source_labels") or [],
+            )
+            for k, v in bucket.items()
+        ]
         modules.append(
             ModuleFacts(module=module, label=label, facts=facts, has_data=bool(facts))
         )
@@ -380,8 +425,12 @@ def _build_archive(
             module=f.module_key,
             field=f.field_key,
             uploaded_at=f.created_at,
+            content_type=_archive_file_content_type(f.parsed_summary),
+            media_type=mimetypes.guess_type(f.original_name)[0] or "",
             extraction_status=f.archive_extraction_status or "none",
             extracted_highlights=_load_archive_highlights(f.archive_extraction_json),
+            preview_text=_render_archive_file_preview_text(f.parsed_summary),
+            preview_blocks=_render_archive_file_preview_blocks(f.parsed_summary),
         )
         for f in sorted(files, key=lambda x: x.created_at, reverse=True)
     ]
@@ -436,6 +485,52 @@ class ProjectEvidenceOut(BaseModel):
     retrieved_at: str
 
 
+class WarRoomFeedbackEventOut(BaseModel):
+    id: str
+    project_id: str
+    user_id: str | None = None
+    created_at: datetime
+    war_room_plan_id: str
+    record_id: str | None = None
+    card_type: str
+    card_id: str
+    card_title: str
+    adoption_status: str
+    feedback_result: str
+    note: str = ""
+    owner: str = ""
+    attachments: list[str] = []
+
+
+class WarRoomFeedbackCreateRequest(BaseModel):
+    war_room_plan_id: str
+    record_id: str | None = None
+    card_type: str = "decision"
+    card_id: str
+    card_title: str
+    adoption_status: str = "pending"
+    feedback_result: str = "none"
+    note: str = ""
+    owner: str = ""
+    attachments: list[str] = []
+
+
+ADOPTION_STATUS_LABELS = {
+    "pending": "待确认",
+    "adopted": "已采纳",
+    "deferred": "暂缓",
+    "rejected": "不采纳",
+}
+FEEDBACK_RESULT_LABELS = {
+    "none": "暂未反馈效果",
+    "effective": "有效",
+    "no_change": "无明显变化",
+    "new_issue": "出现新问题",
+    "insufficient_data": "数据不足",
+}
+VALID_CARD_TYPES = {"decision", "action", "review"}
+
+
 @router.post("/", response_model=ProjectSummary, status_code=201)
 async def create_project(
     body: CreateProjectRequest,
@@ -460,6 +555,7 @@ async def list_projects(
     stmt = (
         select(Project)
         .where(Project.user_id == user.id)
+        .where(Project.status != "deleted")
         .order_by(Project.updated_at.desc())
     )
     rows = (await session.scalars(stmt)).all()
@@ -705,7 +801,7 @@ async def add_archive_module(
 
     module = body.module.strip()
     if not module:
-        raise HTTPException(status_code=400, detail="经营域不能为空")
+        raise HTTPException(status_code=400, detail="数据板块不能为空")
     label = (body.label or _archive_module_label(module)).strip() or _archive_module_label(module)
 
     visibility_stmt = (
@@ -729,7 +825,7 @@ async def add_archive_module(
         project_id=project_id,
         user_id=user.id,
         entry_type="archive_module_enabled",
-        summary=f"启用经营域：{label}",
+        summary=f"启用数据板块：{label}",
         payload_json=json.dumps({"module": module, "label": label}, ensure_ascii=False),
         source_id=None,
     )
@@ -798,6 +894,102 @@ async def get_project_war_room(
     return plan
 
 
+@router.get("/{project_id}/war-room/feedback", response_model=list[WarRoomFeedbackEventOut])
+async def list_project_war_room_feedback(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> list[WarRoomFeedbackEventOut]:
+    p = await session.get(Project, project_id)
+    if p is None or p.user_id != user.id:
+        raise HTTPException(status_code=404, detail="项目不存在")
+
+    stmt = (
+        select(WarRoomFeedbackEvent)
+        .where(WarRoomFeedbackEvent.project_id == project_id)
+        .order_by(WarRoomFeedbackEvent.created_at.desc())
+    )
+    rows = list((await session.scalars(stmt)).all())
+    return [_feedback_event_out(row) for row in rows]
+
+
+@router.post("/{project_id}/war-room/feedback", response_model=WarRoomFeedbackEventOut, status_code=201)
+async def create_project_war_room_feedback(
+    project_id: str,
+    body: WarRoomFeedbackCreateRequest,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> WarRoomFeedbackEventOut:
+    p = await session.get(Project, project_id)
+    if p is None or p.user_id != user.id:
+        raise HTTPException(status_code=404, detail="项目不存在")
+
+    card_type = body.card_type.strip() or "decision"
+    if card_type not in VALID_CARD_TYPES:
+        raise HTTPException(status_code=400, detail="反馈对象无效")
+    adoption_status = body.adoption_status.strip() or "pending"
+    if adoption_status not in ADOPTION_STATUS_LABELS:
+        raise HTTPException(status_code=400, detail="采纳状态无效")
+    feedback_result = body.feedback_result.strip() or "none"
+    if feedback_result not in FEEDBACK_RESULT_LABELS:
+        raise HTTPException(status_code=400, detail="反馈结果无效")
+
+    plan_id = body.war_room_plan_id.strip()
+    card_id = body.card_id.strip()
+    card_title = body.card_title.strip()
+    if not plan_id or not card_id or not card_title:
+        raise HTTPException(status_code=400, detail="反馈缺少作战室卡片信息")
+
+    current_plan = await get_or_build_project_war_room_plan(session, p)
+    if current_plan is None:
+        raise HTTPException(status_code=404, detail="作战室尚未建立")
+    if current_plan.id != plan_id:
+        raise HTTPException(status_code=409, detail="作战室版本已更新，请刷新后再反馈")
+
+    attachments = [str(item).strip() for item in body.attachments if str(item).strip()][:8]
+    event = WarRoomFeedbackEvent(
+        project_id=project_id,
+        user_id=user.id,
+        war_room_plan_id=plan_id,
+        record_id=(body.record_id or current_plan.record_id or "").strip() or None,
+        card_type=card_type,
+        card_id=card_id,
+        card_title=card_title[:120],
+        adoption_status=adoption_status,
+        feedback_result=feedback_result,
+        note=body.note.strip()[:1200],
+        owner=body.owner.strip()[:80],
+        attachments_json=json.dumps(attachments, ensure_ascii=False),
+    )
+    session.add(event)
+
+    await append_memory_entry(
+        session,
+        project_id=project_id,
+        entry_type="war_room_feedback",
+        summary=_war_room_feedback_summary(event),
+        payload={
+            "war_room_plan_id": event.war_room_plan_id,
+            "record_id": event.record_id,
+            "card_type": event.card_type,
+            "card_id": event.card_id,
+            "card_title": event.card_title,
+            "adoption_status": event.adoption_status,
+            "adoption_status_label": ADOPTION_STATUS_LABELS[event.adoption_status],
+            "feedback_result": event.feedback_result,
+            "feedback_result_label": FEEDBACK_RESULT_LABELS[event.feedback_result],
+            "note": event.note,
+            "owner": event.owner,
+            "attachments": attachments,
+        },
+        user_id=user.id,
+        source_id=event.id,
+    )
+    await session.commit()
+    await session.refresh(event)
+    return _feedback_event_out(event)
+
+
 @router.get("/{project_id}/evidence", response_model=list[ProjectEvidenceOut])
 async def get_project_evidence(
     project_id: str,
@@ -841,7 +1033,7 @@ async def patch_project(
         raise HTTPException(status_code=404, detail="项目不存在")
     if body.name is not None:
         p.name = body.name.strip() or p.name
-    if body.status is not None and body.status in ("active", "archived"):
+    if body.status is not None and body.status in ("active", "archived", "deleted"):
         p.status = body.status
     p.updated_at = _now()
     session.add(p)
@@ -905,6 +1097,15 @@ async def _load_project_archive(session: AsyncSession, project_id: str) -> Proje
 def _archive_module_label(module: str) -> str:
     if module in ARCHIVE_MODULE_LABELS:
         return ARCHIVE_MODULE_LABELS[module]
+    known_labels = {
+        "retention_churn": "留存与流失",
+        "private_traffic": "私域运营",
+        "acquisition_efficiency": "获客效率",
+        "pricing_power": "定价能力",
+        "cash_runway": "现金安全",
+    }
+    if module in known_labels:
+        return known_labels[module]
     cleaned = re.sub(r"[_-]+", " ", module).strip()
     return cleaned or module
 
@@ -1027,7 +1228,13 @@ def _load_archive_highlights(raw: str | None) -> list[ProfileField]:
         label = str(item.get("label") or "").strip()
         value = str(item.get("value") or "").strip()
         if label and value:
-            highlights.append(ProfileField(label=label, value=value))
+            display = item.get("display") if isinstance(item.get("display"), dict) else None
+            source_labels = [
+                str(source).strip()
+                for source in (item.get("source_labels") or [])
+                if str(source).strip()
+            ] if isinstance(item.get("source_labels"), list) else []
+            highlights.append(ProfileField(label=label, value=value, display=display, source_labels=source_labels))
     return highlights
 
 
@@ -1042,7 +1249,13 @@ def _load_archive_highlights_from_payload(payload: dict) -> list[ProfileField]:
         label = str(item.get("label") or "").strip()
         value = str(item.get("value") or "").strip()
         if label and value:
-            highlights.append(ProfileField(label=label, value=value))
+            display = item.get("display") if isinstance(item.get("display"), dict) else None
+            source_labels = [
+                str(source).strip()
+                for source in (item.get("source_labels") or [])
+                if str(source).strip()
+            ] if isinstance(item.get("source_labels"), list) else []
+            highlights.append(ProfileField(label=label, value=value, display=display, source_labels=source_labels))
     return highlights
 
 
@@ -1059,7 +1272,7 @@ async def _extract_file_highlights(
             "file_name": uploaded.original_name,
             "parsed_summary": raw_summary,
             "task": (
-                "请根据当前经营模块，提炼这个文件里最适合沉淀到企业档案的重点事实。"
+                "请根据当前经营模块，提炼这个文件里最适合沉淀到项目档案的重点事实。"
                 "只保留稳定、可复用、偏事实的信息，不要写建议、判断或营销话术。"
             ),
         },
@@ -1087,6 +1300,149 @@ def _load_uploaded_parsed_summary(raw: str) -> dict:
         return parsed if isinstance(parsed, dict) else {"raw": parsed}
     except (TypeError, ValueError):
         return {"raw": str(raw or "")}
+
+
+def _archive_file_content_type(raw: str) -> str:
+    summary = _load_uploaded_parsed_summary(raw)
+    return str(summary.get("content_type") or "").strip()
+
+
+def _render_archive_file_preview_blocks(raw: str) -> list[dict]:
+    summary = _load_uploaded_parsed_summary(raw)
+    preview_blocks = summary.get("preview_blocks")
+    if isinstance(preview_blocks, list):
+        blocks = [_normalize_archive_preview_block(item) for item in preview_blocks]
+        blocks = [item for item in blocks if item]
+        if blocks:
+            return blocks[:1000]
+    paragraphs = summary.get("paragraphs")
+    if isinstance(paragraphs, list):
+        blocks = [_text_archive_preview_block(str(item), index) for index, item in enumerate(paragraphs)]
+        blocks = [item for item in blocks if item.get("text")]
+        if blocks:
+            return blocks[:1000]
+    text = str(summary.get("text") or summary.get("extraction_note") or "").strip()
+    if text:
+        blocks = [_text_archive_preview_block(item, index) for index, item in enumerate(re.split(r"\n+", text)) if item.strip()]
+        return blocks[:1000] if blocks else [{"type": "paragraph", "text": text[:80000]}]
+    if summary.get("content_type") == "table":
+        columns = "、".join(map(str, summary.get("columns") or [])) or "未识别"
+        rows = summary.get("preview_rows") or []
+        parts: list[dict] = [{"type": "paragraph", "text": f"表格共 {summary.get('row_count', 0)} 行；字段：{columns}。"}]
+        if rows:
+            table_rows = [list(map(str, (summary.get("columns") or [])))]
+            for row in rows[:20]:
+                if isinstance(row, dict):
+                    table_rows.append([str(row.get(col, "")) for col in summary.get("columns") or row.keys()])
+            if len(table_rows) > 1:
+                parts.append({"type": "table", "rows": table_rows})
+            else:
+                parts.append({"type": "paragraph", "text": f"前几行样例：{json.dumps(rows[:5], ensure_ascii=False)}"})
+        return parts
+    return [{"type": "paragraph", "text": "当前文件已保存原件，但没有可展示的文本预览。可下载原件查看完整内容。"}]
+
+
+def _render_archive_file_preview_text(raw: str) -> str:
+    lines: list[str] = []
+    for block in _render_archive_file_preview_blocks(raw):
+        if block.get("type") == "table":
+            for row in block.get("rows") or []:
+                if isinstance(row, list):
+                    lines.append(" | ".join(str(cell) for cell in row))
+            continue
+        text = str(block.get("text") or "").strip()
+        if text:
+            lines.append(text)
+    return "\n".join(lines)[:80000]
+
+
+def _normalize_archive_preview_block(item: object) -> dict:
+    if isinstance(item, str):
+        return _text_archive_preview_block(item, 0)
+    if not isinstance(item, dict):
+        return {}
+    block_type = str(item.get("type") or "paragraph").strip() or "paragraph"
+    if block_type == "table":
+        rows: list[list[str]] = []
+        for row in item.get("rows") or []:
+            if isinstance(row, list):
+                cells = [str(cell).strip() for cell in row]
+                if any(cells):
+                    rows.append(cells)
+        return {"type": "table", "rows": rows[:80]} if rows else {}
+    text = str(item.get("text") or "").strip()
+    if not text:
+        return {}
+    if block_type not in {"title", "heading", "paragraph"}:
+        block_type = "paragraph"
+    level = item.get("level")
+    return {
+        "type": block_type,
+        "text": text,
+        "level": int(level) if isinstance(level, int | float) else _guess_archive_heading_level(text, 0),
+    }
+
+
+def _text_archive_preview_block(text: str, index: int) -> dict:
+    clean = str(text or "").strip()
+    if not clean:
+        return {}
+    if index == 0 and len(clean) <= 80:
+        return {"type": "title", "text": clean, "level": 1}
+    if re.match(r"^[一二三四五六七八九十]+[、.．]\s*", clean):
+        return {"type": "heading", "text": clean, "level": 2}
+    if re.match(r"^\d+(?:\.\d+)+\s+", clean):
+        return {"type": "heading", "text": clean, "level": 3}
+    return {"type": "paragraph", "text": clean}
+
+
+def _guess_archive_heading_level(text: str, fallback: int) -> int:
+    if re.match(r"^[一二三四五六七八九十]+[、.．]\s*", text):
+        return 2
+    if re.match(r"^\d+(?:\.\d+)+\s+", text):
+        return 3
+    return fallback or 4
+
+
+def _feedback_event_out(event: WarRoomFeedbackEvent) -> WarRoomFeedbackEventOut:
+    try:
+        attachments = json.loads(event.attachments_json or "[]")
+    except (TypeError, ValueError):
+        attachments = []
+    if not isinstance(attachments, list):
+        attachments = []
+    return WarRoomFeedbackEventOut(
+        id=event.id,
+        project_id=event.project_id,
+        user_id=event.user_id,
+        created_at=event.created_at,
+        war_room_plan_id=event.war_room_plan_id,
+        record_id=event.record_id,
+        card_type=event.card_type,
+        card_id=event.card_id,
+        card_title=event.card_title,
+        adoption_status=event.adoption_status,
+        feedback_result=event.feedback_result,
+        note=event.note,
+        owner=event.owner,
+        attachments=[str(item) for item in attachments if str(item).strip()],
+    )
+
+
+def _war_room_feedback_summary(event: WarRoomFeedbackEvent) -> str:
+    adoption = ADOPTION_STATUS_LABELS.get(event.adoption_status, event.adoption_status)
+    result = FEEDBACK_RESULT_LABELS.get(event.feedback_result, event.feedback_result)
+    title = event.card_title.strip(" ；;，,")
+    parts = [f"阶段反馈：{adoption}「{title}」", f"现场结果：{result}"]
+    if event.owner:
+        parts.append(f"反馈人/负责人：{event.owner}")
+    if event.note:
+        note = event.note.strip()
+        if note[-1:] not in "。！？.!?":
+            note = f"{note}。"
+        parts.append(f"说明：{note}")
+    summary = "；".join(parts).strip()
+    return summary if summary.endswith(("。", "！", "？", ".", "!", "?")) else f"{summary}。"
 
 
 async def _append_archive_memory_entry(

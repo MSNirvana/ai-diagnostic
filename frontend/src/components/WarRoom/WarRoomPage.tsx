@@ -1,10 +1,8 @@
 import type { WarRoomPlan } from "../../types";
-import { BattleChainPanel } from "./BattleChainPanel";
 import { DecisionBoard } from "./DecisionBoard";
 import { DepartmentActionGrid } from "./DepartmentActionGrid";
 import { EvidenceRiskPanel } from "./EvidenceRiskPanel";
 import { PriorityTimeline } from "./PriorityTimeline";
-import { ReviewCadencePanel } from "./ReviewCadencePanel";
 import { WarRoomHeader } from "./WarRoomHeader";
 import "./WarRoomPage.css";
 import { cleanDisplayText } from "../../utils/displayText";
@@ -21,20 +19,16 @@ export function WarRoomPage({ plan, showIterations = false }: WarRoomPageProps) 
 
       <div className="war-room__top-grid">
         <DecisionBoard items={plan.decision_items} />
-        <BattleChainPanel chain={plan.battle_chain} />
       </div>
 
       <DepartmentActionGrid actions={plan.department_actions} />
       <PriorityTimeline board={plan.priority_board} />
 
-      <div className="war-room__bottom-grid">
-        <EvidenceRiskPanel
-          evidence={plan.evidence_summary}
-          risks={plan.risk_summary}
-          dataGaps={plan.data_gaps}
-        />
-        <ReviewCadencePanel checkpoints={plan.checkpoints} />
-      </div>
+      <EvidenceRiskPanel
+        evidence={plan.evidence_summary}
+        risks={plan.risk_summary}
+        dataGaps={plan.data_gaps}
+      />
 
       {showIterations && <WarRoomIterations plan={plan} />}
     </section>
@@ -47,13 +41,13 @@ export function WarRoomIterations({ plan }: { plan: WarRoomPlan }) {
   const totalVersions = plan.iteration_count ?? iterations.length;
 
   return (
-    <section className="war-panel war-iterations" aria-label="作战室迭代轨迹">
+    <section className="war-panel war-iterations" aria-label="历史版本">
       <div className="war-panel__heading">
         <div>
-          <span>Iteration Trail</span>
-          <h3>作战室迭代轨迹</h3>
+          <span>历史版本</span>
+          <h3>历史版本</h3>
         </div>
-        <strong>当前生效版本 V{totalVersions}</strong>
+        <strong>当前第 {totalVersions} 版</strong>
       </div>
       <div className="war-iteration-list">
         {iterations.map((item, index) => {
@@ -65,7 +59,7 @@ export function WarRoomIterations({ plan }: { plan: WarRoomPlan }) {
             className={isCurrent ? "war-iteration-card war-iteration-card--current" : "war-iteration-card"}
           >
             <div className="war-iteration-card__meta">
-              <span>V{versionNumber} · 第 {versionNumber} 轮{isCurrent ? " · 当前生效" : ""}</span>
+              <span>第 {versionNumber} 版{isCurrent ? " · 当前" : ""}</span>
               <time>{new Date(item.created_at).toLocaleString("zh-CN")}</time>
             </div>
             <h4>{cleanDisplayText(item.summary)}</h4>

@@ -47,7 +47,7 @@ export function LoginPage() {
       <div className="auth-card">
         <div className="auth-logo">RC</div>
         <h1 className="auth-title">睿策视界</h1>
-        <p className="auth-subtitle">以项目为核心沉淀企业诊断、证据与复诊记忆</p>
+        <p className="auth-subtitle">以项目为核心沉淀诊断、证据与复诊记忆</p>
 
         <div className="auth-tabs">
           <button

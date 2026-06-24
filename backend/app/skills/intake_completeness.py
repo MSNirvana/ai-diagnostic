@@ -11,7 +11,7 @@ from app.models.conversation import ProblemMap
 
 MIN_SCORE_TO_CONFIRM = 70
 BLOCKING_DIMENSIONS = {
-    "企业画像",
+    "项目画像",
     "核心问题",
     "影响与时间",
     "目标",
@@ -46,11 +46,11 @@ class IntakeCompletenessResult:
 
 DIMENSIONS: tuple[IntakeDimension, ...] = (
     IntakeDimension(
-        label="企业画像",
+        label="项目画像",
         weight=14,
         fields=("industry", "main_business", "business_model", "scale", "stage"),
-        followup="先补一个背景：这家公司主要做什么，处在什么行业和大致规模？",
-        reason="缺少企业画像会让后续基准、专家分诊和问卷字段变得过于通用。",
+        followup="先补一个背景：这个项目主要做什么，处在什么行业和大致规模？",
+        reason="缺少项目画像会让后续基准、专家分诊和问卷字段变得过于通用。",
     ),
     IntakeDimension(
         label="核心问题",

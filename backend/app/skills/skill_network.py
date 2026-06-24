@@ -4,19 +4,15 @@ from app.skills.configured import DataRequirement, ExpertConfig
 from app.skills.method import DIAGNOSTIC_METHOD, METHOD_MODULE_KEY
 from app.skills.prompts import (
     ARCHIVE_EXTRACTION,
+    ARCHIVE_REFINEMENT,
     CONVERSATION_INTAKE,
+    DIAGNOSIS_SCOUT,
     EVIDENCE_CONFIDENCE,
-    FINANCE_DIAGNOSIS,
     FREE_CHAT,
     INTAKE_COMPLETENESS,
-    MARKET_DIAGNOSIS,
-    OPS_DIAGNOSIS,
-    ORG_DIAGNOSIS,
-    PRODUCT_DIAGNOSIS,
-    QUESTIONNAIRE_AB_A,
-    QUESTIONNAIRE_AB_B,
+    QUESTIONNAIRE_BASE,
     QUESTIONNAIRE_QUALITY_GATE,
-    SALES_DIAGNOSIS,
+    RESEARCH_PLANNER,
 )
 
 
@@ -47,21 +43,6 @@ class SkillDefinition:
     default_core: bool = False
 
 
-def _diagnosis_prompt(label: str, mandate: str, lenses: tuple[str, ...]) -> str:
-    """生成专业 skill 的领域切片（薄）。
-
-    通用方法与输出 JSON 契约由 method.DIAGNOSTIC_METHOD 在运行时注入，这里只保留
-    身份、专业范围和领域判断纪律，避免与主方法重复。
-    """
-    lens_text = "\n".join(f"{index + 1}. {lens}" for index, lens in enumerate(lenses))
-    return f"""你是顶级管理咨询的{label}专家。
-你的任务是围绕老板当前问题，做可审计、可落地的专业诊断。
-专业范围：{mandate}
-本领域判断纪律：
-{lens_text}
-缺少本领域关键数据时，必须降低置信度并把缺口转成数据请求，不得编造结论。"""
-
-
 CORE_DEFINITIONS: tuple[SkillDefinition, ...] = (
     SkillDefinition(
         key="market",
@@ -72,7 +53,7 @@ CORE_DEFINITIONS: tuple[SkillDefinition, ...] = (
         method="market-evidence",
         description="核验推广账号、投放表现、客户结构、竞品与行业基准。",
         trigger_keywords=("市场", "客户", "竞品", "竞争", "定位", "客群", "推广账号", "广告账号", "投放", "流量"),
-        fallback_prompt=MARKET_DIAGNOSIS,
+        fallback_prompt="",
         default_core=True,
     ),
     SkillDefinition(
@@ -84,7 +65,7 @@ CORE_DEFINITIONS: tuple[SkillDefinition, ...] = (
         method="product-evidence",
         description="判断价值主张、产品体验、交付质量、留存复购与客户反馈。",
         trigger_keywords=("产品", "服务", "功能", "体验", "留存", "复购", "交付物", "定价", "售后", "工单"),
-        fallback_prompt=PRODUCT_DIAGNOSIS,
+        fallback_prompt="",
         default_core=True,
     ),
     SkillDefinition(
@@ -96,7 +77,7 @@ CORE_DEFINITIONS: tuple[SkillDefinition, ...] = (
         method="funnel-evidence",
         description="诊断线索质量、销售漏斗、CRM 跟进、成交与丢单原因。",
         trigger_keywords=("销售", "增长", "获客", "转化", "成交", "线索", "复购", "渠道", "CRM", "丢单"),
-        fallback_prompt=SALES_DIAGNOSIS,
+        fallback_prompt="",
         default_core=True,
     ),
     SkillDefinition(
@@ -108,7 +89,7 @@ CORE_DEFINITIONS: tuple[SkillDefinition, ...] = (
         method="operations-evidence",
         description="分析流程效率、交付周期、产能、库存、供应稳定与返工。",
         trigger_keywords=("运营", "供应链", "交付", "库存", "产能", "生产", "流程效率", "履约", "返工"),
-        fallback_prompt=OPS_DIAGNOSIS,
+        fallback_prompt="",
         default_core=True,
     ),
     SkillDefinition(
@@ -120,7 +101,7 @@ CORE_DEFINITIONS: tuple[SkillDefinition, ...] = (
         method="organization-evidence",
         description="识别组织结构、职责、人效、激励和关键人才缺口。",
         trigger_keywords=("组织", "人才", "团队", "绩效", "激励", "招聘", "人效", "职责", "中层", "岗位"),
-        fallback_prompt=ORG_DIAGNOSIS,
+        fallback_prompt="",
         default_core=True,
     ),
     SkillDefinition(
@@ -132,7 +113,7 @@ CORE_DEFINITIONS: tuple[SkillDefinition, ...] = (
         method="finance-evidence",
         description="判断收入质量、毛利、费用、现金流和增长动作的财务约束。",
         trigger_keywords=("财务", "现金流", "利润", "毛利", "亏损", "资金", "回款", "成本", "预算", "融资"),
-        fallback_prompt=FINANCE_DIAGNOSIS,
+        fallback_prompt="",
         default_core=True,
     ),
 )
@@ -143,15 +124,13 @@ SPECIALIST_CONFIGS: dict[str, ExpertConfig] = {
         module="legal_compliance",
         method="compliance-evidence",
         label="法务合规",
-        fallback_prompt=_diagnosis_prompt(
-            "法务合规",
-            "广告合规、合同风险、资质许可、平台规则、劳动用工和经营合规边界。",
-            (
-                "先判断问题是否涉及资质许可、广告宣传、合同责任、平台规则或劳动用工风险。",
-                "涉及医疗、教育、餐饮、新能源、金融、加盟等行业时，必须优先核验资质和监管边界。",
-                "涉及投放、招商、加盟、承诺收益时，必须核验宣传口径与合同条款是否一致。",
-                "只给经营决策风险提示，不替代律师法律意见。",
-            ),
+        fallback_prompt="",
+        industry_kpis=("资质完备性", "合同风险敞口", "宣传/广告合规", "平台规则符合度", "用工合规"),
+        judgment_hints=(
+            "先判断问题是否涉及资质许可、广告宣传、合同责任、平台规则或劳动用工风险。",
+            "涉及医疗、教育、餐饮、新能源、金融、加盟等行业时，必须优先核验资质和监管边界。",
+            "涉及投放、招商、加盟、承诺收益时，必须核验宣传口径与合同条款是否一致。",
+            "只给经营决策风险提示，不替代律师法律意见。",
         ),
         data_requirements=(
             DataRequirement(
@@ -183,15 +162,13 @@ SPECIALIST_CONFIGS: dict[str, ExpertConfig] = {
         module="tax",
         method="tax-evidence",
         label="税务与票据",
-        fallback_prompt=_diagnosis_prompt(
-            "税务与票据",
-            "增值税、企业所得税、发票链路、收入确认、成本扣除和税负异常。",
-            (
-                "先判断问题是税负异常、发票链路不完整、收入确认偏差还是成本扣除风险。",
-                "电商、加盟、平台撮合和项目制业务必须核验资金流、票据流、合同流是否一致。",
-                "涉及补贴、返利、佣金、服务费时，必须看计税口径和凭证完整性。",
-                "只给经营和资料补齐建议，不替代注册税务师意见。",
-            ),
+        fallback_prompt="",
+        industry_kpis=("税负率", "发票链路完整性", "进项抵扣率", "三流一致性", "收入确认合规"),
+        judgment_hints=(
+            "先判断问题是税负异常、发票链路不完整、收入确认偏差还是成本扣除风险。",
+            "电商、加盟、平台撮合和项目制业务必须核验资金流、票据流、合同流是否一致。",
+            "涉及补贴、返利、佣金、服务费时，必须看计税口径和凭证完整性。",
+            "只给经营和资料补齐建议，不替代注册税务师意见。",
         ),
         data_requirements=(
             DataRequirement(
@@ -223,15 +200,13 @@ SPECIALIST_CONFIGS: dict[str, ExpertConfig] = {
         module="policy",
         method="policy-evidence",
         label="政策与监管",
-        fallback_prompt=_diagnosis_prompt(
-            "政策与监管",
-            "产业政策、地方补贴、监管趋势、行业准入、政府项目和政策窗口。",
-            (
-                "先判断当前问题是否受政策准入、补贴退坡、监管趋严或地方产业导向影响。",
-                "新能源、制造、教育、医疗、餐饮和平台业务必须核验监管趋势。",
-                "涉及政府补贴或项目申报时，必须区分政策确定性、兑现周期和合规成本。",
-                "不得把政策机会包装成确定收益。",
-            ),
+        fallback_prompt="",
+        industry_kpis=("政策准入符合度", "补贴兑现周期", "申报资质匹配度", "监管趋势风险"),
+        judgment_hints=(
+            "先判断当前问题是否受政策准入、补贴退坡、监管趋严或地方产业导向影响。",
+            "新能源、制造、教育、医疗、餐饮和平台业务必须核验监管趋势。",
+            "涉及政府补贴或项目申报时，必须区分政策确定性、兑现周期和合规成本。",
+            "不得把政策机会包装成确定收益。",
         ),
         data_requirements=(
             DataRequirement(
@@ -256,15 +231,13 @@ SPECIALIST_CONFIGS: dict[str, ExpertConfig] = {
         module="ip",
         method="ip-evidence",
         label="知识产权",
-        fallback_prompt=_diagnosis_prompt(
-            "知识产权",
-            "商标、专利、著作权、商业秘密、品牌资产和技术壁垒保护。",
-            (
-                "先判断问题涉及品牌保护、技术壁垒、侵权风险还是商业秘密泄露。",
-                "有硬件、配方、软件、内容、品牌连锁时，必须核验商标/专利/著作权布局。",
-                "涉及招商、加盟、代理或出海时，必须看权利归属和授权边界。",
-                "只给资产保护和风险提示，不替代专业知识产权法律意见。",
-            ),
+        fallback_prompt="",
+        industry_kpis=("商标/专利布局完备性", "权属清晰度", "侵权风险敞口", "授权边界合规"),
+        judgment_hints=(
+            "先判断问题涉及品牌保护、技术壁垒、侵权风险还是商业秘密泄露。",
+            "有硬件、配方、软件、内容、品牌连锁时，必须核验商标/专利/著作权布局。",
+            "涉及招商、加盟、代理或出海时，必须看权利归属和授权边界。",
+            "只给资产保护和风险提示，不替代专业知识产权法律意见。",
         ),
         data_requirements=(
             DataRequirement(
@@ -289,15 +262,13 @@ SPECIALIST_CONFIGS: dict[str, ExpertConfig] = {
         module="supply_chain",
         method="supply-chain-evidence",
         label="供应链韧性",
-        fallback_prompt=_diagnosis_prompt(
-            "供应链韧性",
-            "关键供应商、采购周期、质量稳定、价格波动、库存安全和替代方案。",
-            (
-                "先判断风险来自单一供应商、采购周期、质量波动、价格波动还是库存策略。",
-                "制造、餐饮、硬件和零售场景必须核验关键物料和替代供应商。",
-                "增长建议必须经过供给能力和交付稳定性校验。",
-                "把风险转成可执行的采购、库存和供应商动作。",
-            ),
+        fallback_prompt="",
+        industry_kpis=("供应商集中度", "采购周期", "到货准时率", "质检不良率", "库存安全水位"),
+        judgment_hints=(
+            "先判断风险来自单一供应商、采购周期、质量波动、价格波动还是库存策略。",
+            "制造、餐饮、硬件和零售场景必须核验关键物料和替代供应商。",
+            "增长建议必须经过供给能力和交付稳定性校验。",
+            "把风险转成可执行的采购、库存和供应商动作。",
         ),
         data_requirements=(
             DataRequirement(
@@ -321,15 +292,13 @@ SPECIALIST_CONFIGS: dict[str, ExpertConfig] = {
         module="channel_franchise",
         method="channel-franchise-evidence",
         label="渠道与加盟",
-        fallback_prompt=_diagnosis_prompt(
-            "渠道与加盟",
-            "代理、加盟、经销、门店扩张、渠道政策、区域保护和终端执行。",
-            (
-                "先判断问题来自渠道质量、加盟模型、区域冲突、终端执行还是总部赋能不足。",
-                "连锁、招商、经销和代理场景必须看单店模型、回本周期和渠道冲突。",
-                "涉及承诺收益、区域保护或返利政策时，必须联动法务合规与财务测算。",
-                "动作建议必须能落到渠道筛选、培训、督导和政策调整。",
-            ),
+        fallback_prompt="",
+        industry_kpis=("单店回本周期", "加盟商存活率", "动销率", "渠道冲突率", "招商转化率"),
+        judgment_hints=(
+            "先判断问题来自渠道质量、加盟模型、区域冲突、终端执行还是总部赋能不足。",
+            "连锁、招商、经销和代理场景必须看单店模型、回本周期和渠道冲突。",
+            "涉及承诺收益、区域保护或返利政策时，必须联动法务合规与财务测算。",
+            "动作建议必须能落到渠道筛选、培训、督导和政策调整。",
         ),
         data_requirements=(
             DataRequirement(
@@ -354,15 +323,13 @@ SPECIALIST_CONFIGS: dict[str, ExpertConfig] = {
         module="data_systems",
         method="data-systems-evidence",
         label="数据与系统",
-        fallback_prompt=_diagnosis_prompt(
-            "数据与系统",
-            "数据口径、系统打通、经营看板、CRM/ERP/财务系统和自动化能力。",
-            (
-                "先判断问题来自数据缺失、口径不一、系统割裂还是流程没有数字化。",
-                "诊断所有经营动作前，必须标记哪些数据不能被可靠追踪。",
-                "涉及投放、销售、财务、交付闭环时，必须核验系统是否能串联。",
-                "建议要落到数据口径、系统责任人和最小可用看板。",
-            ),
+        fallback_prompt="",
+        industry_kpis=("数据口径一致性", "系统打通度", "关键指标可追踪率", "看板可用性"),
+        judgment_hints=(
+            "先判断问题来自数据缺失、口径不一、系统割裂还是流程没有数字化。",
+            "诊断所有经营动作前，必须标记哪些数据不能被可靠追踪。",
+            "涉及投放、销售、财务、交付闭环时，必须核验系统是否能串联。",
+            "建议要落到数据口径、系统责任人和最小可用看板。",
         ),
         data_requirements=(
             DataRequirement(
@@ -378,6 +345,22 @@ SPECIALIST_CONFIGS: dict[str, ExpertConfig] = {
                 reason="口径不一致时，部门间复盘会持续争议。",
                 source_hint="上传经营指标口径表、报表截图、看板字段或数据字典。",
                 keywords=("口径", "指标", "数据字典", "报表", "看板", "字段"),
+            ),
+            DataRequirement(
+                key="id_mapping",
+                label="客户/订单/线索 ID 对齐方式",
+                reason="投放、销售、交付和财务之间无法对齐同一客户或订单时，归因和复盘都会失真。",
+                source_hint="说明广告线索、CRM 客户、订单、合同、回款之间是否有统一 ID 或匹配规则。",
+                keywords=("ID", "线索", "客户", "订单", "合同", "回款", "归因"),
+                required=False,
+            ),
+            DataRequirement(
+                key="dashboard_usage",
+                label="经营看板与使用频率",
+                reason="看板是否被经营会稳定使用，决定数据系统能否真正支撑决策。",
+                source_hint="上传当前经营看板截图，或说明老板/部门每周查看哪些指标、由谁维护。",
+                keywords=("经营看板", "周报", "日报", "复盘", "维护人", "使用频率"),
+                required=False,
             ),
         ),
         scenarios=("general_business", "saas_subscription", "b2b_solution", "ecommerce_retail"),
@@ -435,6 +418,32 @@ SYSTEM_DEFINITIONS: tuple[SkillDefinition, ...] = (
         evaluation_metrics=("跨 skill 输出合规率", "约束定位命中率", "缺数据诚实率", "证据可审计率"),
     ),
     SkillDefinition(
+        key="diagnosis_scout",
+        label="诊断调度脑子",
+        category="system",
+        category_label="诊断方法",
+        skill_type="method",
+        method="diagnosis_scout",
+        description="从问题地图决定本次该诊断哪些角度；命中已有域则复用其取数项/基准，覆盖不到的关键角度现场新建。让固定域成为起跑库而非边界。",
+        trigger_keywords=("调度", "诊断角度", "路由", "scout"),
+        fallback_prompt=DIAGNOSIS_SCOUT,
+        upgrade_policy="根据漏诊/误派/新角度命中率迭代；影响全局诊断覆盖面，人工审核后激活。",
+        evaluation_metrics=("关键角度覆盖率", "已有域复用率", "新角度有效率", "误派率"),
+    ),
+    SkillDefinition(
+        key="research_planner",
+        label="外部研究规划脑子",
+        category="system",
+        category_label="诊断方法",
+        skill_type="method",
+        method="research_planner",
+        description="诊断前决定上网搜什么：按问题地图与诊断域规划外部研究查询，先搜行业基准/竞品/政策/口碑再交专家。需配 PERPLEXITY_API_KEY 才会真正搜索。",
+        trigger_keywords=("外部研究", "搜索", "预研", "research", "query"),
+        fallback_prompt=RESEARCH_PLANNER,
+        upgrade_policy="根据搜到证据的相关度、被专家引用率和漏搜补搜率迭代，人工审核后激活。",
+        evaluation_metrics=("证据相关度", "专家引用率", "漏搜补搜率", "查询有效率"),
+    ),
+    SkillDefinition(
         key="free_chat",
         label="头脑风暴陪练",
         category="assistant",
@@ -454,7 +463,7 @@ SYSTEM_DEFINITIONS: tuple[SkillDefinition, ...] = (
         category_label="客户进入",
         skill_type="conversation",
         method="intake",
-        description="逐轮追问企业画像、核心问题、目标、约束和成功标准。",
+        description="逐轮追问项目画像、核心问题、目标、约束和成功标准。",
         trigger_keywords=("访谈", "问题地图", "intake"),
         fallback_prompt=CONVERSATION_INTAKE,
         evaluation_metrics=("信息完整度", "确认通过率", "追问轮次", "用户中断率"),
@@ -472,28 +481,17 @@ SYSTEM_DEFINITIONS: tuple[SkillDefinition, ...] = (
         evaluation_metrics=("缺口识别率", "误放行率", "确认通过率"),
     ),
     SkillDefinition(
-        key="questionnaire_ab_a",
-        label="问卷方案 A：全面覆盖",
+        key="questionnaire",
+        label="诊断问卷生成",
         category="questionnaire",
         category_label="数据采集",
         skill_type="questionnaire",
         method="coverage",
-        description="生成偏完整的数据地图，适合信息较少或需要系统摸底的企业。",
-        trigger_keywords=("问卷", "全面覆盖", "coverage"),
-        fallback_prompt=QUESTIONNAIRE_AB_A,
-        evaluation_metrics=("选择率", "填写完成率", "字段有效率", "文件上传率"),
-    ),
-    SkillDefinition(
-        key="questionnaire_ab_b",
-        label="问卷方案 B：痛点深挖",
-        category="questionnaire",
-        category_label="数据采集",
-        skill_type="questionnaire",
-        method="painpoint",
-        description="围绕当前核心问题收窄字段，适合已有明确战场的企业。",
-        trigger_keywords=("问卷", "痛点", "深挖", "painpoint"),
-        fallback_prompt=QUESTIONNAIRE_AB_B,
-        evaluation_metrics=("选择率", "填写完成率", "关键字段命中率", "诊断置信度提升"),
+        description="按问题地图与行业，动态生成贴合的关键信息收集问卷，必须收集真实数据入口（直播间/商品/账号链接）。",
+        trigger_keywords=("问卷", "数据采集", "信息收集", "questionnaire"),
+        fallback_prompt=QUESTIONNAIRE_BASE,
+        upgrade_policy="根据填写完成率、字段有效率、数据入口命中率和诊断置信度提升迭代，人工审核后激活。",
+        evaluation_metrics=("填写完成率", "字段有效率", "数据入口命中率", "诊断置信度提升"),
     ),
     SkillDefinition(
         key="questionnaire_quality_gate",
@@ -522,16 +520,29 @@ SYSTEM_DEFINITIONS: tuple[SkillDefinition, ...] = (
     ),
     SkillDefinition(
         key="archive_extraction",
-        label="企业档案资料沉淀",
+        label="项目档案资料沉淀",
         category="delivery",
         category_label="证据交付",
         skill_type="delivery",
         method="archive_extraction",
         description="从上传资料中提炼可长期复用的项目档案事实，识别报告性质、参与人、撰写/审阅关系、数据口径和经营上下文。",
-        trigger_keywords=("企业档案", "资料沉淀", "上传资料", "报告性质", "参与人", "撰写人", "审阅人", "项目档案", "archive"),
+        trigger_keywords=("项目档案", "资料沉淀", "上传资料", "报告性质", "参与人", "撰写人", "审阅人", "archive"),
         fallback_prompt=ARCHIVE_EXTRACTION,
         upgrade_policy="根据用户确认/修改沉淀字段的差异、漏提的人名角色和复诊引用率迭代字段识别纪律，人工审核后激活。",
         evaluation_metrics=("字段确认率", "用户手动修改率", "报告元信息命中率", "复诊引用率"),
+    ),
+    SkillDefinition(
+        key="archive_refinement",
+        label="项目档案智能提炼",
+        category="delivery",
+        category_label="证据交付",
+        skill_type="delivery",
+        method="archive_refinement",
+        description="把对话、问卷和诊断过程中的原始事实提炼、合并、改写并归档到正确业务板块。",
+        trigger_keywords=("项目档案", "自动沉淀", "提炼入档", "字段合并", "板块归类", "archive refinement"),
+        fallback_prompt=ARCHIVE_REFINEMENT,
+        upgrade_policy="根据用户对档案字段的修改、误分板块、重复字段和复诊引用情况迭代提炼纪律，人工审核后激活。",
+        evaluation_metrics=("字段合并率", "误分板块率", "重复字段率", "复诊引用率", "用户修正率"),
     ),
 )
 
@@ -556,8 +567,8 @@ def _config_definitions() -> tuple[SkillDefinition, ...]:
         category = meta.get("category", "industry")
         category_label = {
             "core": "核心经营", "professional": "专业风险",
-            "industry": "行业专项", "intake": "客户进入",
-        }.get(category, "行业专项")
+            "capability": "诊断能力", "industry": "行业专项", "intake": "客户进入",
+        }.get(category, "诊断能力")
         out.append(SkillDefinition(
             key=config.module,
             label=config.label,
@@ -603,7 +614,36 @@ def skill_definition(key: str) -> SkillDefinition | None:
 
 def skill_label(key: str) -> str:
     definition = skill_definition(key)
-    return definition.label if definition else key
+    if definition:
+        return definition.label
+    # ad-hoc 角度（调度脑子现场新建，不在注册表）：去掉前缀显示原始角度名
+    if key.startswith("adhoc_"):
+        return key[len("adhoc_"):]
+    return key
+
+
+# 每个 skill 用在哪个流程（后台"?"悬停说明）。先按 key 精确匹配，再按 skill_type 兜底。
+_FLOW_BY_TYPE: dict[str, str] = {
+    "method": "诊断引擎·通用判断脑子：所有诊断域共用的方法与输出契约，运行时注入到每个域。改它会影响全部诊断。",
+    "diagnosis": "经营诊断阶段：问题命中本域后，脑子据本域的 KPI / 数据入口 / 取数项现场生成诊断结论。本卡是数据骨架，不含 prose、不单独版本化。",
+    "questionnaire": "数据采集阶段：按问题地图与行业，生成老板要填的诊断问卷。",
+    "conversation": "客户进入阶段：与老板对话深挖，产出结构化问题地图。",
+    "delivery": "证据交付阶段：对诊断结论做证据 / 档案加工。",
+    "assistant": "头脑风暴：陪老板推演新点子或新项目，不绑定诊断流程。",
+}
+_FLOW_BY_KEY: dict[str, str] = {
+    "diagnosis_scout": "诊断引擎·调度脑子：开诊前从问题地图决定本次该看哪些角度，不限于固定域（命中已有域就借用其取数项/基准，覆盖不到的新角度现场新建）。",
+    "research_planner": "诊断引擎·外部研究规划：开诊前决定上网搜什么（行业基准/竞品/政策/口碑），搜到的证据喂给专家并作为结论来源。需配 PERPLEXITY_API_KEY 才会真正联网。",
+    "questionnaire_quality_gate": "数据采集阶段·质量闸门：审查生成的问卷是否够格（行业贴合 + 真实数据入口齐全），不达标打回重生成。",
+    "intake_completeness": "客户进入阶段·完整度闸门：判断问题地图是否够格进入诊断，缺关键字段时继续追问。",
+    "evidence_confidence": "证据交付阶段：给每条诊断结论校准可审计的置信度（百分比可解释到来源/缺口）。",
+    "archive_extraction": "证据交付阶段：把上传资料沉淀成可长期复用的项目档案事实。",
+}
+
+
+def skill_flow(key: str, skill_type: str) -> str:
+    """返回该 skill 用在哪个流程的说明（后台悬停展示）。"""
+    return _FLOW_BY_KEY.get(key) or _FLOW_BY_TYPE.get(skill_type, "")
 
 
 def resolve_skill_key(value: str | None) -> str | None:

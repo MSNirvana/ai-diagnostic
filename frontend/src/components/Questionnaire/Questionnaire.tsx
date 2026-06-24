@@ -163,10 +163,16 @@ interface QuestionnaireProps {
   onBrainstormDraftChange?: (value: string) => void;
   onBrainstormSend?: () => void;
   onBrainstormContextChange?: (enabled: boolean) => void;
-  onProblemMapConfirmed?: (problemMap: ProblemMap, sessionId: string) => void | Promise<void>;
+  onProblemMapChange?: (problemMap: ProblemMap | null) => void;
+  onSessionStarted?: (sessionId: string, firstMessage?: string) => void;
+  onModeChange?: (mode: Mode) => void;
+  openDataCollectionRequestId?: number;
+  rediagnoseRequestId?: number;
+  onRediagnoseBlocked?: (reason: string) => void;
 }
 
 type Mode = "chatting" | "generating" | "ready" | "gen_error";
+type InlinePlanStatus = "idle" | "generating" | "ready" | "error";
 
 export function Questionnaire({
   onSubmit,
@@ -187,7 +193,12 @@ export function Questionnaire({
   onBrainstormDraftChange,
   onBrainstormSend,
   onBrainstormContextChange,
-  onProblemMapConfirmed,
+  onProblemMapChange,
+  onSessionStarted,
+  onModeChange,
+  openDataCollectionRequestId = 0,
+  rediagnoseRequestId = 0,
+  onRediagnoseBlocked,
 }: QuestionnaireProps) {
   const { token } = useAuth();
   const userId = token ? token.slice(0, 16) : "anon";
@@ -219,6 +230,15 @@ export function Questionnaire({
   // 续聊数据是否就绪：续聊场景下，加载完会话详情前不渲染 ChatStep（避免误建新会话）
   const [resumeReady, setResumeReady] = useState<boolean>(!resumeFromNav);
   const [genError, setGenError] = useState<string | null>(null);
+  const [inlinePlanStatus, setInlinePlanStatus] = useState<InlinePlanStatus>("idle");
+  const [inlinePlanError, setInlinePlanError] = useState<string | null>(null);
+  const inlinePlanSeq = useRef(0);
+
+  useEffect(() => {
+    onModeChange?.(mode);
+  }, [mode, onModeChange]);
+  const lastRediagnoseRequestRef = useRef(0);
+  const lastOpenDataCollectionRequestRef = useRef(0);
 
   // 续聊：从项目/历史页带 resumeSessionId 进来，加载会话详情后再渲染对话
   useEffect(() => {
@@ -234,6 +254,13 @@ export function Questionnaire({
         listSessionFiles(detail.id).then(setStoredFiles).catch(() => {});
         setChatMessages(detail.messages);
         setStoredProblemMap(detail.problem_map);
+        onProblemMapChange?.(detail.problem_map);
+        // 已生成诊断的会话再次打开时应回到对话页；资料采集草稿只服务于未提交诊断的中途流程。
+        if (detail.diagnosis_record_id) {
+          setMode("chatting");
+          setResumeReady(true);
+          return;
+        }
         // 有填写进度草稿 → 直接恢复到问卷填写阶段，不用重对话/重新生成问卷
         if (detail.draft_json) {
           try {
@@ -247,6 +274,7 @@ export function Questionnaire({
               setRestoredFileNames(d.fileNames ?? {});
               if (d.chatSummary) setStoredSummary(d.chatSummary);
               setStoredProblemMap(d.problemMap ?? detail.problem_map);
+              onProblemMapChange?.(d.problemMap ?? detail.problem_map);
               setMode("ready");
               setResumeReady(true);
               return;
@@ -275,13 +303,14 @@ export function Questionnaire({
     setStoredSessionId(null);
     setChatMessages([]);
     setStoredProblemMap(supplementRecord.answers.problem_map ?? null);
+    onProblemMapChange?.(supplementRecord.answers.problem_map ?? null);
     setStoredSummary(problemSummaryFromRecord(supplementRecord));
     setActiveModules(modules);
     setCurrent(0);
     setFacts(factsFromRecord(supplementRecord));
     setPains(painsFromRecord(supplementRecord));
     setMode("ready");
-  }, [supplementRecord]);
+  }, [onProblemMapChange, supplementRecord]);
 
   // 挂载时读草稿（续聊场景不弹草稿）
   useEffect(() => {
@@ -343,6 +372,7 @@ export function Questionnaire({
     setChatMessages(d.messages);
     setStoredSummary(d.chatSummary);
     setStoredProblemMap(d.problemMap ?? null);
+    onProblemMapChange?.(d.problemMap ?? null);
     setStoredSessionId(d.sessionId ?? null);
     setActiveModules(d.activeModules);
     setCurrent(d.current);
@@ -418,9 +448,42 @@ export function Questionnaire({
     }
   };
 
+  const runInlinePlanGeneration = async (
+    summary: ProblemSummary,
+    problemMap: ProblemMap,
+    sessionId: string,
+  ) => {
+    const seq = inlinePlanSeq.current + 1;
+    inlinePlanSeq.current = seq;
+    setInlinePlanStatus("generating");
+    setInlinePlanError(null);
+    try {
+      const modules = await generateModules(summary, problemMap);
+      if (inlinePlanSeq.current !== seq) return;
+      applyModules(modules, false);
+      await saveSessionDraft(sessionId, JSON.stringify({
+        activeModules: modules,
+        current: 0,
+        facts,
+        pains,
+        freeText,
+        fileNames: {},
+        chatSummary: summary,
+        problemMap,
+      })).catch(() => {});
+      setInlinePlanStatus("ready");
+    } catch (e) {
+      if (inlinePlanSeq.current !== seq) return;
+      console.error("项目诊断方案生成失败：", e);
+      setInlinePlanError(e instanceof Error ? e.message : String(e));
+      setInlinePlanStatus("error");
+    }
+  };
+
   const handleChatComplete = async (problemMap: ProblemMap, sessionId: string) => {
     setStoredSessionId(sessionId);
     setStoredProblemMap(problemMap);
+    onProblemMapChange?.(problemMap);
     // ProblemMap 投影成 ProblemSummary（后端忽略多余字段）
     const summary: ProblemSummary = {
       core_problem: problemMap.core_problem,
@@ -436,9 +499,7 @@ export function Questionnaire({
     };
     setStoredSummary(summary);
     if (isProjectInline) {
-      await (onProblemMapConfirmed
-        ? onProblemMapConfirmed(problemMap, sessionId)
-        : onSubmit([], [], sessionId, projectId, problemMap));
+      await runInlinePlanGeneration(summary, problemMap, sessionId);
       return;
     }
     await runGeneration(summary, problemMap);
@@ -448,6 +509,12 @@ export function Questionnaire({
   const retryGeneration = async () => {
     if (storedSummary && storedProblemMap) {
       await runGeneration(storedSummary, storedProblemMap);
+    }
+  };
+
+  const retryInlinePlanGeneration = async () => {
+    if (storedSummary && storedProblemMap && storedSessionId) {
+      await runInlinePlanGeneration(storedSummary, storedProblemMap, storedSessionId);
     }
   };
 
@@ -468,11 +535,25 @@ export function Questionnaire({
     setMode("chatting");
   };
 
+  // 「暂时没有」跳过：让没资料的字段也能明确标记并往下走，不必盯着空框（纯前端体感，提交时空值本就被丢弃）。
+  const [skippedKeys, setSkippedKeys] = useState<string[]>([]);
+  const skipId = (modKey: string, fieldKey: string) => `${modKey}__${fieldKey}`;
+  const isSkipped = (modKey: string, fieldKey: string) => skippedKeys.includes(skipId(modKey, fieldKey));
+  const toggleSkip = (modKey: string, fieldKey: string) => {
+    const id = skipId(modKey, fieldKey);
+    setSkippedKeys((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+    setFacts((prev) => ({ ...prev, [modKey]: { ...(prev[modKey] ?? {}), [fieldKey]: "" } }));
+  };
+
   const setFact = (modKey: string, fieldKey: string, value: string) => {
     setFacts((prev) => ({
       ...prev,
       [modKey]: { ...(prev[modKey] ?? {}), [fieldKey]: value },
     }));
+    if (value.trim()) {
+      // 用户开始填 → 自动取消「暂时没有」标记
+      setSkippedKeys((prev) => prev.filter((x) => x !== skipId(modKey, fieldKey)));
+    }
   };
 
   const togglePain = (modKey: string, pain: string) => {
@@ -540,8 +621,25 @@ export function Questionnaire({
         pains: pains[m.key] ?? [],
       });
     }
-    // 提交即视为完成，清掉草稿
-    clearDraft(userId, projectId);
+    const fileNames: Record<string, string[]> = {};
+    for (const f of files) {
+      const k = `${f.moduleKey}__${f.fieldKey}`;
+      (fileNames[k] ??= []).push(f.file.name);
+    }
+    if (isProjectInline && storedSessionId) {
+      await saveSessionDraft(storedSessionId, JSON.stringify({
+        activeModules,
+        current,
+        facts,
+        pains,
+        freeText,
+        fileNames,
+        chatSummary: storedSummary,
+        problemMap: storedProblemMap,
+      })).catch(() => {});
+    }
+    // 独立问卷提交即完成；项目内诊断要保留采集表，便于审核中查看进度/复诊复用。
+    if (!isProjectInline) clearDraft(userId, projectId);
     await onSubmit(
       answers,
       files,
@@ -550,9 +648,66 @@ export function Questionnaire({
       storedProblemMap ?? undefined
     );
     if (isProjectInline) {
+      setInlinePlanStatus("idle");
+      setInlinePlanError(null);
       setMode("chatting");
     }
   };
+
+  useEffect(() => {
+    if (!isProjectInline || rediagnoseRequestId <= 0) return;
+    if (lastRediagnoseRequestRef.current === rediagnoseRequestId) return;
+    lastRediagnoseRequestRef.current = rediagnoseRequestId;
+    if (!storedProblemMap || !storedSessionId) {
+      onRediagnoseBlocked?.("请先继续对话更新问题地图，再重新诊断。");
+      return;
+    }
+    if (activeModules.length === 0) {
+      onRediagnoseBlocked?.("请先补齐关键数据后，再重新诊断。");
+      return;
+    }
+    if (!anyFilled && storedFiles.length === 0) {
+      onRediagnoseBlocked?.("当前还没有可复用的数据，请先补充关键数据。");
+      return;
+    }
+    void handleSubmit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rediagnoseRequestId]);
+
+  useEffect(() => {
+    if (!isProjectInline || openDataCollectionRequestId <= 0) return;
+    if (lastOpenDataCollectionRequestRef.current === openDataCollectionRequestId) return;
+    lastOpenDataCollectionRequestRef.current = openDataCollectionRequestId;
+    if (activeModules.length > 0) {
+      setMode("ready");
+      return;
+    }
+    const sessionId = storedSessionId ?? resumeSessionId ?? resumeFromNav;
+    if (sessionId) {
+      void getSessionDetail(sessionId).then((detail) => {
+        if (!detail.draft_json) return;
+        const d = JSON.parse(detail.draft_json);
+        if (!d.activeModules?.length) return;
+        setActiveModules(d.activeModules);
+        setCurrent(d.current ?? 0);
+        setFacts(d.facts ?? {});
+        setPains(d.pains ?? {});
+        setFreeText(d.freeText ?? {});
+        setRestoredFileNames(d.fileNames ?? {});
+        if (d.chatSummary) setStoredSummary(d.chatSummary);
+        setStoredProblemMap(d.problemMap ?? detail.problem_map);
+        onProblemMapChange?.(d.problemMap ?? detail.problem_map);
+        setMode("ready");
+      }).catch(() => {});
+      return;
+    }
+    if (storedSummary && storedProblemMap && storedSessionId) {
+      void runInlinePlanGeneration(storedSummary, storedProblemMap, storedSessionId).then(() => {
+        setMode("ready");
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openDataCollectionRequestId]);
 
   const resumeBanner = pendingDraft && (
     <div className="resume-banner">
@@ -597,6 +752,43 @@ export function Questionnaire({
     </section>
   );
 
+  const inlinePlanNotice = isProjectInline && inlinePlanStatus !== "idle" ? (
+    <div className={
+      inlinePlanStatus === "ready"
+        ? "inline-plan-notice inline-plan-notice--ready"
+        : inlinePlanStatus === "error"
+          ? "inline-plan-notice inline-plan-notice--error"
+          : "inline-plan-notice"
+    }>
+      <div>
+        <strong>
+          {inlinePlanStatus === "ready"
+            ? "诊断方案已定制完成，请先补充关键数据。"
+            : inlinePlanStatus === "error"
+              ? "诊断方案生成失败，请稍后重试。"
+              : "正在基于你的问题定制诊断方案…（这需要几分钟）"}
+        </strong>
+        <span>
+          {inlinePlanStatus === "ready"
+            ? "补齐关键数据后，系统才会启动后端深度尽调。"
+            : inlinePlanStatus === "error"
+              ? inlinePlanError || "你的对话和问题地图已保留，可以继续补充或重试生成。"
+              : "你可以继续对话，系统会根据最新问题地图更新采集表。"}
+        </span>
+      </div>
+      {inlinePlanStatus === "ready" && (
+        <button type="button" onClick={() => setMode("ready")}>
+          补充数据
+        </button>
+      )}
+      {inlinePlanStatus === "error" && (
+        <button type="button" onClick={() => void retryInlinePlanGeneration()}>
+          重试生成
+        </button>
+      )}
+    </div>
+  ) : null;
+
   if (mode === "chatting") {
     // 续聊场景：会话详情未加载完前，不渲染 ChatStep（避免它误建新会话）
     if (!resumeReady) {
@@ -627,10 +819,14 @@ export function Questionnaire({
           variant={variant}
           projectMode={projectMode}
           onProjectModeChange={onProjectModeChange}
-          inputNotice={inputNotice}
-          diagnosisPlanActive={diagnosisPlanActive}
+          inputNotice={inlinePlanNotice ?? inputNotice}
+          diagnosisPlanActive={diagnosisPlanActive || inlinePlanStatus !== "idle"}
           initialProblemMap={storedProblemMap}
-          onProblemMapChange={setStoredProblemMap}
+          onProblemMapChange={(problemMap) => {
+            setStoredProblemMap(problemMap);
+            onProblemMapChange?.(problemMap);
+          }}
+          onSessionStarted={onSessionStarted}
           brainstormMessages={brainstormMessages}
           brainstormDraft={brainstormDraft}
           brainstormLoading={brainstormLoading}
@@ -683,6 +879,9 @@ export function Questionnaire({
 
   const module = activeModules[current];
   const isLast = current === activeModules.length - 1;
+  const rootClassName = variant === "project-inline"
+    ? "questionnaire questionnaire--project-inline questionnaire--project-inline-form"
+    : "questionnaire";
 
   const goNext = () =>
     setCurrent((c) => Math.min(c + 1, activeModules.length - 1));
@@ -694,7 +893,7 @@ export function Questionnaire({
       .filter((e) => e.moduleKey === modKey && e.fieldKey === fieldKey);
 
   return (
-    <div className={variant === "project-inline" ? "questionnaire questionnaire--project-inline" : "questionnaire"}>
+    <div className={rootClassName}>
       {supplementBanner}
       <StepIndicator
         steps={activeModules.map((m) => ({ label: m.label }))}
@@ -709,95 +908,114 @@ export function Questionnaire({
         </header>
 
         <div className="fields-grid">
-          {module.fields.map((field) => (
+          {module.fields.map((field, index) => (
             <div className="field" key={field.key}>
-              <label className="field__label" htmlFor={`${module.key}-${field.key}`}>
-                {field.label}
-                {field.known_source && (
-                  <span className="field__known">已知 · {field.known_source} · 可修正</span>
-                )}
-              </label>
-              <input
-                id={`${module.key}-${field.key}`}
-                className="field__input"
-                type="text"
-                placeholder={field.placeholder}
-                value={facts[module.key]?.[field.key] ?? ""}
-                onChange={(e) => setFact(module.key, field.key, e.target.value)}
-              />
-              {field.hint && <span className="field__hint">{field.hint}</span>}
-              {field.accept_file && (
-                <div className="field__file">
-                  <label
-                    className="field__file-label"
-                    htmlFor={`${module.key}-${field.key}-file`}
-                  >
-                    + 附数据文件（CSV/Excel）
-                  </label>
-                  <input
-                    id={`${module.key}-${field.key}-file`}
-                    className="file-input"
-                    type="file"
-                    accept=".csv,.xlsx,.xls"
-                    multiple
-                    onChange={(e) => {
-                      addFiles(module.key, field.key, e.target.files);
-                      e.target.value = "";
-                    }}
-                  />
-                  {uploadingFields[`${module.key}__${field.key}`] && (
-                    <span className="field__file-uploading">上传中…</span>
+              <span className="field__index">{String(index + 1).padStart(2, "0")}</span>
+              <div className="field__body">
+                <label className="field__label" htmlFor={`${module.key}-${field.key}`}>
+                  {field.label}
+                  {field.known_source && (
+                    <span className="field__known">已知 · {field.known_source} · 可修正</span>
                   )}
-                  {/* 已上传到后端的文件（跨设备复用，可删） */}
-                  {storedFiles
-                    .filter((f) => f.module_key === module.key && f.field_key === field.key)
-                    .map((f) => (
-                      <span className="field__file-item" key={f.id}>
-                        ✓ {f.original_name}
+                </label>
+                <div className={field.accept_file ? "field__input-wrap field__input-wrap--with-upload" : "field__input-wrap"}>
+                  <input
+                    id={`${module.key}-${field.key}`}
+                    className={isSkipped(module.key, field.key) ? "field__input field__input--skipped" : "field__input"}
+                    type="text"
+                    placeholder={isSkipped(module.key, field.key) ? "已标记：暂时没有（可点右侧撤销）" : field.placeholder}
+                    value={facts[module.key]?.[field.key] ?? ""}
+                    onChange={(e) => setFact(module.key, field.key, e.target.value)}
+                    disabled={isSkipped(module.key, field.key)}
+                  />
+                  <button
+                    type="button"
+                    className={isSkipped(module.key, field.key) ? "field__skip field__skip--on" : "field__skip"}
+                    onClick={() => toggleSkip(module.key, field.key)}
+                    title="暂时拿不到这个数据？点一下跳过，诊断照常进行，之后补了还能更新"
+                  >
+                    {isSkipped(module.key, field.key) ? "已跳过·撤销" : "暂时没有"}
+                  </button>
+                  {field.accept_file && (
+                    <label
+                      className="field__upload-plus"
+                      htmlFor={`${module.key}-${field.key}-file`}
+                      title="上传文件"
+                      aria-label={`为${field.label}上传文件`}
+                    >
+                      +
+                    </label>
+                  )}
+                </div>
+                {field.accept_file && (
+                  <div className="field__file">
+                    <input
+                      id={`${module.key}-${field.key}-file`}
+                      className="file-input"
+                      type="file"
+                      accept=".csv,.xlsx,.xls"
+                      multiple
+                      onChange={(e) => {
+                        addFiles(module.key, field.key, e.target.files);
+                        e.target.value = "";
+                      }}
+                    />
+                    {uploadingFields[`${module.key}__${field.key}`] && (
+                      <span className="field__file-uploading">上传中</span>
+                    )}
+                    {/* 已上传到后端的文件（跨设备复用，可删） */}
+                    {storedFiles
+                      .filter((f) => f.module_key === module.key && f.field_key === field.key)
+                      .map((f) => (
+                        <span className="field__file-item" key={f.id}>
+                          {f.original_name}
+                          <button
+                            type="button"
+                            className="field__file-remove"
+                            aria-label={`删除 ${f.original_name}`}
+                            onClick={() => removeStoredFile(f.id)}
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      ))}
+                    {/* 未登录/无会话时的内存暂存文件 */}
+                    {fieldFiles(module.key, field.key).map((entry) => (
+                      <span className="field__file-item" key={entry.index}>
+                        {entry.file.name}
                         <button
                           type="button"
                           className="field__file-remove"
-                          aria-label={`删除 ${f.original_name}`}
-                          onClick={() => removeStoredFile(f.id)}
+                          aria-label={`删除 ${entry.file.name}`}
+                          onClick={() => removeFile(entry.index)}
                         >
                           ✕
                         </button>
                       </span>
                     ))}
-                  {/* 未登录/无会话时的内存暂存文件 */}
-                  {fieldFiles(module.key, field.key).map((entry) => (
-                    <span className="field__file-item" key={entry.index}>
-                      {entry.file.name}
-                      <button
-                        type="button"
-                        className="field__file-remove"
-                        aria-label={`删除 ${entry.file.name}`}
-                        onClick={() => removeFile(entry.index)}
-                      >
-                        ✕
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
+                  </div>
+                )}
+              </div>
             </div>
           ))}
         </div>
 
         <div className="pains-section">
           <h3 className="section-title">你最有感触的问题（可多选）</h3>
-          <div className="chip-row">
-            {module.pains.map((p) => {
+          <div className="choice-list">
+            {module.pains.map((p, index) => {
               const selected = (pains[module.key] ?? []).includes(p);
+              const optionLabel = String.fromCharCode(65 + index);
               return (
                 <button
                   type="button"
                   key={p}
-                  className={selected ? "chip chip--selected" : "chip"}
+                  className={selected ? "choice-option choice-option--selected" : "choice-option"}
                   aria-pressed={selected}
                   onClick={() => togglePain(module.key, p)}
                 >
-                  {p}
+                  <span className="choice-option__letter">{optionLabel}</span>
+                  <span className="choice-option__text">{p}</span>
                 </button>
               );
             })}
@@ -840,10 +1058,9 @@ export function Questionnaire({
               <button
                 type="button"
                 className="btn-primary btn-primary--final"
-                disabled={!anyFilled}
                 onClick={() => void handleSubmit()}
               >
-                开始诊断
+                {anyFilled ? "开始诊断" : "资料不全，先出初步诊断"}
               </button>
             )}
           </div>

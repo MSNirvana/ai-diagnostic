@@ -10,6 +10,7 @@ type ProjectWorkspaceSection = "new" | "archive" | "warroom";
 interface ProjectWorkspaceShellProps {
   project: Pick<ProjectDetail, "id" | "name" | "status"> & { sessions?: ProjectSessionBrief[]; brainstorm_sessions?: ProjectBrainstormBrief[] };
   activeSection: ProjectWorkspaceSection;
+  conversationLayout?: "chat" | "form";
   children: ReactNode;
   onNewConversation?: () => void;
   onResumeSession?: (sessionId: string) => void;
@@ -78,6 +79,7 @@ function readProjectLogo(projectId: string) {
 export function ProjectWorkspaceShell({
   project,
   activeSection,
+  conversationLayout = "chat",
   children,
   onNewConversation,
   onResumeSession,
@@ -646,7 +648,7 @@ export function ProjectWorkspaceShell({
               onClick={openArchive}
             >
               <span className="project-workspace-menu__icon" aria-hidden="true">□</span>
-              <span>企业档案</span>
+              <span>项目档案</span>
             </button>
             <button
               type="button"
@@ -706,7 +708,13 @@ export function ProjectWorkspaceShell({
         </div>
       </aside>
 
-      <main className={activeSection === "new" ? "project-workspace-main project-workspace-main--conversation" : "project-workspace-main"}>
+      <main
+        className={
+          activeSection === "new"
+            ? `project-workspace-main project-workspace-main--conversation project-workspace-main--conversation-${conversationLayout}`
+            : "project-workspace-main"
+        }
+      >
         {children}
       </main>
     </div>

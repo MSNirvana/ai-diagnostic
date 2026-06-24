@@ -2,7 +2,7 @@
 import json
 from datetime import datetime, timedelta, timezone
 
-from app.api.project import _build_archive
+from app.api.project import _build_archive, _render_archive_file_preview_blocks, _render_archive_file_preview_text
 from app.db.models import DiagnosisRecord, ProjectMemoryEntry, UploadedFile
 
 
@@ -29,9 +29,9 @@ def test_archive_profile_and_module_facts():
     )
     archive = _build_archive([rec], [])
 
-    # 企业基本盘
+    # 项目基本盘
     profile = {f.label: f.value for f in archive.profile}
-    assert profile["公司名称"] == "华火厨电"
+    assert profile["项目/品牌名称"] == "华火厨电"
     assert profile["所属行业"] == "商用厨电"
 
     # 板块事实
@@ -64,7 +64,7 @@ def test_archive_latest_value_wins():
     fin = {f.label: f.value for f in next(m for m in archive.modules if m.module == "finance").facts}
     assert fin["上年度营收"] == "6000万元"   # 取了新值
     profile = {f.label: f.value for f in archive.profile}
-    assert profile["公司名称"] == "华火科技"  # 画像也取最新
+    assert profile["项目/品牌名称"] == "华火科技"  # 画像也取最新
     assert archive.last_updated == _now(60)
 
 
@@ -134,6 +134,62 @@ def test_archive_tolerates_bad_json():
     archive = _build_archive([bad], [])
     assert archive.profile == []
     assert all(not m.has_data for m in archive.modules)
+
+
+def test_archive_translates_retention_churn_module_label():
+    rec = _record(
+        _now(),
+        problem_map={},
+        answers=[{"module": "retention_churn", "facts": {"回流用户数": "注册20人，30天内只有一个人调用API"}}],
+    )
+    archive = _build_archive([rec], [])
+    module = next(m for m in archive.modules if m.module == "retention_churn")
+
+    assert module.label == "留存与流失"
+    assert module.has_data is True
+
+
+def test_archive_uses_refined_memory_instead_of_raw_answer_copy():
+    rec = _record(
+        _now(),
+        problem_map={},
+        answers=[{"module": "market", "facts": {
+            "补充说明": "目前还没有开始对外引流，都是内部在推，不知道怎么对外引流",
+            "主站与API入口链接": "https://ggoo.ai、https://api2sub.ggoo.ai",
+        }}],
+    )
+    rec.id = "rec-1"
+    refined = ProjectMemoryEntry(
+        project_id="p1",
+        user_id="u1",
+        entry_type="archive_refinement",
+        summary="智能提炼入档：市场与客户，已整理核心入口。",
+        payload_json=json.dumps({
+            "module": "market",
+            "label": "市场与客户",
+            "highlights": [
+                {
+                    "label": "核心入口链接",
+                    "value": "官网 ggoo.ai；API 网关 api2sub.ggoo.ai",
+                    "display": {"type": "link_list", "unit": "", "series": []},
+                    "source_labels": ["主站与API入口链接"],
+                }
+            ],
+        }, ensure_ascii=False),
+        source_id="rec-1",
+        created_at=_now(1),
+    )
+
+    archive = _build_archive([rec], [], [refined])
+    market = next(m for m in archive.modules if m.module == "market")
+    facts = {f.label: f.value for f in market.facts}
+
+    assert facts["核心入口链接"] == "官网 ggoo.ai；API 网关 api2sub.ggoo.ai"
+    refined_fact = next(f for f in market.facts if f.label == "核心入口链接")
+    assert refined_fact.display == {"type": "link_list", "unit": "", "series": []}
+    assert refined_fact.source_labels == ["主站与API入口链接"]
+    assert "补充说明" not in facts
+    assert "主站与API入口链接" not in facts
 
 
 def test_archive_manual_enabled_module_persists_without_data():
@@ -225,3 +281,25 @@ def test_archive_ignores_internal_upload_modules():
 
     assert "conversation" not in {m.module for m in archive.modules}
     assert [m.module for m in archive.modules] == ["market", "product", "sales"]
+
+
+def test_archive_file_preview_keeps_document_structure():
+    raw = json.dumps(
+        {
+            "content_type": "word",
+            "preview_blocks": [
+                {"type": "title", "text": "项目调研报告", "level": 1},
+                {"type": "heading", "text": "一、 市场概况", "level": 2},
+                {"type": "paragraph", "text": "当前市场仍处于教育期。"},
+                {"type": "table", "rows": [["维度", "结论"], ["需求", "刚性但认知不足"]]},
+            ],
+        },
+        ensure_ascii=False,
+    )
+
+    blocks = _render_archive_file_preview_blocks(raw)
+
+    assert blocks[0] == {"type": "title", "text": "项目调研报告", "level": 1}
+    assert blocks[1]["type"] == "heading"
+    assert blocks[3] == {"type": "table", "rows": [["维度", "结论"], ["需求", "刚性但认知不足"]]}
+    assert "维度 | 结论" in _render_archive_file_preview_text(raw)

@@ -1,0 +1,42 @@
+{
+  "module": "pricing_power",
+  "method": "pricing-power-evidence",
+  "label": "定价与利润诊断",
+  "category": "capability",
+  "description": "诊断定价是否偏离价值与竞争、有无提价空间或正在价格战失血。通用能力，按输入行业基准调整判断。",
+  "trigger_keywords": ["定价", "价格", "提价", "降价", "价格战", "毛利", "折扣", "客单价", "价格带", "议价", "促销", "让利", "贡献毛利"],
+  "industry_kpis": ["毛利率", "价格带", "提价空间", "折扣率", "客单价", "价格弹性", "单位贡献毛利", "竞品价差"],
+  "judgment_hints": [
+    "先分清问题是定价偏低(把钱留在桌上)、定价偏高(失去转化)、还是促销/折扣失控侵蚀毛利。",
+    "提价空间看价值锚点与竞品价差，不是看成本加成；高价值卖低价是典型留钱在桌上。",
+    "价格战失血常被误判为「行业都这样」，要看单位贡献毛利是否已为负、降价是否真换来正向规模效应。",
+    "别只看整体毛利率均值，按 SKU/客户/渠道拆，常有少数低价单吃掉整体利润。"
+  ],
+  "scenarios": ["ecommerce_retail", "b2b_solution", "manufacturing", "local_service"],
+  "data_requirements": [
+    {
+      "key": "price_margin_structure",
+      "label": "价格与毛利结构",
+      "reason": "没有按 SKU/产品线的售价、成本、毛利和销量分布，无法判断提价空间还是低价失血。",
+      "source_hint": "上传 SKU/产品线的售价、成本、毛利率、销量分布（价格带拆分）。",
+      "keywords": ["售价", "成本", "毛利", "SKU", "价格带", "销量", "产品线"],
+      "required": true
+    },
+    {
+      "key": "discount_promo",
+      "label": "折扣与促销记录",
+      "reason": "判断毛利失血必须看折扣力度、促销频次和促销前后的转化与毛利变化。",
+      "source_hint": "提供折扣率、促销频次、让利金额、促销前后的转化率与毛利对比。",
+      "keywords": ["折扣", "促销", "让利", "满减", "优惠", "活动"],
+      "required": true
+    },
+    {
+      "key": "competitor_price",
+      "label": "竞品价格与价值锚点",
+      "reason": "提价空间要对照竞品价格带和自身差异化价值，缺它只能拍脑袋。",
+      "source_hint": "提供主要竞品价格带、自身差异化价值点、客户对价格的反馈。",
+      "keywords": ["竞品价格", "价格带", "差异化", "价值", "竞品"],
+      "required": false
+    }
+  ]
+}

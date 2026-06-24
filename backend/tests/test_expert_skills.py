@@ -36,12 +36,17 @@ def test_all_registered_modules_are_dedicated_skills():
         assert skill.module == module
 
 
-def test_seed_includes_all_diagnosis_skills():
-    diagnosis_modules = {
+def test_diagnosis_is_brain_driven_not_seeded():
+    # 诊断域零 prose：判断由 diagnostic_method 脑子按 domain 数据现场生成，故不进 seed。
+    seeded_diagnosis = {
         module for module, skill_type, _method, _prompt in SEEDS if skill_type == "diagnosis"
     }
-    assert diagnosis_modules == {definition.key for definition in diagnosis_skill_definitions()}
-    assert set(registered_modules()).issubset(diagnosis_modules)
+    assert seeded_diagnosis == set()
+    # 脑子（method 类型）必须进 seed，作为全局诊断方法的可版本化来源。
+    seeded_methods = {module for module, skill_type, _m, _p in SEEDS if skill_type == "method"}
+    assert "diagnostic_method" in seeded_methods
+    # 注册的诊断域与定义一致。
+    assert set(registered_modules()) == {definition.key for definition in diagnosis_skill_definitions()}
 
 
 async def test_market_skill_requests_promotion_account_data_when_missing():

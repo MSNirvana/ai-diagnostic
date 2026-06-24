@@ -1,4 +1,3 @@
-import asyncio
 import json
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -17,7 +16,7 @@ from app.models.profile import (
 from app.models.conversation import ProblemMap, ProblemSummary
 from app.skills.parsing import parse_json_object
 from app.skills.store import get_active_skill_version
-from app.skills.prompts import QUESTIONNAIRE_BASE, QUESTIONNAIRE_AB_A, QUESTIONNAIRE_AB_B, QUESTIONNAIRE_QUALITY_GATE
+from app.skills.prompts import QUESTIONNAIRE_BASE, QUESTIONNAIRE_QUALITY_GATE
 from app.skills.scenario_catalog import detect_business_scenario, render_problem_text
 from app.skills.skill_network import (
     default_core_skill_keys,
@@ -26,17 +25,13 @@ from app.skills.skill_network import (
     skill_definition,
     skill_label,
 )
-from app.auth.jwt import get_optional_user
 from app.db.database import get_session
-from app.db.models import User, QuestionnairePreference
 from app.memory.known_facts import collect_known_facts, match_known_value
 
 router = APIRouter(prefix="/questionnaire")
 
 # 代码兜底（DB 无激活版本时用）
 _SYSTEM = QUESTIONNAIRE_BASE
-_SYSTEM_A = QUESTIONNAIRE_AB_A
-_SYSTEM_B = QUESTIONNAIRE_AB_B
 _GATE_SYSTEM = QUESTIONNAIRE_QUALITY_GATE
 
 
@@ -254,6 +249,21 @@ def _ensure_mode_prefix(module_key: str, index: int, mode: str) -> str:
     return f"{prefix}_{module_key}_{index + 1}"
 
 
+def _is_placeholder_field(field: GeneratedField) -> bool:
+    """识别 LLM 或旧兜底生成的无业务含义占位字段。"""
+    label = (field.label or "").strip()
+    key = (field.key or "").strip().lower()
+    placeholder_patterns = (
+        "关键指标",
+        "关键验证点",
+    )
+    if any(pattern in label for pattern in placeholder_patterns):
+        return True
+    if key.startswith(("cover_", "focus_")) and any(char.isdigit() for char in key):
+        return True
+    return False
+
+
 def _normalize_questionnaire(
     questionnaire: GeneratedQuestionnaire,
     *,
@@ -270,9 +280,15 @@ def _normalize_questionnaire(
         if definition is not None:
             label = definition.label
         base_fields = module.fields[:]
-        target_field_count = 6 if mode == "coverage" else 4
+        max_field_count = 6 if mode == "coverage" else 4
+        min_field_count = _module_min_field_count(definition)
         fields: list[GeneratedField] = []
-        for field_index, field in enumerate(base_fields[:target_field_count]):
+        for field in base_fields:
+            if len(fields) >= max_field_count:
+                break
+            if _is_placeholder_field(field):
+                continue
+            field_index = len(fields)
             key = field.key.strip() or _ensure_mode_prefix(module_key, field_index, mode)
             if key in seen_field_keys:
                 key = _ensure_mode_prefix(module_key, field_index, mode)
@@ -291,26 +307,43 @@ def _normalize_questionnaire(
                     accept_file=field.accept_file,
                 )
             )
-        while len(fields) < target_field_count:
-            index = len(fields)
-            fallback_label = (
-                f"{label}关键指标{index + 1}"
-                if mode == "coverage"
-                else f"{label}关键验证点{index + 1}"
-            )
-            fallback_placeholder = (
-                "例如：近90天按周趋势、渠道拆分、区域拆分"
-                if mode == "coverage"
-                else "例如：问题发生时间、影响范围、异常样本、最近一次波动"
-            )
-            fields.append(
-                GeneratedField(
-                    key=_ensure_mode_prefix(module_key, index, mode),
-                    label=fallback_label,
-                    placeholder=fallback_placeholder,
-                    hint="请尽量提供真实业务口径或上传数据文件。",
-                    accept_file=True if index < 2 else False,
+
+        if definition is not None and len(fields) < min_field_count:
+            used_labels = {field.label.strip() for field in fields}
+            for requirement in definition.data_requirements:
+                if len(fields) >= min(min_field_count, max_field_count):
+                    break
+                if requirement.label in used_labels:
+                    continue
+                key = f"{module_key}_{requirement.key}"
+                if key in seen_field_keys:
+                    key = _ensure_mode_prefix(module_key, len(fields), mode)
+                seen_field_keys.add(key)
+                used_labels.add(requirement.label)
+                fields.append(
+                    GeneratedField(
+                        key=key,
+                        label=requirement.label,
+                        placeholder=requirement.source_hint or "请填写具体数字、口径或时间范围",
+                        hint=requirement.reason,
+                        accept_file=True,
+                    )
                 )
+
+        if len(fields) < min_field_count:
+            # 不再为了凑数生成“关键指标N/关键验证点N”占位字段。
+            # 质量门已经保证常规 LLM 输出至少 4 个字段；这里仅保留真实字段，
+            # 避免把低质量输出包装成老板可填写的假问卷。
+            continue
+
+        # 字段数可以是 4-6；不要再强行补满 6 个。
+        for field_index, field in enumerate(fields):
+            fields[field_index] = field.model_copy(
+                update={
+                    "key": field.key or _ensure_mode_prefix(module_key, field_index, mode),
+                    "label": field.label.strip(),
+                    "placeholder": field.placeholder.strip() or "请填写具体数字、口径或时间范围",
+                }
             )
 
         pains: list[str] = []
@@ -399,7 +432,7 @@ def _fallback_generated_module(
                 accept_file=True,
             )
         )
-    while len(fields) < min(target_field_count, 4):
+    while len(fields) < min(_module_min_field_count(definition), target_field_count):
         index = len(fields)
         fields.append(
             GeneratedField(
@@ -428,22 +461,18 @@ def _fallback_generated_module(
     )
 
 
+def _module_min_field_count(definition) -> int:
+    if definition is None:
+        return _GATE_MIN_FIELDS_PER_MODULE
+    requirement_count = len(definition.data_requirements)
+    if requirement_count <= 0:
+        return _GATE_MIN_FIELDS_PER_MODULE
+    return min(_GATE_MIN_FIELDS_PER_MODULE, requirement_count)
+
+
 def _slug_key(value: str, index: int) -> str:
     raw = value.strip().lower().replace("-", "_").replace(" ", "_")
     return raw or f"custom_{index + 1}"
-
-
-def _questionnaires_are_meaningfully_different(
-    option_a: GeneratedQuestionnaire,
-    option_b: GeneratedQuestionnaire,
-) -> bool:
-    a_fields = [field.label for module in option_a.modules for field in module.fields]
-    b_fields = [field.label for module in option_b.modules for field in module.fields]
-    if a_fields != b_fields:
-        return True
-    a_subtitles = [module.subtitle for module in option_a.modules]
-    b_subtitles = [module.subtitle for module in option_b.modules]
-    return a_subtitles != b_subtitles
 
 
 @router.post("/generate", response_model=GeneratedQuestionnaire)
@@ -459,7 +488,7 @@ async def generate_questionnaire(
     """
     context = _build_context(body, "coverage")
     base_prompt = _build_input(body, "coverage")
-    system = await _prompt_for(session, "questionnaire_ab_a", _SYSTEM)
+    system = await _prompt_for(session, "questionnaire", _SYSTEM)
     gate_system = await _prompt_for(session, "questionnaire_quality_gate", _GATE_SYSTEM)
     known = await collect_known_facts(session, body.project_id)
     gate_context = _gate_context_json(body)
@@ -499,11 +528,13 @@ async def generate_questionnaire(
     )
 
 
-# 质量门下限（对照基础模板：6 模块 / 每模块 5-6 字段 / 带痛点）。
-# 动态问卷可更聚焦，故模块数下限放宽到 4，但单模块质量不能塌。
-_GATE_MIN_MODULES = 4
-_GATE_MIN_FIELDS_PER_MODULE = 4
-_GATE_MIN_PAINS_PER_MODULE = 2
+# 质量门下限：只守"别太薄"的底，不再强制"铺满"。
+# 设计转向（少而精）：问卷从"全景采集"改为"只问内部决定性数据"——
+# 小项目/早期项目天生没那么多资料，逼填 16 格只会赶走用户；公开数据交给 research_planner 搜，不问用户。
+# 这里只防"单字段空壳问卷"，质量（无占位、行业贴合）仍由后面的 LLM 评审守。
+_GATE_MIN_MODULES = 2
+_GATE_MIN_FIELDS_PER_MODULE = 2
+_GATE_MIN_PAINS_PER_MODULE = 1
 
 
 def _questionnaire_quality_gate(
@@ -524,14 +555,26 @@ def _questionnaire_quality_gate(
 
     for module in modules:
         label = (module.label or module.key or "未命名模块").strip()
+        module_key = resolve_skill_key(module.key) or module.key
+        definition = skill_definition(module_key)
+        min_fields = _module_min_field_count(definition)
         # 真实字段：label 非空且不是纯占位
         real_fields = [
             f for f in module.fields
-            if (f.label or "").strip() and (f.key or "").strip()
+            if (f.label or "").strip() and (f.key or "").strip() and not _is_placeholder_field(f)
         ]
-        if len(real_fields) < _GATE_MIN_FIELDS_PER_MODULE:
+        if len(real_fields) < min_fields:
             reasons.append(
-                f"模块「{label}」有效字段仅 {len(real_fields)} 个，少于 {_GATE_MIN_FIELDS_PER_MODULE}"
+                f"模块「{label}」有效字段仅 {len(real_fields)} 个，少于 {min_fields}"
+            )
+        # 质量校验（与数量无关，永远拒）：占位字段必须删或换成具体数据项——「少而精」允许字段少，不允许灌水。
+        placeholder_fields = [
+            f for f in module.fields
+            if (f.label or "").strip() and _is_placeholder_field(f)
+        ]
+        if placeholder_fields:
+            reasons.append(
+                f"模块「{label}」含占位字段（如「{placeholder_fields[0].label}」），请换成具体数据项或删除"
             )
         real_pains = [p for p in module.pains if str(p).strip()]
         if len(real_pains) < _GATE_MIN_PAINS_PER_MODULE:
@@ -617,94 +660,3 @@ async def _llm_quality_review(
     if not reasons:
         reasons.append("问卷未通过质量评审，请提升行业贴合度并补齐真实数据入口字段")
     return (False, reasons)
-
-
-class GenerateABResponse(BaseModel):
-    option_a: GeneratedQuestionnaire
-    option_b: GeneratedQuestionnaire
-
-
-@router.post("/generate-ab", response_model=GenerateABResponse)
-async def generate_ab(
-    body: GenerateRequest,
-    llm: LLMClient = Depends(get_llm_client),
-    session: AsyncSession = Depends(get_session),
-) -> GenerateABResponse:
-    """并发生成两份候选问卷（A 全面型 / B 痛点型）供用户选择。
-
-    任一份解析失败时，用成功的那份兜底两侧；两份都失败返回 422。
-    """
-    prompt_a = _build_input(body, "coverage")
-    prompt_b = _build_input(body, "painpoint")
-    context_a = _build_context(body, "coverage")
-    context_b = _build_context(body, "painpoint")
-    system_a = await _prompt_for(session, "questionnaire_ab_a", _SYSTEM_A)
-    system_b = await _prompt_for(session, "questionnaire_ab_b", _SYSTEM_B)
-    raw_a, raw_b = await asyncio.gather(
-        llm.complete(system=system_a, prompt=prompt_a),
-        llm.complete(system=system_b, prompt=prompt_b),
-    )
-
-    parsed_a: GeneratedQuestionnaire | None = None
-    parsed_b: GeneratedQuestionnaire | None = None
-    try:
-        parsed_a = _normalize_questionnaire(
-            _parse_questionnaire(raw_a),
-            mode="coverage",
-            context=context_a,
-        )
-    except (ValueError, ValidationError):
-        parsed_a = None
-    try:
-        parsed_b = _normalize_questionnaire(
-            _parse_questionnaire(raw_b),
-            mode="painpoint",
-            context=context_b,
-        )
-    except (ValueError, ValidationError):
-        parsed_b = None
-
-    if parsed_a is None and parsed_b is None:
-        raise HTTPException(status_code=422, detail="问卷生成失败，请使用通用问卷")
-    # 任一失败用另一份兜底，保证两侧都有内容
-    if parsed_a is None:
-        parsed_a = parsed_b
-    if parsed_b is None:
-        parsed_b = parsed_a
-    if parsed_a is not None and parsed_b is not None and not _questionnaires_are_meaningfully_different(parsed_a, parsed_b):
-        parsed_b = _normalize_questionnaire(parsed_b, mode="painpoint", context=context_b)
-
-    # 二次诊断预填：两份候选都用历史已知 facts 填充
-    known = await collect_known_facts(session, body.project_id)
-    parsed_a = _prefill_known(parsed_a, known)
-    parsed_b = _prefill_known(parsed_b, known)
-
-    return GenerateABResponse(option_a=parsed_a, option_b=parsed_b)
-
-
-class RecordPreferenceRequest(BaseModel):
-    profile: BusinessProfile
-    option_a: GeneratedQuestionnaire
-    option_b: GeneratedQuestionnaire
-    chosen: str  # "a" 或 "b"
-
-
-@router.post("/preference", status_code=201)
-async def record_preference(
-    body: RecordPreferenceRequest,
-    user: User | None = Depends(get_optional_user),
-    session: AsyncSession = Depends(get_session),
-) -> dict[str, bool]:
-    if body.chosen not in ("a", "b"):
-        raise HTTPException(status_code=422, detail="chosen 必须是 a 或 b")
-    record = QuestionnairePreference(
-        user_id=user.id if user else None,
-        industry=body.profile.industry,
-        profile_json=body.profile.model_dump_json(),
-        option_a_json=body.option_a.model_dump_json(),
-        option_b_json=body.option_b.model_dump_json(),
-        chosen=body.chosen,
-    )
-    session.add(record)
-    await session.commit()
-    return {"ok": True}

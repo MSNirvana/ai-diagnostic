@@ -17,6 +17,9 @@ _SMART_QUOTES = {
     "“": "「",  # " → 「
     "”": "」",  # " → 」
 }
+DEFAULT_INTERNAL_SOURCE = "客户自述（诊断问答）"
+_TEXT_KEYS = ("text", "内容", "事实", "证据", "指标", "data", "value")
+_SOURCE_KEYS = ("source", "来源", "出处", "source_url", "url", "title", "文件", "报告")
 
 
 def _repair_common_defects(text: str) -> str:
@@ -59,19 +62,19 @@ def to_evidence(item: object) -> Evidence:
     """把一个证据项转成 Evidence，兼容字段名漂移。
 
     约定字段是 {text, source}；模型有时返回 {指标,数值}、{内容,来源} 等变体，
-    或直接给一个字符串。一律降级合并成 text，缺来源时标"未注明"。
+    或直接给一个字符串。一律降级合并成 text；缺来源时定位为客户在诊断问答中的自述。
     """
     if isinstance(item, str):
-        return Evidence(text=item, source="未注明")
+        return Evidence(text=item, source=DEFAULT_INTERNAL_SOURCE)
     if isinstance(item, dict):
-        text = item.get("text")
-        source = item.get("source")
+        text = next((item.get(key) for key in _TEXT_KEYS if item.get(key) is not None), None)
+        source = next((item.get(key) for key in _SOURCE_KEYS if item.get(key)), None)
         if text is not None:
-            return Evidence(text=str(text), source=str(source) if source else "未注明")
+            return Evidence(text=str(text), source=str(source) if source else DEFAULT_INTERNAL_SOURCE)
         # 字段名漂移：把所有键值拼成一句事实
-        merged = "，".join(f"{k}：{v}" for k, v in item.items())
-        return Evidence(text=merged or "（无内容）", source="未注明")
-    return Evidence(text=str(item), source="未注明")
+        merged = "，".join(f"{k}：{v}" for k, v in item.items() if k not in _SOURCE_KEYS)
+        return Evidence(text=merged or "（无内容）", source=str(source) if source else DEFAULT_INTERNAL_SOURCE)
+    return Evidence(text=str(item), source=DEFAULT_INTERNAL_SOURCE)
 
 
 def to_drilldown(data: object) -> DrillDown:

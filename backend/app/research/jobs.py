@@ -12,6 +12,7 @@ from app.db.models import DiagnosisJob, User
 from app.models.questionnaire import Questionnaire
 from app.models.warroom import WarRoomPlan
 from app.llm.base import LLMClient
+from app.memory.archive_refiner import refine_questionnaire_archive
 from app.orchestrator.dispatcher import diagnose_all
 from app.warroom.composer import compose_war_room_plan
 from app.warroom.enhancer import enhance_war_room_plan
@@ -40,17 +41,21 @@ async def run_deep_diligence_job(
             await _merge_stored_files(session, questionnaire)
 
             await _update_job(session, job, status="researching", current_step="系统预研外部证据", progress=0.18)
-            await engine.run_system_pre_research(
+            llm = llm or await get_llm_client(session)
+            research_brief = await engine.run_system_pre_research(
                 session,
                 job_id=job.id,
                 project_id=job.project_id,
                 questionnaire=questionnaire,
+                llm=llm,
             )
             evidence_rows = await list_job_evidence(session, job.id, limit=160)
             research_evidence = render_evidence_for_prompt(evidence_rows)
+            if not evidence_rows:
+                await _mark_research_unavailable(session, job, research_brief)
+                return
 
             await _update_job(session, job, status="diagnosing", current_step="多专家并行诊断", progress=0.45)
-            llm = llm or await get_llm_client(session)
             outcome = await diagnose_all(
                 questionnaire,
                 llm,
@@ -95,6 +100,15 @@ async def run_deep_diligence_job(
             if record_id:
                 await attach_evidence_to_record(session, job_id=job.id, record_id=record_id)
                 evidence_rows = await list_job_evidence(session, job.id, limit=200)
+            await refine_questionnaire_archive(
+                session,
+                project_id=questionnaire.project_id,
+                questionnaire=questionnaire,
+                results=outcome.results,
+                llm=llm,
+                user_id=job.user_id,
+                source_id=record_id or job.id,
+            )
             await archive_case(session, questionnaire, outcome.results, outcome.triage, record_id)
 
             job.record_id = record_id
@@ -107,6 +121,8 @@ async def run_deep_diligence_job(
                     "triage": outcome.triage.model_dump(),
                     "war_room_plan": war_room_plan.model_dump(),
                     "research_evidence_count": len(evidence_rows),
+                    "research_summary": research_brief.summary,
+                    "research_query_count": len(research_brief.queries),
                     "skill_version_ids": outcome.skill_version_ids,
                 },
                 ensure_ascii=False,
@@ -139,6 +155,32 @@ async def _mark_failed(session: AsyncSession, job: DiagnosisJob, exc: Exception)
     job.status = "failed"
     job.current_step = "任务失败"
     job.error = f"{exc.__class__.__name__}: {exc}"
+    job.updated_at = utc_now()
+    session.add(job)
+    await session.commit()
+
+
+async def _mark_research_unavailable(session: AsyncSession, job: DiagnosisJob, research_brief) -> None:
+    """深度尽调必须有外部证据；没有证据时不要伪装成完整诊断。"""
+    job.status = "failed"
+    job.current_step = "外部研究未完成"
+    job.progress = 0.18
+    query_count = len(getattr(research_brief, "queries", []) or [])
+    summary = getattr(research_brief, "summary", "") or "未获取到可用于诊断的外部证据。"
+    job.error = (
+        "深度尽调需要先完成外部搜索并沉淀可审计证据；"
+        f"本次研究问题 {query_count} 个，沉淀证据 0 条。{summary}"
+    )
+    job.result_summary_json = json.dumps(
+        {
+            "research_evidence_count": 0,
+            "research_query_count": query_count,
+            "research_summary": summary,
+            "blocked_reason": "external_research_unavailable",
+        },
+        ensure_ascii=False,
+        default=str,
+    )
     job.updated_at = utc_now()
     session.add(job)
     await session.commit()

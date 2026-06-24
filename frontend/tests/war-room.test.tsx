@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { DecisionBoard } from "../src/components/WarRoom/DecisionBoard";
 import { DepartmentActionGrid } from "../src/components/WarRoom/DepartmentActionGrid";
 import { EvidenceRiskPanel } from "../src/components/WarRoom/EvidenceRiskPanel";
@@ -105,12 +105,10 @@ describe("WarRoomPage", () => {
     expect(screen.getByText("市场与客户")).toBeTruthy();
     expect(screen.getByText("经营目标：提升高质量线索成交率")).toBeTruthy();
     expect(screen.getAllByText("重分线索池").length).toBeGreaterThan(0);
-    expect(screen.getByText("销售重分线索")).toBeTruthy();
-    expect(screen.getByText("市场清渠道")).toBeTruthy();
     expect(screen.getAllByText("CRM 阶段转化率").length).toBeGreaterThan(0);
-    expect(screen.getByText("7 天启动检查")).toBeTruthy();
-    expect(screen.getByText("14 天过程复盘")).toBeTruthy();
-    expect(screen.getByText("30 天验收与转向")).toBeTruthy();
+    expect(screen.queryByText("7 天启动检查")).toBeNull();
+    expect(screen.queryByText("14 天过程复盘")).toBeNull();
+    expect(screen.queryByText("30 天验收与转向")).toBeNull();
   });
 
   it("keeps internal implementation terms out of the boss-facing view", () => {
@@ -148,6 +146,85 @@ describe("WarRoom components", () => {
     expect(screen.queryByText("展开判断依据")).toBeNull();
   });
 
+  it("submits stage feedback from a decision card", async () => {
+    const onSubmitFeedback = vi.fn(async (body) => ({
+      id: "fb-1",
+      project_id: "proj_1",
+      created_at: "2026-06-23T00:00:00Z",
+      war_room_plan_id: body.war_room_plan_id,
+      record_id: body.record_id,
+      card_type: body.card_type,
+      card_id: body.card_id,
+      card_title: body.card_title,
+      adoption_status: body.adoption_status,
+      feedback_result: body.feedback_result,
+      note: body.note ?? "",
+      owner: body.owner ?? "",
+      attachments: [],
+    }));
+    render(
+      <DecisionBoard
+        items={plan.decision_items}
+        planId={plan.id}
+        recordId={plan.record_id}
+        feedbackEvents={[]}
+        onSubmitFeedback={onSubmitFeedback}
+      />
+    );
+
+    fireEvent.click(screen.getAllByText("反馈进展")[0]);
+    expect(screen.getByRole("dialog", { name: "阶段反馈" })).toBeTruthy();
+    fireEvent.click(screen.getByText("有新问题"));
+    fireEvent.change(screen.getByPlaceholderText("例如：销售负责人、老板本人"), {
+      target: { value: "老板本人" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("写清楚实际推进后的变化、新问题或需要系统下次重判的点。"), {
+      target: { value: "线索质量改善，但线索量下降。" },
+    });
+    fireEvent.click(screen.getByText("沉淀到项目档案"));
+
+    await waitFor(() => expect(onSubmitFeedback).toHaveBeenCalledTimes(1));
+    expect(onSubmitFeedback).toHaveBeenCalledWith(expect.objectContaining({
+      war_room_plan_id: plan.id,
+      record_id: plan.record_id,
+      card_type: "decision",
+      card_title: "重分线索池",
+      adoption_status: "adopted",
+      feedback_result: "new_issue",
+      owner: "老板本人",
+      note: "线索质量改善，但线索量下降。",
+    }));
+  });
+
+  it("shows the latest stage feedback state on decision cards", () => {
+    render(
+      <DecisionBoard
+        items={plan.decision_items}
+        feedbackEvents={[
+          {
+            id: "fb-1",
+            project_id: "proj_1",
+            created_at: "2026-06-23T00:00:00Z",
+            war_room_plan_id: plan.id,
+            record_id: plan.record_id,
+            card_type: "decision",
+            card_id: "decision:0:重分线索池",
+            card_title: "重分线索池",
+            adoption_status: "adopted",
+            feedback_result: "effective",
+            note: "首响速度已经改善",
+            owner: "销售负责人",
+            attachments: [],
+          },
+        ]}
+      />
+    );
+
+    expect(screen.getByText("已采纳")).toBeTruthy();
+    expect(screen.getByText(/最新反馈：有效/)).toBeTruthy();
+    expect(screen.getByText(/首响速度已经改善/)).toBeTruthy();
+  });
+
   it("renders department action cards with metrics, data gaps, risk, and confidence", () => {
     const { container } = render(<DepartmentActionGrid actions={plan.department_actions} />);
     const detail = container.querySelector(".department-card__detail") as HTMLDetailsElement;
@@ -155,14 +232,14 @@ describe("WarRoom components", () => {
     expect(screen.getByText("分配执行动作")).toBeTruthy();
     expect(detail.open).toBe(false);
     expect(screen.getByText("高质量线索成交率：30 天内出现改善")).toBeTruthy();
-    expect(screen.getByText("证据完整度 76%")).toBeTruthy();
+    expect(screen.getByText("把握度 76%")).toBeTruthy();
 
     fireEvent.click(screen.getByText("查看执行细节与风险"));
     expect(detail.open).toBe(true);
     expect(screen.getByText(/A 类线索 10 分钟内首响/)).toBeTruthy();
     expect(screen.getByText("缺少 CRM 数据时先按保守假设执行。")).toBeTruthy();
     expect(screen.getByText("依据说明")).toBeTruthy();
-    expect(screen.getByText(/引用覆盖 2\/3；缺少 1 类必需数据，证据完整度下调/)).toBeTruthy();
+    expect(screen.getByText(/引用覆盖 2\/3；缺少 1 类必需数据，把握度下调/)).toBeTruthy();
   });
 
   it("filters department actions by priority tabs", () => {

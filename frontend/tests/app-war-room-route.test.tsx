@@ -2,9 +2,20 @@ import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import App from "../src/App";
+import {
+  createDataSupplementRequest,
+  deleteDataSupplementFile,
+  downloadSessionFile,
+  getPublicDataSupplementRequest,
+  getProjectWarRoom,
+  listDataSupplementRequests,
+  submitPublicDataSupplement,
+  viewSessionFile,
+} from "../src/api/client";
 import { ProjectWarRoomPage } from "../src/components/Project/ProjectWarRoomPage";
+import type { WarRoomPlan } from "../src/types";
 
-const warRoomPlan = {
+const warRoomPlan: WarRoomPlan = {
   id: "wr-1",
   record_id: "rec-1",
   project_id: "proj-1",
@@ -42,11 +53,51 @@ const warRoomPlan = {
   priority_board: { now: [], soon: [], later: [] },
   evidence_summary: [],
   risk_summary: [],
-  data_gaps: [],
+  data_gaps: [
+    {
+      key: "crm_conversion",
+      label: "CRM 阶段转化率",
+      reason: "验证线索在哪个阶段流失",
+      source_hint: "CRM",
+      required: true,
+      typical_owner: "销售负责人",
+    },
+  ],
   checkpoints: [],
 };
 
 vi.mock("../src/api/client", () => {
+  let publicSupplementRequest = {
+    id: "supp-public",
+    token: "token-1",
+    project_id: "proj-1",
+    created_at: "2026-06-23T00:00:00Z",
+    updated_at: "2026-06-23T00:00:00Z",
+    war_room_plan_id: "wr-1",
+    data_key: "crm_conversion",
+    label: "CRM 阶段转化率",
+    reason: "验证线索在哪个阶段流失",
+    source_hint: "CRM",
+    typical_owner: "销售负责人",
+    status: "open",
+    public_url: "/supplement/token-1",
+    submissions: [
+      {
+        id: "sub-old",
+        created_at: "2026-06-22T10:00:00Z",
+        submitter_name: "销售负责人",
+        note: "先补充上周数据。",
+        files: [{
+          id: "file-old",
+          original_name: "上周CRM.csv",
+          summary_text: "",
+          is_deleted: false,
+          preview_text: "上周 CRM 转化率说明。",
+          preview_blocks: [{ type: "paragraph" as const, text: "上周 CRM 转化率说明。" }],
+        }],
+      },
+    ],
+  };
   const rejectedRecord = {
     id: "rec-rejected",
     created_at: "2026-06-13T00:00:00Z",
@@ -121,6 +172,73 @@ vi.mock("../src/api/client", () => {
     }
     return warRoomPlan;
   }),
+  listWarRoomFeedback: vi.fn(async () => []),
+  submitWarRoomFeedback: vi.fn(async (projectId: string, body: any) => ({
+    id: "fb-1",
+    project_id: projectId,
+    created_at: "2026-06-23T00:00:00Z",
+    ...body,
+    note: body.note ?? "",
+    owner: body.owner ?? "",
+    attachments: body.attachments ?? [],
+  })),
+  listDataSupplementRequests: vi.fn(async () => []),
+  createDataSupplementRequest: vi.fn(async (_projectId: string, warRoomPlanId: string, dataRequest: any) => ({
+    id: "supp-1",
+    token: "token-1",
+    project_id: "proj-1",
+    created_at: "2026-06-23T00:00:00Z",
+    updated_at: "2026-06-23T00:00:00Z",
+    war_room_plan_id: warRoomPlanId,
+    data_key: dataRequest.key,
+    label: dataRequest.label,
+    reason: dataRequest.reason,
+    source_hint: dataRequest.source_hint,
+    typical_owner: dataRequest.typical_owner,
+    status: "open",
+    public_url: "/supplement/token-1",
+    submissions: [],
+  })),
+  getPublicDataSupplementRequest: vi.fn(async () => publicSupplementRequest),
+  submitPublicDataSupplement: vi.fn(async (_token: string, body: any) => {
+    const submission = {
+      id: "sub-new",
+      created_at: "2026-06-23T12:00:00Z",
+      submitter_name: body.submitterName ?? "",
+      note: body.note ?? "",
+    files: (body.files ?? []).map((file: File, index: number) => ({
+        id: `file-new-${index}`,
+        original_name: file.name,
+        summary_text: "",
+        is_deleted: false,
+        preview_text: "",
+        preview_blocks: [],
+      })),
+    };
+    publicSupplementRequest = {
+      ...publicSupplementRequest,
+      submissions: [submission, ...publicSupplementRequest.submissions],
+    };
+    return submission;
+  }),
+  deleteDataSupplementFile: vi.fn(async (_projectId: string, requestId: string, submissionId: string, fileId: string) => {
+    publicSupplementRequest = {
+      ...publicSupplementRequest,
+      submissions: publicSupplementRequest.submissions.map((submission) => (
+        submission.id === submissionId
+          ? {
+              ...submission,
+              files: submission.files.map((file) => (
+                file.id === fileId ? { ...file, is_deleted: true } : file
+              )),
+            }
+          : submission
+      )),
+    };
+    return publicSupplementRequest;
+  }),
+  viewSessionFile: vi.fn(async () => {}),
+  downloadSessionFile: vi.fn(async () => {}),
   getProjectEvidence: vi.fn(async () => []),
   fetchRecord: vi.fn(async (recordId: string) => (
     recordId === "rec-rejected"
@@ -326,7 +444,8 @@ vi.mock("../src/components/Questionnaire/Questionnaire", () => ({
 }));
 
 function LocationProbe() {
-  return <span data-testid="location">{useLocation().pathname}</span>;
+  const location = useLocation();
+  return <span data-testid="location">{location.pathname}{location.search}</span>;
 }
 
 describe("project diagnosis war room routing", () => {
@@ -362,7 +481,7 @@ describe("project diagnosis war room routing", () => {
       </MemoryRouter>
     );
 
-    await waitFor(() => screen.getByText("本次会议先处理"));
+    await waitFor(() => screen.getByText("项目总览"));
     fireEvent.click(screen.getByRole("button", { name: "新增诊断迭代" }));
 
     await waitFor(() =>
@@ -383,17 +502,191 @@ describe("project diagnosis war room routing", () => {
       </MemoryRouter>
     );
 
-    await waitFor(() => screen.getByText("本次会议先处理"));
-    fireEvent.click(screen.getByText("查看拍板事项"));
-    fireEvent.click(await screen.findByText("02 · 动作"));
+    await waitFor(() => screen.getByText("项目总览"));
+    fireEvent.click(screen.getByText("查看全部建议"));
 
     await waitFor(() =>
       expect(screen.getByTestId("location").textContent).toBe(
-        "/projects/proj-1/war-room/view/actions"
+        "/projects/proj-1/war-room/view/recommendations?recommendation=action%3Asales-action-1"
       )
     );
-    expect(screen.getByText("分配执行动作")).toBeTruthy();
-    expect(screen.getByText("重分线索池")).toBeTruthy();
+    expect(screen.getByText("问题是什么？")).toBeTruthy();
+    expect(screen.getByText("行动建议")).toBeTruthy();
+    expect(screen.getAllByText("线索响应提速").length).toBeGreaterThan(0);
+    expect(screen.getByText(/重分线索池/)).toBeTruthy();
+  });
+
+  it("turns verbose recommendation actions into short navigation titles", async () => {
+    const verbosePlan: WarRoomPlan = {
+      ...warRoomPlan,
+      department_actions: [
+        {
+          ...warRoomPlan.department_actions[0],
+          id: "market-action-1",
+          department: "market",
+          department_label: "市场与客户",
+          battle_goal: "推广账号和近 30/90 天投放报表缺失，无法判断真实获客成本。",
+          action_title: "连接或上传真实推广账号与近30/90天投放报表",
+          action_detail: "先接入投放后台和渠道消耗，再判断是否加码。",
+        },
+        {
+          ...warRoomPlan.department_actions[0],
+          id: "sales-action-2",
+          battle_goal: "销售漏斗各环节数据缺失，线索到成交无法闭环。",
+          action_title: "补销售漏斗：上传近30/90天线索→咨询→报价→成交各环节人数与转化率",
+          action_detail: "用销售漏斗定位最先流失的环节。",
+        },
+        {
+          ...warRoomPlan.department_actions[0],
+          id: "legal-action-1",
+          department: "legal_compliance",
+          department_label: "法务合规",
+          battle_goal: "招商放量前缺合规闸门，可能放大合同和宣传风险。",
+          action_title: "招商放量前做合规闸门：核验已完成商业特许经营备案、电火灶产品3C/能效证明与招商宣传口径",
+          action_detail: "先核验备案、资质和宣传口径，再决定是否放量招商。",
+        },
+      ],
+    };
+    vi.mocked(getProjectWarRoom).mockResolvedValueOnce(verbosePlan);
+
+    render(
+      <MemoryRouter initialEntries={["/projects/proj-1/war-room/view/recommendations"]}>
+        <Routes>
+          <Route path="/projects/:projectId/war-room/view/:section" element={<ProjectWarRoomPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getAllByText("投放数据接入").length).toBeGreaterThan(0));
+    expect(screen.getAllByText("销售漏斗复核").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("招商合规闸门").length).toBeGreaterThan(0);
+    expect(screen.getByLabelText("高优先级").textContent).toContain("3");
+    expect(screen.getByLabelText("中优先级").textContent).toContain("0");
+    expect(screen.getByLabelText("低优先级").textContent).toContain("0");
+    const tabs = document.querySelectorAll(".consulting-recommendation-tab");
+    expect(Array.from(tabs).some((tab) => tab.textContent?.includes("连接或上传真实推广账号"))).toBe(false);
+    expect(Array.from(tabs).every((tab) => !tab.textContent?.includes("优先级"))).toBe(true);
+    expect(Array.from(tabs).every((tab) => !tab.textContent?.includes("数据待补"))).toBe(true);
+    expect(screen.getByText(/连接或上传真实推广账号与近30\/90天投放报表/)).toBeTruthy();
+  });
+
+  it("copies a public supplement link from the data page", async () => {
+    const writeText = vi.fn(async () => {});
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    render(
+      <MemoryRouter initialEntries={["/projects/proj-1/war-room/view/recommendations?recommendation=action%3Asales-action-1"]}>
+        <Routes>
+          <Route path="/projects/:projectId/war-room/view/:section" element={<ProjectWarRoomPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText("CRM 阶段转化率")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "复制补资料链接" }));
+
+    await waitFor(() => expect(createDataSupplementRequest).toHaveBeenCalledTimes(1));
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining("请打开这个链接上传文件或填写说明：http://localhost:3000/supplement/token-1"));
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining("这个链接不需要登录，可以多次补充，历史提交会保留。"));
+    expect(await screen.findByText("已复制链接")).toBeTruthy();
+  });
+
+  it("shows supplement files as actionable rows and keeps deletion trace", async () => {
+    const ownerRequest = {
+      id: "supp-owner",
+      token: "token-1",
+      project_id: "proj-1",
+      created_at: "2026-06-23T00:00:00Z",
+      updated_at: "2026-06-23T00:00:00Z",
+      war_room_plan_id: "wr-1",
+      data_key: "crm_conversion",
+      label: "CRM 阶段转化率",
+      reason: "验证线索在哪个阶段流失",
+      source_hint: "CRM",
+      typical_owner: "销售负责人",
+      status: "open",
+      public_url: "/supplement/token-1",
+      submissions: [
+        {
+          id: "sub-owner",
+          created_at: "2026-06-22T10:00:00Z",
+          submitter_name: "gavin2",
+          note: "这个也是gavin提交的，测试",
+          files: [{
+            id: "file-owner",
+            original_name: "上周CRM.csv",
+            summary_text: "",
+            is_deleted: false,
+            preview_text: "这是 CRM 文件的在线预览内容。",
+            preview_blocks: [{ type: "paragraph" as const, text: "这是 CRM 文件的在线预览内容。" }],
+          }],
+        },
+      ],
+    };
+    vi.mocked(listDataSupplementRequests).mockResolvedValueOnce([ownerRequest]);
+    vi.mocked(deleteDataSupplementFile).mockResolvedValueOnce({
+      ...ownerRequest,
+      submissions: [
+        {
+          ...ownerRequest.submissions[0],
+          files: [{ ...ownerRequest.submissions[0].files[0], is_deleted: true }],
+        },
+      ],
+    });
+    render(
+      <MemoryRouter initialEntries={["/projects/proj-1/war-room/view/recommendations?recommendation=action%3Asales-action-1"]}>
+        <Routes>
+          <Route path="/projects/:projectId/war-room/view/:section" element={<ProjectWarRoomPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText("已提交 1 次")).toBeTruthy();
+    expect(screen.queryByText(/1 个文件：上周CRM.csv/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "上周CRM.csv" }));
+    expect(await screen.findByRole("dialog", { name: "资料在线预览" })).toBeTruthy();
+    expect(screen.getByText("这是 CRM 文件的在线预览内容。")).toBeTruthy();
+    expect(viewSessionFile).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "打开原文件" }));
+    await waitFor(() => expect(viewSessionFile).toHaveBeenCalledWith("file-owner", "上周CRM.csv"));
+    expect(screen.queryByRole("button", { name: "查看" })).toBeNull();
+    expect(screen.getByRole("button", { name: "下载" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "下载原件" }));
+    await waitFor(() => expect(downloadSessionFile).toHaveBeenCalledWith("file-owner", "上周CRM.csv"));
+
+    fireEvent.click(screen.getByRole("button", { name: "删除" }));
+
+    await waitFor(() => expect(deleteDataSupplementFile).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole("button", { name: "已删除" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "上周CRM.csv" }).closest(".data-needs-card__file")?.className).toContain("is-deleted");
+  });
+
+  it("lets an external owner submit files and see previous supplement history without login", async () => {
+    render(
+      <MemoryRouter initialEntries={["/supplement/token-1"]}>
+        <App />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByRole("heading", { name: "CRM 阶段转化率" })).toBeTruthy();
+    expect(screen.getByText("通常由 销售负责人 提供")).toBeTruthy();
+    expect(screen.getByText("先补充上周数据。")).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText(/你的姓名/), { target: { value: "销售负责人" } });
+    fireEvent.change(screen.getByLabelText(/补充说明/), { target: { value: "补充近 30 天完整 CRM 导出。" } });
+    fireEvent.change(screen.getByLabelText(/选择文件/), {
+      target: {
+        files: [new File(["stage,rate\nMQL,0.2"], "CRM完整导出.csv", { type: "text/csv" })],
+      },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "提交资料" }));
+
+    await waitFor(() => expect(submitPublicDataSupplement).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(getPublicDataSupplementRequest).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText("已提交，项目负责人可以在作战室里看到这次补充。")).toBeTruthy();
+    expect(screen.getByText("补充近 30 天完整 CRM 导出。")).toBeTruthy();
+    expect(screen.getByText("CRM完整导出.csv")).toBeTruthy();
+    expect(screen.getByText("上周CRM.csv")).toBeTruthy();
   });
 
   it("shows a friendly prompt when a project has not created its first war room", async () => {

@@ -1,11 +1,12 @@
 import { type ChangeEvent, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { addArchiveModule, confirmArchiveFileExtraction, createDiagnosisJob, deleteSessionFile, extractArchiveFile, fetchRecord, getBrainstormSession, getDiagnosisJob, getLatestDiagnosisJobForSession, getProject, getProjectEvidence, hideArchiveModule, patchProject, sendBrainstormMessage, startSession, uploadSessionFile } from "../../api/client";
+import { addArchiveModule, confirmArchiveFileExtraction, createDiagnosisJob, deleteSessionFile, downloadSessionFile, extractArchiveFile, fetchRecord, getBrainstormSession, getDiagnosisJob, getLatestDiagnosisJobForSession, getProject, getProjectEvidence, getSessionFileBlob, hideArchiveModule, patchProject, sendBrainstormMessage, startSession, uploadSessionFile, viewSessionFile } from "../../api/client";
 import { EvidencePackPanel } from "../Evidence/EvidencePackPanel";
 import { Questionnaire } from "../Questionnaire/Questionnaire";
 import type { ProjectChatMode, UploadedChatFile } from "../Questionnaire/ChatStep";
 import { ProjectWorkspaceShell } from "./ProjectWorkspaceShell";
-import type { ArchiveExtractionPreview, ChatMessage, DiagnosisDetail, DiagnosisJobStatus, ModuleAnswer, ProblemMap, ProjectArchive, ProjectDetail, ResearchEvidenceOut } from "../../types";
+import type { ArchiveExtractionPreview, ArchiveFile, ArchivePreviewBlock, ChatMessage, DiagnosisDetail, DiagnosisJobStatus, ModuleAnswer, ProblemMap, ProfileField, ProjectArchive, ProjectDetail, ResearchEvidenceOut } from "../../types";
 import "./ProjectDetailPage.css";
 
 type ProjectPageKey = "start" | "archive" | "brainstorm";
@@ -17,6 +18,12 @@ type InlineDiagnosisState = {
   currentStep: string;
   recordId?: string | null;
   error?: string | null;
+};
+
+type InlineDiagnosisCache = {
+  sessionId?: string;
+  jobId?: string;
+  problemMapSignature?: string;
 };
 
 type InlineDiagnosisStage = {
@@ -105,6 +112,72 @@ function InfoTip({ content }: { content: string }) {
   );
 }
 
+function isArchiveImageFile(file: ArchiveFile): boolean {
+  if (file.content_type === "image") return true;
+  if (file.media_type?.startsWith("image/")) return true;
+  return /\.(?:png|jpe?g|webp|gif|bmp|tiff?)$/i.test(file.name);
+}
+
+function textPreviewBlock(text: string | ArchivePreviewBlock, index: number): ArchivePreviewBlock | null {
+  if (typeof text !== "string" && text.type === "table") return null;
+  const rawText = typeof text === "string" ? text : text.text;
+  const clean = rawText.trim();
+  if (!clean) return null;
+  if (index === 0 && clean.length <= 80) return { type: "title", text: clean, level: 1 };
+  if (/^[一二三四五六七八九十]+[、.．]\s*/.test(clean)) return { type: "heading", text: clean, level: 2 };
+  if (/^\d+(?:\.\d+)+\s+/.test(clean)) return { type: "heading", text: clean, level: 3 };
+  return { type: "paragraph", text: clean };
+}
+
+function normalizeArchivePreviewBlock(block: ArchivePreviewBlock | string, index: number): ArchivePreviewBlock | null {
+  if (typeof block === "string") return textPreviewBlock(block, index);
+  if (block.type === "table") {
+    const rows = block.rows
+      ?.map((row) => row.map((cell) => String(cell || "").trim()))
+      .filter((row) => row.some(Boolean)) ?? [];
+    return rows.length > 0 ? { type: "table", rows } : null;
+  }
+  const text = String(block.text || "").trim();
+  if (!text) return null;
+  return {
+    type: block.type || "paragraph",
+    text,
+    level: block.level,
+  };
+}
+
+function archivePreviewBlocks(file: ArchiveFile): ArchivePreviewBlock[] {
+  const blocks = file.preview_blocks
+    ?.map((item, index) => normalizeArchivePreviewBlock(item, index))
+    .filter((item): item is ArchivePreviewBlock => Boolean(item)) ?? [];
+  if (blocks.length > 0) return blocks;
+  const text = (file.preview_text || "当前文件已保存原件，但没有可展示的文本预览。可下载原件查看完整内容。").trim();
+  if (!text) return [];
+  const byLines = text.split(/\n+/).map((item) => item.trim()).filter(Boolean);
+  if (byLines.length > 1) {
+    return byLines
+      .map((item, index) => textPreviewBlock(item, index))
+      .filter((item): item is ArchivePreviewBlock => Boolean(item));
+  }
+  return text
+    .replace(/([。！？；])\s*(?=(?:[一二三四五六七八九十]+、|\d+(?:\.\d+)*\s|[（(]\d+[）)]))/g, "$1\n")
+    .replace(/\s+(?=(?:[一二三四五六七八九十]+、|\d+(?:\.\d+)*\s|[（(]\d+[）)]))/g, "\n")
+    .split(/\n+/)
+    .map((item, index) => textPreviewBlock(item, index))
+    .filter((item): item is ArchivePreviewBlock => Boolean(item));
+}
+
+function archivePreviewBlockClass(block: ArchivePreviewBlock, index: number): string {
+  if (block.type === "table") return "is-table";
+  const text = "text" in block ? block.text : "";
+  if (block.type === "title" || (index === 0 && text.length <= 80)) return "is-title";
+  if (block.type === "heading") return `is-heading is-heading-level-${block.level || 3}`;
+  if (/^(?:[一二三四五六七八九十]+、|\d+(?:\.\d+)*\s|[（(]\d+[）)]|第[一二三四五六七八九十\d]+[章节部分])/.test(text)) {
+    return "is-heading";
+  }
+  return "is-paragraph";
+}
+
 function toInlineDiagnosisState(status: DiagnosisJobStatus): InlineDiagnosisState {
   return {
     jobId: status.id,
@@ -115,7 +188,30 @@ function toInlineDiagnosisState(status: DiagnosisJobStatus): InlineDiagnosisStat
   };
 }
 
-function readInlineDiagnosisCache(projectId: string): { sessionId?: string; jobId?: string } | null {
+function normalizeProblemMapValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => typeof item === "string" ? item.trim() : item);
+  }
+  if (typeof value === "string") return value.trim();
+  return value;
+}
+
+function problemMapSignature(problemMap?: ProblemMap | null): string {
+  if (!problemMap) return "";
+  try {
+    const normalized = Object.keys(problemMap)
+      .sort()
+      .reduce<Record<string, unknown>>((acc, key) => {
+        acc[key] = normalizeProblemMapValue((problemMap as unknown as Record<string, unknown>)[key]);
+        return acc;
+      }, {});
+    return JSON.stringify(normalized);
+  } catch {
+    return "";
+  }
+}
+
+function readInlineDiagnosisCache(projectId: string): InlineDiagnosisCache | null {
   try {
     const raw = window.localStorage.getItem(inlineDiagnosisCacheKey(projectId));
     if (!raw) return null;
@@ -126,9 +222,10 @@ function readInlineDiagnosisCache(projectId: string): { sessionId?: string; jobI
   }
 }
 
-function writeInlineDiagnosisCache(projectId: string, payload: { sessionId: string; jobId: string }) {
+function writeInlineDiagnosisCache(projectId: string, payload: InlineDiagnosisCache) {
   try {
-    window.localStorage.setItem(inlineDiagnosisCacheKey(projectId), JSON.stringify(payload));
+    const current = readInlineDiagnosisCache(projectId) ?? {};
+    window.localStorage.setItem(inlineDiagnosisCacheKey(projectId), JSON.stringify({ ...current, ...payload }));
   } catch {
     // localStorage can be unavailable in private windows; backend session binding still works.
   }
@@ -184,13 +281,207 @@ const ARCHIVE_FIELD_LABELS: Record<string, string> = {
   sub_problems: "子问题",
 };
 
+const MODULE_LABELS_EXTENDED: Record<string, string> = {
+  ...MODULE_LABELS,
+  acquisition_efficiency: "获客效率",
+  legal_compliance: "法务合规",
+  tax: "税务与财务合规",
+  policy: "政策与监管",
+  ip: "知识产权",
+  supply_chain: "供应链",
+  channel_franchise: "渠道与加盟",
+  data_systems: "数据系统",
+  retention_churn: "留存与流失",
+  private_traffic: "私域运营",
+  pricing_power: "定价能力",
+  cash_runway: "现金安全",
+};
+
 function archiveFieldLabel(label: string) {
   const trimmed = label.trim();
   if (ARCHIVE_FIELD_LABELS[trimmed]) return ARCHIVE_FIELD_LABELS[trimmed];
+  if (MODULE_LABELS_EXTENDED[trimmed]) return MODULE_LABELS_EXTENDED[trimmed];
   if (/^[A-Za-z][A-Za-z0-9_-]*$/.test(trimmed) && /[_-]/.test(trimmed)) {
     return trimmed.replace(/[_-]+/g, " ");
   }
   return trimmed;
+}
+
+function splitArchiveValue(value: string): string[] {
+  return value
+    .split(/[\n；;、]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function isUrlLike(value: string) {
+  return /^https?:\/\//i.test(value) || /^[a-z0-9.-]+\.[a-z]{2,}(\/\S*)?$/i.test(value);
+}
+
+function normalizeArchiveUrl(value: string) {
+  return /^https?:\/\//i.test(value) ? value : `https://${value}`;
+}
+
+function renderMetricText(value: string) {
+  const chunks = value.split(/(\d+(?:\.\d+)?\s*(?:%|％|万|亿|元|USD|Token|条|人|个|秒|ms)?)/g);
+  return chunks.map((chunk, index) => {
+    if (/^\d/.test(chunk.trim())) {
+      return <strong key={`${chunk}-${index}`}>{chunk}</strong>;
+    }
+    return <span key={`${chunk}-${index}`}>{chunk}</span>;
+  });
+}
+
+function renderArchiveSource(sourceLabels: string[], prefix = "来源") {
+  return sourceLabels.length > 0 ? <small>{prefix}：{sourceLabels.join("、")}</small> : null;
+}
+
+function renderArchiveFactValue(fact: ProfileField) {
+  const displayType = fact.display?.type ?? "text";
+  const parts = splitArchiveValue(fact.value);
+  const sourceLabels = fact.source_labels?.filter(Boolean) ?? [];
+
+  if (displayType === "link_list") {
+    const links = parts.length > 0 ? parts : [fact.value];
+    return (
+      <div className="project-archive-fact-links">
+        {links.map((item, index) => {
+          const pieces = item.split(/\s+/);
+          const urlText = pieces.find(isUrlLike) ?? item;
+          const label = item.replace(urlText, "").trim() || urlText.replace(/^https?:\/\//i, "");
+          return (
+            <a key={`${item}-${index}`} href={normalizeArchiveUrl(urlText)} target="_blank" rel="noreferrer">
+              <span>{label}</span>
+              <em>{urlText.replace(/^https?:\/\//i, "")}</em>
+            </a>
+          );
+        })}
+        {renderArchiveSource(sourceLabels, "来源字段")}
+      </div>
+    );
+  }
+
+  if (displayType === "metric") {
+    return (
+      <div className="project-archive-fact-metric">
+        <p>{renderMetricText(fact.value)}</p>
+        {fact.display?.unit && <em>{fact.display.unit}</em>}
+        {renderArchiveSource(sourceLabels)}
+      </div>
+    );
+  }
+
+  if (displayType === "list" && parts.length > 1) {
+    return (
+      <ul className="project-archive-fact-list">
+        {parts.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}
+      </ul>
+    );
+  }
+
+  if (displayType === "funnel" && parts.length > 1) {
+    return (
+      <div className="project-archive-fact-flow">
+        {parts.map((item, index) => (
+          <span key={`${item}-${index}`}>
+            <em>{String.fromCharCode(65 + index)}</em>
+            {item}
+          </span>
+        ))}
+      </div>
+    );
+  }
+
+  if ((displayType === "table" || displayType === "trend") && parts.length > 1) {
+    return (
+      <div className="project-archive-fact-list project-archive-fact-list--compact">
+        {parts.map((item, index) => <span key={`${item}-${index}`}>{item}</span>)}
+      </div>
+    );
+  }
+
+  return (
+    <p>
+      {fact.value}
+      {renderArchiveSource(sourceLabels)}
+    </p>
+  );
+}
+
+function asStringList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => typeof item === "string" ? item : "")
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  if (typeof value === "string" && value.trim()) return [value.trim()];
+  return [];
+}
+
+function compactText(value: unknown, maxLength = 90): string {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!text) return "";
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+}
+
+function memoryHighlights(entry: ProjectDetail["memory_entries"][number]): string[] {
+  const payload = entry.payload ?? {};
+  if (entry.entry_type === "diagnosis") {
+    const topModule = typeof payload.top_module === "string" ? MODULE_LABELS_EXTENDED[payload.top_module] ?? payload.top_module : "";
+    const conclusion = compactText(payload.conclusion);
+    const signal = typeof payload.signal === "string" ? payload.signal : "";
+    const signalLabel = signal === "red" ? "需关注" : signal === "yellow" ? "观察" : signal === "green" ? "健康" : "";
+    return [
+      topModule ? `主战场：${topModule}${signalLabel ? `（${signalLabel}）` : ""}` : "",
+      conclusion ? `核心判断：${conclusion}` : "",
+    ].filter(Boolean);
+  }
+  if (entry.entry_type === "problem_map" || entry.entry_type === "conversation") {
+    const problemMap = (payload.problem_map ?? payload) as Record<string, unknown>;
+    const coreProblem = compactText(problemMap.core_problem);
+    const goal = compactText(problemMap.goal);
+    return [
+      coreProblem ? `问题地图：${coreProblem}` : "",
+      goal ? `目标：${goal}` : "",
+    ].filter(Boolean);
+  }
+  if (entry.entry_type === "archive_file_extract") {
+    const highlights = Array.isArray(payload.highlights) ? payload.highlights : [];
+    return highlights
+      .map((item) => {
+        if (!item || typeof item !== "object") return "";
+        const row = item as { label?: unknown; value?: unknown };
+        const label = compactText(row.label, 28);
+        const value = compactText(row.value, 80);
+        return label && value ? `${label}：${value}` : value;
+      })
+      .filter(Boolean)
+      .slice(0, 3);
+  }
+  return [compactText(entry.summary, 120)].filter(Boolean);
+}
+
+function memoryActions(entry: ProjectDetail["memory_entries"][number]): string[] {
+  const payload = entry.payload ?? {};
+  if (entry.entry_type === "diagnosis") {
+    return asStringList(payload.actions).slice(0, 3);
+  }
+  if (entry.entry_type === "feedback") {
+    const comment = compactText(payload.comment, 100);
+    return comment ? [`根据反馈修正：${comment}`] : [];
+  }
+  return [];
+}
+
+function customArchiveModuleKey(label: string): string {
+  const ascii = label
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 32);
+  return `custom_${ascii || Date.now().toString(36)}`;
 }
 
 const EMPTY_ARCHIVE: ProjectArchive = {
@@ -209,6 +500,27 @@ const EMPTY_ARCHIVE: ProjectArchive = {
 const VALID_PAGES: ProjectPageKey[] = ["start", "archive", "brainstorm"];
 const VALID_ARCHIVE_SECTIONS: ArchiveSectionKey[] = ["modules", "assets", "iterations"];
 
+type ProjectNavigationSnapshot = Partial<ProjectDetail> & Pick<ProjectDetail, "id" | "name" | "status">;
+
+function projectSnapshotToDetail(snapshot: ProjectNavigationSnapshot | null | undefined): ProjectDetail | null {
+  if (!snapshot) return null;
+  return {
+    id: snapshot.id,
+    name: snapshot.name,
+    created_at: snapshot.created_at ?? new Date().toISOString(),
+    updated_at: snapshot.updated_at ?? new Date().toISOString(),
+    status: snapshot.status,
+    memory_summary: snapshot.memory_summary ?? "",
+    memory_entries: snapshot.memory_entries ?? [],
+    sessions: snapshot.sessions ?? [],
+    brainstorm_sessions: snapshot.brainstorm_sessions ?? [],
+    records: snapshot.records ?? [],
+    archive: snapshot.archive ?? EMPTY_ARCHIVE,
+    war_room_plan: snapshot.war_room_plan ?? null,
+    delivery_status: snapshot.delivery_status,
+  };
+}
+
 export function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -218,18 +530,22 @@ export function ProjectDetailPage() {
   const archiveSectionFromQuery = query.get("section");
   const brainstormIdFromQuery = query.get("brainstormId");
   const navState = (location.state as {
+    projectSnapshot?: ProjectNavigationSnapshot;
     resumeSessionId?: string;
     newConversation?: boolean;
     rejectedRecordId?: string;
     initialPrompt?: string;
   } | null) ?? {};
+  const initialProject = navState.projectSnapshot && navState.projectSnapshot.id === id
+    ? projectSnapshotToDetail(navState.projectSnapshot)
+    : null;
   const activePage = VALID_PAGES.includes(pageFromQuery as ProjectPageKey)
     ? (pageFromQuery as ProjectPageKey)
     : "start";
   const activeArchiveSection = VALID_ARCHIVE_SECTIONS.includes(archiveSectionFromQuery as ArchiveSectionKey)
     ? (archiveSectionFromQuery as ArchiveSectionKey)
     : "modules";
-  const [project, setProject] = useState<ProjectDetail | null>(null);
+  const [project, setProject] = useState<ProjectDetail | null>(initialProject);
   const [evidencePack, setEvidencePack] = useState<ResearchEvidenceOut[]>([]);
   const [evidenceError, setEvidenceError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -243,6 +559,12 @@ export function ProjectDetailPage() {
   const [inlineError, setInlineError] = useState<string | null>(null);
   const [inlineLoading, setInlineLoading] = useState(false);
   const [inlineDiagnosis, setInlineDiagnosis] = useState<InlineDiagnosisState | null>(null);
+  const [inlineQuestionnaireMode, setInlineQuestionnaireMode] = useState<"chatting" | "generating" | "ready" | "gen_error">("chatting");
+  const [openDataCollectionRequestId, setOpenDataCollectionRequestId] = useState(0);
+  const [latestProblemMap, setLatestProblemMap] = useState<ProblemMap | null>(null);
+  const [lastDiagnosedProblemMapSignature, setLastDiagnosedProblemMapSignature] = useState("");
+  const [rediagnoseRequestId, setRediagnoseRequestId] = useState(0);
+  const [rediagnoseNotice, setRediagnoseNotice] = useState<string | null>(null);
   const [supplementRecord, setSupplementRecord] = useState<DiagnosisDetail | null>(null);
   const [projectChatMode, setProjectChatMode] = useState<ProjectChatMode>(
     pageFromQuery === "brainstorm" ? "brainstorm" : "consulting"
@@ -259,15 +581,31 @@ export function ProjectDetailPage() {
   });
   const [archiveUploading, setArchiveUploading] = useState(false);
   const [archiveUploadError, setArchiveUploadError] = useState<string | null>(null);
+  const [archiveFileNotice, setArchiveFileNotice] = useState<string | null>(null);
   const [archiveExtractingFileId, setArchiveExtractingFileId] = useState<string | null>(null);
   const [archiveDeletingFileId, setArchiveDeletingFileId] = useState<string | null>(null);
+  const [archiveFileMenuId, setArchiveFileMenuId] = useState<string | null>(null);
+  const [archiveFileBusyId, setArchiveFileBusyId] = useState<string | null>(null);
   const [archiveAddingModule, setArchiveAddingModule] = useState<string | null>(null);
+  const [customArchiveModuleOpen, setCustomArchiveModuleOpen] = useState(false);
+  const [customArchiveModuleName, setCustomArchiveModuleName] = useState("");
   const [archiveHidingModule, setArchiveHidingModule] = useState<string | null>(null);
   const [archiveExtractionDraft, setArchiveExtractionDraft] = useState<ArchiveExtractionPreview | null>(null);
   const [archiveExtractionSummary, setArchiveExtractionSummary] = useState("");
   const [archiveConfirming, setArchiveConfirming] = useState(false);
+  const [archivePreviewFile, setArchivePreviewFile] = useState<ArchiveFile | null>(null);
+  const [archivePreviewImageUrl, setArchivePreviewImageUrl] = useState<string | null>(null);
+  const [archivePreviewImageLoading, setArchivePreviewImageLoading] = useState(false);
+  const [archivePreviewImageError, setArchivePreviewImageError] = useState<string | null>(null);
   const archiveFileInputRef = useRef<HTMLInputElement | null>(null);
   const justSavedBrainstormIdRef = useRef<string | null>(null);
+
+  const closeArchivePreview = () => {
+    setArchivePreviewFile(null);
+    if (archivePreviewImageUrl) URL.revokeObjectURL(archivePreviewImageUrl);
+    setArchivePreviewImageUrl(null);
+    setArchivePreviewImageError(null);
+  };
 
   const restoreInlineDiagnosisFromSession = (sessionId: string, projectId: string) => {
     getLatestDiagnosisJobForSession(sessionId)
@@ -282,7 +620,10 @@ export function ProjectDetailPage() {
   useEffect(() => {
     if (!id) return;
     getProject(id)
-      .then(setProject)
+      .then((nextProject) => {
+        setProject(nextProject);
+        setError(null);
+      })
       .catch((e) => setError(e instanceof Error ? e.message : "加载失败"));
     getProjectEvidence(id)
       .then(setEvidencePack)
@@ -293,6 +634,7 @@ export function ProjectDetailPage() {
     if (!id || inlineDiagnosis) return;
     const cached = readInlineDiagnosisCache(id);
     if (!cached?.jobId) return;
+    if (cached.problemMapSignature) setLastDiagnosedProblemMapSignature(cached.problemMapSignature);
     if (cached.sessionId) setActiveInlineSessionId(cached.sessionId);
     setInlineDiagnosis({
       jobId: cached.jobId,
@@ -324,6 +666,16 @@ export function ProjectDetailPage() {
   }, [id, activeInlineSessionId, inlineDiagnosis]);
 
   useEffect(() => {
+    if (!inlineDiagnosis || lastDiagnosedProblemMapSignature || !latestProblemMap) return;
+    const signature = problemMapSignature(latestProblemMap);
+    if (!signature) return;
+    setLastDiagnosedProblemMapSignature(signature);
+    if (project?.id) {
+      writeInlineDiagnosisCache(project.id, { problemMapSignature: signature });
+    }
+  }, [inlineDiagnosis, lastDiagnosedProblemMapSignature, latestProblemMap, project?.id]);
+
+  useEffect(() => {
     setProjectChatMode(pageFromQuery === "brainstorm" ? "brainstorm" : "consulting");
   }, [pageFromQuery]);
 
@@ -350,6 +702,27 @@ export function ProjectDetailPage() {
   }, [navState.resumeSessionId]);
 
   useEffect(() => {
+    const closeArchiveFileMenu = () => setArchiveFileMenuId(null);
+    window.addEventListener("click", closeArchiveFileMenu);
+    return () => window.removeEventListener("click", closeArchiveFileMenu);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (archivePreviewImageUrl) URL.revokeObjectURL(archivePreviewImageUrl);
+    };
+  }, [archivePreviewImageUrl]);
+
+  useEffect(() => {
+    if (!archivePreviewFile) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [archivePreviewFile]);
+
+  useEffect(() => {
     if (!navState.newConversation || !project?.id) return;
     resetInlineConversation();
     if (navState.initialPrompt) {
@@ -358,7 +731,12 @@ export function ProjectDetailPage() {
     if (navState.rejectedRecordId) {
       setInlineError(null);
     }
-    navigate(`/projects/${project.id}`, {
+    navigate(
+      {
+        pathname: location.pathname,
+        search: location.search,
+      },
+      {
       replace: true,
       preventScrollReset: true,
       state: {
@@ -367,7 +745,8 @@ export function ProjectDetailPage() {
         rejectedRecordId: navState.rejectedRecordId,
         initialPrompt: navState.initialPrompt,
       },
-    });
+      }
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navState.newConversation, navState.initialPrompt, navState.rejectedRecordId, project?.id]);
 
@@ -469,9 +848,34 @@ export function ProjectDetailPage() {
   const resumeInlineSession = (sessionId: string) => {
     setInlineInitialPrompt(undefined);
     setActiveInlineSessionId(sessionId);
+    setInlineResetKey((key) => key + 1);
+    setInlineQuestionnaireMode("chatting");
     setInlineError(null);
     setInlineDiagnosis(null);
     restoreInlineDiagnosisFromSession(sessionId, project.id);
+  };
+  const handleInlineSessionStarted = (sessionId: string, firstMessage?: string) => {
+    const cleanTitle = (firstMessage ?? "").replace(/\s+/g, " ").trim();
+    const title = cleanTitle ? (cleanTitle.length > 24 ? `${cleanTitle.slice(0, 24)}...` : cleanTitle) : "新的咨询对话";
+    const now = new Date().toISOString();
+    setProject((current) => {
+      if (!current) return current;
+      const existing = current.sessions.some((session) => session.id === sessionId);
+      const nextSession = {
+        id: sessionId,
+        title,
+        status: "chatting",
+        updated_at: now,
+        is_pinned: false,
+        memory_enabled: true,
+      };
+      return {
+        ...current,
+        sessions: existing
+          ? current.sessions.map((session) => session.id === sessionId ? { ...session, ...nextSession } : session)
+          : [nextSession, ...current.sessions],
+      };
+    });
   };
   const submitInlineDiagnosis = async (
     answers: ModuleAnswer[],
@@ -482,12 +886,16 @@ export function ProjectDetailPage() {
   ) => {
     setInlineLoading(true);
     setInlineError(null);
+    setRediagnoseNotice(null);
     try {
       const targetProjectId = pid ?? project.id;
       const job = await createDiagnosisJob(answers, sessionId, targetProjectId, problemMap);
+      const signature = problemMapSignature(problemMap ?? latestProblemMap);
+      if (problemMap) setLatestProblemMap(problemMap);
+      if (signature) setLastDiagnosedProblemMapSignature(signature);
       if (sessionId) {
         setActiveInlineSessionId(sessionId);
-        writeInlineDiagnosisCache(targetProjectId, { sessionId, jobId: job.job_id });
+        writeInlineDiagnosisCache(targetProjectId, { sessionId, jobId: job.job_id, problemMapSignature: signature || undefined });
       }
       setInlineDiagnosis({
         jobId: job.job_id,
@@ -505,27 +913,31 @@ export function ProjectDetailPage() {
       setInlineLoading(false);
     }
   };
-  const startInlineDiagnosisPlan = async (problemMap: ProblemMap, sessionId: string) => {
-    setInlineLoading(true);
-    setInlineError(null);
-    try {
-      const job = await createDiagnosisJob([], sessionId, project.id, problemMap);
-      writeInlineDiagnosisCache(project.id, { sessionId, jobId: job.job_id });
-      setInlineDiagnosis({
-        jobId: job.job_id,
-        status: job.status,
-        currentStep: "资料已提交，正在启动深度尽调",
-      });
-      navigate(`/projects/${project.id}`, {
-        replace: true,
-        state: { deliveryStatus: "researching", jobId: job.job_id },
-      });
-      getProject(project.id).then(setProject).catch(() => {});
-    } catch (e) {
-      setInlineError(e instanceof Error ? e.message : "创建诊断任务失败");
-    } finally {
-      setInlineLoading(false);
+  const handleQuestionnaireProblemMapChange = (problemMap: ProblemMap | null) => {
+    setLatestProblemMap(problemMap);
+    if (problemMap) setRediagnoseNotice(null);
+  };
+  const requestRediagnosis = () => {
+    const currentSignature = problemMapSignature(latestProblemMap);
+    if (!currentSignature) {
+      setRediagnoseNotice("请先继续对话更新问题地图，再重新诊断。");
+      return;
     }
+    if (lastDiagnosedProblemMapSignature && currentSignature === lastDiagnosedProblemMapSignature) {
+      setRediagnoseNotice("问题地图未更新，无需重新诊断。");
+      return;
+    }
+    setRediagnoseNotice(null);
+    setRediagnoseRequestId((value) => value + 1);
+  };
+  const openInlineDataCollection = () => {
+    navigate(`/projects/${project.id}`, {
+      replace: true,
+      preventScrollReset: true,
+      state: { projectSnapshot: project },
+    });
+    setInlineQuestionnaireMode("ready");
+    setOpenDataCollectionRequestId((value) => value + 1);
   };
   const isArchived = project.status === "archived";
   const handleArchiveToggle = async () => {
@@ -550,6 +962,7 @@ export function ProjectDetailPage() {
     setInlineInitialPrompt(undefined);
     setInlineError(null);
     setInlineDiagnosis(null);
+    setInlineQuestionnaireMode("chatting");
     clearInlineDiagnosisCache(project.id);
     setInlineResetKey((key) => key + 1);
   };
@@ -567,6 +980,7 @@ export function ProjectDetailPage() {
     if (selected.length === 0) return;
     setArchiveUploading(true);
     setArchiveUploadError(null);
+    setArchiveFileNotice(null);
     try {
       const sessionId = archiveUploadSessionId ?? await startSession(project.id, true);
       if (!archiveUploadSessionId) setArchiveUploadSessionId(sessionId);
@@ -583,6 +997,7 @@ export function ProjectDetailPage() {
   };
   const beginArchiveExtraction = async (fileId: string) => {
     setArchiveUploadError(null);
+    setArchiveFileNotice(null);
     setArchiveExtractingFileId(fileId);
     try {
       const draft = await extractArchiveFile(project.id, fileId);
@@ -594,9 +1009,60 @@ export function ProjectDetailPage() {
       setArchiveExtractingFileId(null);
     }
   };
+  const openArchivePreview = async (file: ArchiveFile) => {
+    setArchiveUploadError(null);
+    setArchiveFileNotice(null);
+    setArchiveFileMenuId(null);
+    setArchivePreviewFile(file);
+    setArchivePreviewImageError(null);
+    if (archivePreviewImageUrl) URL.revokeObjectURL(archivePreviewImageUrl);
+    setArchivePreviewImageUrl(null);
+    if (!isArchiveImageFile(file)) {
+      setArchivePreviewImageLoading(false);
+      return;
+    }
+    setArchivePreviewImageLoading(true);
+    try {
+      const blob = await getSessionFileBlob(file.id);
+      setArchivePreviewImageUrl(URL.createObjectURL(blob));
+    } catch (e) {
+      setArchivePreviewImageError(e instanceof Error ? e.message : "图片加载失败，可下载原件查看。");
+    } finally {
+      setArchivePreviewImageLoading(false);
+    }
+  };
+  const viewArchiveFile = async (fileId: string, fileName: string) => {
+    setArchiveUploadError(null);
+    setArchiveFileNotice(null);
+    setArchiveFileBusyId(`view:${fileId}`);
+    setArchiveFileMenuId(null);
+    try {
+      await viewSessionFile(fileId, fileName);
+    } catch (e) {
+      setArchiveUploadError(e instanceof Error ? e.message : "打开资料失败");
+    } finally {
+      setArchiveFileBusyId(null);
+    }
+  };
+  const downloadArchiveFile = async (fileId: string, fileName: string) => {
+    setArchiveUploadError(null);
+    setArchiveFileNotice(null);
+    setArchiveFileBusyId(`download:${fileId}`);
+    setArchiveFileMenuId(null);
+    try {
+      await downloadSessionFile(fileId, fileName);
+      setArchiveFileNotice(`已开始下载：${fileName}`);
+    } catch (e) {
+      setArchiveUploadError(e instanceof Error ? e.message : "下载资料失败");
+    } finally {
+      setArchiveFileBusyId(null);
+    }
+  };
   const deleteArchiveFile = async (fileId: string) => {
     if (isArchived || archiveDeletingFileId) return;
     setArchiveUploadError(null);
+    setArchiveFileNotice(null);
+    setArchiveFileMenuId(null);
     setArchiveDeletingFileId(fileId);
     try {
       await deleteSessionFile(fileId);
@@ -622,10 +1088,26 @@ export function ProjectDetailPage() {
       setActiveArchiveDomain(module);
       setOpenModule(null);
     } catch (e) {
-      setArchiveUploadError(e instanceof Error ? e.message : "新增经营域失败");
+      setArchiveUploadError(e instanceof Error ? e.message : "新增数据板块失败");
     } finally {
       setArchiveAddingModule(null);
     }
+  };
+  const submitCustomArchiveModule = async () => {
+    const label = customArchiveModuleName.trim();
+    if (!label) {
+      setArchiveUploadError("请输入自定义数据板块名称");
+      return;
+    }
+    const exists = archive.modules.some((module) => module.label === label);
+    if (exists) {
+      setArchiveUploadError("这个数据板块已经存在");
+      return;
+    }
+    const moduleKey = customArchiveModuleKey(label);
+    await enableArchiveModule(moduleKey, label);
+    setCustomArchiveModuleName("");
+    setCustomArchiveModuleOpen(false);
   };
   const hideArchiveDomain = async (module: string) => {
     if (isArchived || archiveHidingModule) return;
@@ -640,7 +1122,7 @@ export function ProjectDetailPage() {
       }
       setOpenModule(null);
     } catch (e) {
-      setArchiveUploadError(e instanceof Error ? e.message : "隐藏经营域失败");
+      setArchiveUploadError(e instanceof Error ? e.message : "隐藏数据板块失败");
     } finally {
       setArchiveHidingModule(null);
     }
@@ -758,7 +1240,6 @@ export function ProjectDetailPage() {
   const archiveProfileCards = ARCHIVE_PROFILE_SEQUENCE
     .map((label) => ({ label, value: profileMap[label] || "" }))
     .filter((item) => item.value);
-  const archiveHeroProfile = archiveProfileCards.slice(0, 6);
   const profileCoverage = archiveProfileCards.length / ARCHIVE_PROFILE_SEQUENCE.length;
   const moduleCoverage = Math.min(filledModules, REQUIRED_ARCHIVE_MODULES) / REQUIRED_ARCHIVE_MODULES;
   const evidenceCoverage = Math.min(evidencePack.length, REQUIRED_ARCHIVE_EVIDENCE) / REQUIRED_ARCHIVE_EVIDENCE;
@@ -771,6 +1252,7 @@ export function ProjectDetailPage() {
   const archiveCompleteness = Math.min(96, Math.round(rawArchiveCompleteness * 100));
   const archiveModuleSnapshots = archive.modules.map((module) => ({
     ...module,
+    label: MODULE_LABELS_EXTENDED[module.module] ?? module.label,
     facts: module.facts.map((fact) => ({ ...fact, label: archiveFieldLabel(fact.label) })),
     preview: module.facts.slice(0, 3).map((fact) => ({ ...fact, label: archiveFieldLabel(fact.label) })),
     remainder: module.facts.slice(3).map((fact) => ({ ...fact, label: archiveFieldLabel(fact.label) })),
@@ -790,7 +1272,7 @@ export function ProjectDetailPage() {
   const archiveSectionCards = [
     {
       key: "modules" as const,
-      label: "经营板块",
+      label: "数据板块",
       value: `${archiveActiveModules}/${moduleTotal}`,
       detail: "已沉淀业务快照",
     },
@@ -807,6 +1289,40 @@ export function ProjectDetailPage() {
       detail: "次正式沉淀",
     },
   ];
+  const warRoomIterationsByRecordId = new Map(
+    (project.war_room_plan?.iterations ?? []).map((iteration) => [iteration.record_id, iteration])
+  );
+  const memoryEntriesByRecordId = project.memory_entries.reduce((map, entry) => {
+    if (!entry.source_id) return map;
+    const list = map.get(entry.source_id) ?? [];
+    list.push(entry);
+    map.set(entry.source_id, list);
+    return map;
+  }, new Map<string, typeof project.memory_entries>());
+  const iterationDetails = project.records.map((record, index) => {
+    const memories = memoryEntriesByRecordId.get(record.id) ?? [];
+    const warIteration = warRoomIterationsByRecordId.get(record.id);
+    const deposited = memories.flatMap(memoryHighlights).filter(Boolean);
+    const actions = [
+      ...memories.flatMap(memoryActions),
+      ...(warIteration ? [
+        compactText(warIteration.objective ? `作战目标：${warIteration.objective}` : "", 120),
+        ...asStringList(warIteration.changes).slice(0, 3),
+      ] : []),
+    ].filter(Boolean);
+    const primaryBattlefield = warIteration?.primary_battlefield
+      ? MODULE_LABELS_EXTENDED[warIteration.primary_battlefield] ?? warIteration.primary_battlefield
+      : "";
+    return {
+      record,
+      round: project.records.length - index,
+      memories,
+      warIteration,
+      deposited: deposited.slice(0, 4),
+      actions: actions.slice(0, 4),
+      primaryBattlefield,
+    };
+  });
   const changeArchiveSection = (section: ArchiveSectionKey) => {
     const params = new URLSearchParams(location.search);
     params.set("page", "archive");
@@ -816,7 +1332,7 @@ export function ProjectDetailPage() {
         pathname: location.pathname,
         search: `?${params.toString()}`,
       },
-      { preventScrollReset: true }
+      { preventScrollReset: true, state: { projectSnapshot: project } }
     );
   };
   const activeWorkspaceSection = activePage === "archive" ? "archive" : "new";
@@ -824,7 +1340,7 @@ export function ProjectDetailPage() {
     setProjectChatMode(mode);
     navigate(
       mode === "brainstorm" ? `/projects/${project.id}?page=brainstorm` : `/projects/${project.id}`,
-      { preventScrollReset: true }
+      { preventScrollReset: true, state: { projectSnapshot: project } }
     );
   };
   const inlineDiagnosisReady = inlineDiagnosis ? SUCCESS_DIAGNOSIS_JOB_STATUSES.has(inlineDiagnosis.status) : false;
@@ -842,18 +1358,37 @@ export function ProjectDetailPage() {
                 ? "资料与证据已整理完成，顾问正在深度判断中。"
                 : "正在基于你的问题定制诊断方案…（这需要几分钟）"}
         </span>
-        <small>
-          {inlineDiagnosisReady
+        <small className={rediagnoseNotice ? "project-diagnosis-inline-status__notice" : undefined}>
+          {rediagnoseNotice ?? (inlineDiagnosisReady
             ? "如果你还想继续追问，可以直接在当前会话里补充。"
             : inlineDiagnosisInReview
               ? "你可以继续对话，系统会继续保留问题地图并更新资料。"
-              : "你可以继续输入，系统会先把资料采集和外部核验跑完。"}
+              : "你可以继续输入，系统会先把资料采集和外部核验跑完。")}
         </small>
       </div>
       {(inlineDiagnosisReady || inlineDiagnosisInReview) && (
-        <button type="button" onClick={() => navigate(`/projects/${project.id}/war-room`)}>
-          {inlineDiagnosisReady ? "查看作战室" : "查看进度"}
-        </button>
+        <div className="project-diagnosis-inline-status__actions">
+          <button
+            type="button"
+            onClick={() => {
+              if (inlineDiagnosisReady) {
+                navigate(`/projects/${project.id}/war-room`);
+              } else {
+                openInlineDataCollection();
+              }
+            }}
+          >
+            {inlineDiagnosisReady ? "查看作战室" : "查看进度"}
+          </button>
+          <button
+            type="button"
+            className="project-diagnosis-inline-status__redo"
+            onClick={requestRediagnosis}
+            disabled={inlineLoading}
+          >
+            {inlineLoading ? "诊断中" : "重新诊断"}
+          </button>
+        </div>
       )}
       {!inlineDiagnosisReady && !inlineDiagnosisInReview && (
         <div className="project-diagnosis-inline-status__stages" aria-label="诊断流程">
@@ -872,6 +1407,7 @@ export function ProjectDetailPage() {
     <ProjectWorkspaceShell
       project={project}
       activeSection={activeWorkspaceSection}
+      conversationLayout={inlineQuestionnaireMode === "ready" ? "form" : "chat"}
       onNewConversation={resetInlineConversation}
       onResumeSession={resumeInlineSession}
       onResumeBrainstorm={openBrainstormRecord}
@@ -922,7 +1458,7 @@ export function ProjectDetailPage() {
               </button>
             )}
             <Questionnaire
-              key={activeInlineSessionId ?? inlineInitialPrompt ?? `project-inline-new-${inlineResetKey}`}
+              key={activeInlineSessionId ? `${activeInlineSessionId}-${inlineResetKey}` : inlineInitialPrompt ?? `project-inline-new-${inlineResetKey}`}
               onSubmit={submitInlineDiagnosis}
               projectId={project.id}
               resumeSessionId={activeInlineSessionId}
@@ -933,6 +1469,12 @@ export function ProjectDetailPage() {
               onProjectModeChange={changeProjectChatMode}
               inputNotice={inlineDiagnosisNotice}
               diagnosisPlanActive={Boolean(inlineDiagnosis)}
+              onProblemMapChange={handleQuestionnaireProblemMapChange}
+              onSessionStarted={handleInlineSessionStarted}
+              onModeChange={setInlineQuestionnaireMode}
+              openDataCollectionRequestId={openDataCollectionRequestId}
+              rediagnoseRequestId={rediagnoseRequestId}
+              onRediagnoseBlocked={setRediagnoseNotice}
               brainstormMessages={brainstormMessages}
               brainstormDraft={brainstormDraft}
               brainstormLoading={brainstormLoading}
@@ -941,7 +1483,6 @@ export function ProjectDetailPage() {
               onBrainstormDraftChange={setBrainstormDraft}
               onBrainstormSend={(attachments?: UploadedChatFile[]) => void sendBrainstorm(attachments ?? [])}
               onBrainstormContextChange={setBrainstormUseProjectContext}
-              onProblemMapConfirmed={startInlineDiagnosisPlan}
             />
           </section>
         </div>
@@ -952,11 +1493,11 @@ export function ProjectDetailPage() {
           id="project-page-archive"
           className="project-page-panel pd-section pd-section--memory"
           role="tabpanel"
-          aria-label="企业档案"
+          aria-label="项目档案"
         >
           <div className="pd-section__head">
             <div>
-              <h2 className="pd-section__title">企业档案</h2>
+              <h2 className="pd-section__title">项目档案</h2>
             </div>
             {hasWarRoom && (
               <button
@@ -971,46 +1512,42 @@ export function ProjectDetailPage() {
 
           <section className="project-archive-hero">
             <div className="project-archive-hero__main">
-              <h3>{companyName}</h3>
-              <p>
-                {archiveSummaryLine || "这个项目的企业基础信息还不够完整，建议先补充行业、主营业务和商业模式。"}
-              </p>
-              <div className="project-archive-hero__tags">
+              <div className="project-archive-hero__top">
+                <div>
+                  <h3>{companyName}</h3>
+                  <p>
+                    {archiveSummaryLine || "基础信息还不完整，建议先补充行业、主营业务和商业模式。"}
+                  </p>
+                </div>
+                <div className="project-archive-hero__completeness">
+                  <strong>{archiveCompleteness}%</strong>
+                  <span>档案完整度</span>
+                  <InfoTip content="按项目概况、数据板块、关联数据和诊断迭代综合估算。完整度用于判断当前资料是否足够支撑复诊、顾问接手和作战室交付。" />
+                  <div className="project-archive-hero__progress" aria-label={`档案完整度 ${archiveCompleteness}%`}>
+                    <span style={{ width: `${archiveCompleteness}%` }} />
+                  </div>
+                </div>
+              </div>
+              <div className="project-archive-hero__tags" aria-label="项目基础信息">
+                <span>{profileMap["所属行业"] || "行业待补充"}</span>
                 <span>{profileMap["规模"] || "规模待补充"}</span>
                 <span>{profileMap["发展阶段"] || "阶段待补充"}</span>
-                <span>{archive.last_updated ? `最近更新 ${fmtDate(archive.last_updated)}` : "尚无归档更新时间"}</span>
+                <span>{archive.last_updated ? `更新 ${fmtDate(archive.last_updated)}` : "尚无归档更新时间"}</span>
               </div>
-              <div className="project-archive-hero__completeness">
-                <div className="project-archive-hero__progress" aria-label={`档案完整度 ${archiveCompleteness}%`}>
-                  <span style={{ width: `${archiveCompleteness}%` }} />
-                </div>
-                <strong>{archiveCompleteness}%</strong>
-                <span>档案完整度</span>
-                <InfoTip content="按企业概况、经营板块、关联数据和诊断迭代综合估算。为避免误导，完整度只表示当前可支撑复诊的资料成熟度，永远不会显示 100%。" />
-              </div>
-              {archiveHeroProfile.length > 0 ? (
-                <div className="project-archive-hero__profile" aria-label="企业概况">
-                  {archiveHeroProfile.map((field) => (
-                    <div key={field.label}>
-                      <span>{field.label}</span>
-                      <strong>{field.value}</strong>
-                    </div>
-                  ))}
-                </div>
-              ) : (
+              {archiveProfileCards.length === 0 && (
                 <button
                   type="button"
                   className="project-archive-action project-archive-action--inline"
                   onClick={() => openArchiveFilePicker({ moduleKey: "profile", fieldKey: "company_profile" })}
                   disabled={isArchived || archiveUploading}
                 >
-                  补充企业基础信息
+                  补充项目基础信息
                 </button>
               )}
             </div>
           </section>
 
-          <nav className="project-archive-nav" aria-label="企业档案分页">
+          <nav className="project-archive-nav" aria-label="项目档案分页">
             {archiveSectionCards.map((section) => (
               <button
                 key={section.key}
@@ -1038,13 +1575,13 @@ export function ProjectDetailPage() {
               <div className="project-archive-block__head">
                 <div>
                   <div className="project-archive-block__title">
-                    <h3>经营板块</h3>
+                    <h3>数据板块</h3>
                     <InfoTip content="每个板块只展示当前最值得复用的经营事实，先帮老板快速抓重点，细节按需展开查看。" />
                   </div>
                 </div>
               </div>
-              {recommendedArchiveModules.length > 0 && (
-                <div className="project-archive-module-suggestions" aria-label="建议新增经营域">
+              {(recommendedArchiveModules.length > 0 || !customArchiveModuleOpen) && (
+                <div className="project-archive-module-suggestions" aria-label="建议新增数据板块">
                   <span>建议新增</span>
                   <div>
                     {recommendedArchiveModules.map((module) => (
@@ -1058,6 +1595,56 @@ export function ProjectDetailPage() {
                         {archiveAddingModule === module.module ? "加入中..." : module.label}
                       </button>
                     ))}
+                    {!customArchiveModuleOpen && (
+                      <button
+                        type="button"
+                        className="project-archive-module-custom-trigger"
+                        onClick={() => {
+                          setCustomArchiveModuleOpen(true);
+                          setArchiveUploadError(null);
+                        }}
+                        disabled={isArchived || Boolean(archiveAddingModule)}
+                      >
+                        自定义
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+              {customArchiveModuleOpen && (
+                <div className="project-archive-module-custom" aria-label="自定义数据板块">
+                  <span>自定义</span>
+                  <div>
+                    <input
+                      type="text"
+                      value={customArchiveModuleName}
+                      placeholder="例如：区域渠道、售后服务、生产制造"
+                      onChange={(event) => setCustomArchiveModuleName(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          void submitCustomArchiveModule();
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void submitCustomArchiveModule()}
+                      disabled={isArchived || Boolean(archiveAddingModule)}
+                    >
+                      {archiveAddingModule ? "创建中..." : "创建板块"}
+                    </button>
+                    <button
+                      type="button"
+                      className="project-archive-module-custom__cancel"
+                      onClick={() => {
+                        setCustomArchiveModuleOpen(false);
+                        setCustomArchiveModuleName("");
+                      }}
+                      disabled={Boolean(archiveAddingModule)}
+                    >
+                      取消
+                    </button>
                   </div>
                 </div>
               )}
@@ -1083,7 +1670,7 @@ export function ProjectDetailPage() {
                       className="project-archive-domain-hide"
                       onClick={() => void hideArchiveDomain(module.module)}
                       disabled={isArchived || archiveHidingModule === module.module}
-                      aria-label="隐藏此经营域"
+                      aria-label="隐藏此数据板块"
                       title={`隐藏 ${module.label}`}
                     >
                       ×
@@ -1092,7 +1679,7 @@ export function ProjectDetailPage() {
                 ))}
               </div>
               {hiddenArchiveModules.length > 0 && (
-                <div className="project-archive-hidden-modules" aria-label="已隐藏经营域">
+                <div className="project-archive-hidden-modules" aria-label="已隐藏数据板块">
                   <span>已隐藏</span>
                   <div>
                     {hiddenArchiveModules.map((module) => (
@@ -1137,7 +1724,7 @@ export function ProjectDetailPage() {
                                 {module.preview.map((fact) => (
                                   <div key={fact.label} className="project-archive-domain-card__fact">
                                     <span>{fact.label}</span>
-                                    <p>{fact.value}</p>
+                                    {renderArchiveFactValue(fact)}
                                   </div>
                                 ))}
                               </div>
@@ -1152,7 +1739,7 @@ export function ProjectDetailPage() {
                                   {module.remainder.map((fact) => (
                                     <div key={fact.label} className="project-archive-domain-card__fact project-archive-domain-card__fact--extra">
                                       <span>{fact.label}</span>
-                                      <p>{fact.value}</p>
+                                      {renderArchiveFactValue(fact)}
                                     </div>
                                   ))}
                                 </div>
@@ -1187,9 +1774,16 @@ export function ProjectDetailPage() {
                             {module.files.length > 0 ? (
                               <ul className="project-archive-domain-files">
                                 {module.files.slice(0, 3).map((file, index) => (
-                                  <li key={`${file.name}-${index}`}>
+                                  <li key={`${file.id}-${index}`}>
                                     <div className="project-archive-domain-files__copy">
-                                      <strong>{file.name}</strong>
+                                      <button
+                                        type="button"
+                                        className="project-archive-file-name"
+                                        onClick={() => void openArchivePreview(file)}
+                                        aria-label={`预览资料：${file.name}`}
+                                      >
+                                        {file.name}
+                                      </button>
                                       <span>{file.field || "未标注字段"} · {fmtDate(file.uploaded_at)}</span>
                                     </div>
                                     <div className="project-archive-file-actions">
@@ -1200,19 +1794,43 @@ export function ProjectDetailPage() {
                                         disabled={archiveExtractingFileId === file.id || archiveConfirming || archiveDeletingFileId === file.id}
                                       >
                                         {file.extraction_status === "confirmed"
-                                          ? "重新沉淀"
+                                          ? "重新提炼"
                                           : archiveExtractingFileId === file.id
                                             ? "提炼中..."
-                                            : "沉淀"}
+                                            : "提炼入档"}
                                       </button>
-                                      <button
-                                        type="button"
-                                        className="project-archive-file-action project-archive-file-action--danger"
-                                        onClick={() => void deleteArchiveFile(file.id)}
-                                        disabled={isArchived || archiveDeletingFileId === file.id || archiveExtractingFileId === file.id || archiveConfirming}
-                                      >
-                                        {archiveDeletingFileId === file.id ? "删除中..." : "删除"}
-                                      </button>
+                                      <div className="project-archive-file-more" onClick={(event) => event.stopPropagation()}>
+                                        <button
+                                          type="button"
+                                          className="project-archive-file-more__trigger"
+                                          aria-label={`${file.name} 更多选项`}
+                                          aria-expanded={archiveFileMenuId === file.id}
+                                          onClick={() => setArchiveFileMenuId((current) => current === file.id ? null : file.id)}
+                                        >
+                                          <span aria-hidden="true">•••</span>
+                                        </button>
+                                        {archiveFileMenuId === file.id && (
+                                          <div className="project-archive-file-more__menu" role="menu">
+                                            <button
+                                              type="button"
+                                              role="menuitem"
+                                              onClick={() => void downloadArchiveFile(file.id, file.name)}
+                                              disabled={archiveFileBusyId === `download:${file.id}`}
+                                            >
+                                              {archiveFileBusyId === `download:${file.id}` ? "下载中..." : "下载"}
+                                            </button>
+                                            <button
+                                              type="button"
+                                              role="menuitem"
+                                              className="is-danger"
+                                              onClick={() => void deleteArchiveFile(file.id)}
+                                              disabled={isArchived || archiveDeletingFileId === file.id || archiveExtractingFileId === file.id || archiveConfirming}
+                                            >
+                                              {archiveDeletingFileId === file.id ? "删除中..." : "删除"}
+                                            </button>
+                                          </div>
+                                        )}
+                                      </div>
                                     </div>
                                   </li>
                                 ))}
@@ -1252,6 +1870,7 @@ export function ProjectDetailPage() {
                 );
               })()}
               {archiveUploadError && <p className="project-archive-upload-error">{archiveUploadError}</p>}
+              {archiveFileNotice && <p className="project-archive-upload-notice">{archiveFileNotice}</p>}
             </section>
           )}
 
@@ -1302,12 +1921,50 @@ export function ProjectDetailPage() {
                     <b>展开</b>
                   </summary>
                   <ul className="pd-update-list">
-                    {project.records.map((r, index) => (
-                      <li key={r.id} className="pd-update-item">
-                        <time>{fmtDateTime(r.created_at)}</time>
+                    {iterationDetails.map((item) => (
+                      <li key={item.record.id} className="pd-update-item">
+                        <time>{fmtDateTime(item.record.created_at)}</time>
                         <div className="project-archive-update-copy">
-                          <strong>第 {project.records.length - index} 轮资料沉淀</strong>
-                          <span>本次补充了 {r.module_count} 个经营板块的信息。</span>
+                          <div className="project-archive-update-copy__head">
+                            <strong>第 {item.round} 轮资料沉淀</strong>
+                            <span>{item.record.module_count} 个数据板块 · {item.memories.length} 条长期记忆</span>
+                          </div>
+                          {item.warIteration?.summary && (
+                            <p className="project-archive-update-copy__summary">{item.warIteration.summary}</p>
+                          )}
+                          <div className="project-archive-update-grid">
+                            <div>
+                              <b>本次沉淀</b>
+                              {item.deposited.length > 0 ? (
+                                <ul>
+                                  {item.deposited.map((line, lineIndex) => (
+                                    <li key={`${item.record.id}-deposit-${lineIndex}`}>{line}</li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p>暂无结构化沉淀明细，建议后续补齐诊断结论或资料重点。</p>
+                              )}
+                            </div>
+                            <div>
+                              <b>后续动作</b>
+                              {item.actions.length > 0 ? (
+                                <ul>
+                                  {item.actions.map((line, lineIndex) => (
+                                    <li key={`${item.record.id}-action-${lineIndex}`}>{line}</li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p>暂无明确动作，可在作战室补充责任人与验收标准。</p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="project-archive-update-meta">
+                            <span>状态：{item.record.review_status === "approved" ? "已审核" : item.record.review_status === "pending_review" ? "审核中" : item.record.review_status === "rejected" ? "已打回" : "已记录"}</span>
+                            {item.primaryBattlefield && <span>主战场：{item.primaryBattlefield}</span>}
+                            {typeof item.warIteration?.confidence === "number" && (
+                              <span>置信度：{Math.round(item.warIteration.confidence * 100)}%</span>
+                            )}
+                          </div>
                         </div>
                       </li>
                     ))}
@@ -1337,7 +1994,7 @@ export function ProjectDetailPage() {
               </button>
             </div>
             <p className="project-archive-extract-modal__summary">
-              AI 已按当前模块先提炼出适合沉淀到企业档案的重点。确认后会更新本项目档案。
+              AI 已按当前模块先提炼出适合沉淀到项目档案的重点。确认后会更新本项目档案。
             </p>
             <label className="project-archive-extract-modal__summary-field">
               <span>沉淀说明</span>
@@ -1384,6 +2041,94 @@ export function ProjectDetailPage() {
             </div>
           </div>
         </section>
+      )}
+
+      {archivePreviewFile && createPortal(
+        <section className="project-archive-preview-modal" role="dialog" aria-label="资料在线预览">
+          <div className="project-archive-preview-modal__card">
+            <div className="project-archive-preview-modal__head">
+              <div>
+                <span>资料预览</span>
+                <h3>{archivePreviewFile.name}</h3>
+              </div>
+              <button
+                type="button"
+                className="project-archive-preview-modal__close"
+                onClick={closeArchivePreview}
+              >
+                关闭
+              </button>
+            </div>
+            <div className="project-archive-preview-modal__body">
+              {isArchiveImageFile(archivePreviewFile) ? (
+                <div className="project-archive-preview-image">
+                  {archivePreviewImageLoading && <p>图片加载中...</p>}
+                  {archivePreviewImageError && <p className="project-archive-preview-image__error">{archivePreviewImageError}</p>}
+                  {archivePreviewImageUrl && (
+                    <img src={archivePreviewImageUrl} alt={archivePreviewFile.name} />
+                  )}
+                </div>
+              ) : (
+                <article className="project-archive-preview-document">
+                  {archivePreviewBlocks(archivePreviewFile).map((block, index) => (
+                    block.type === "table" ? (
+                      <div
+                        key={`${archivePreviewFile.id}-preview-${index}`}
+                        className="project-archive-preview-table-wrap"
+                      >
+                        <table className="project-archive-preview-table">
+                          <tbody>
+                            {block.rows.map((row, rowIndex) => (
+                              <tr key={`${archivePreviewFile.id}-preview-${index}-${rowIndex}`}>
+                                {row.map((cell, cellIndex) => (
+                                  rowIndex === 0 ? (
+                                    <th key={`${archivePreviewFile.id}-preview-${index}-${rowIndex}-${cellIndex}`}>
+                                      {cell}
+                                    </th>
+                                  ) : (
+                                    <td key={`${archivePreviewFile.id}-preview-${index}-${rowIndex}-${cellIndex}`}>
+                                      {cell}
+                                    </td>
+                                  )
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p
+                        key={`${archivePreviewFile.id}-preview-${index}`}
+                        className={archivePreviewBlockClass(block, index)}
+                      >
+                        {block.text}
+                      </p>
+                    )
+                  ))}
+                </article>
+              )}
+            </div>
+            <div className="project-archive-preview-modal__actions">
+              <button
+                type="button"
+                className="project-archive-file-action"
+                onClick={() => void viewArchiveFile(archivePreviewFile.id, archivePreviewFile.name)}
+                disabled={archiveFileBusyId === `view:${archivePreviewFile.id}`}
+              >
+                {archiveFileBusyId === `view:${archivePreviewFile.id}` ? "打开中..." : "打开原文件"}
+              </button>
+              <button
+                type="button"
+                className="project-archive-file-action"
+                onClick={() => void downloadArchiveFile(archivePreviewFile.id, archivePreviewFile.name)}
+                disabled={archiveFileBusyId === `download:${archivePreviewFile.id}`}
+              >
+                {archiveFileBusyId === `download:${archivePreviewFile.id}` ? "下载中..." : "下载原件"}
+              </button>
+            </div>
+          </div>
+        </section>,
+        document.body
       )}
     </ProjectWorkspaceShell>
   );

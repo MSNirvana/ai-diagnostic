@@ -101,12 +101,12 @@ describe("Questionnaire conversation flow", () => {
     await waitFor(
       () => {
         fireEvent.click(screen.getByText("发送"));
-        return screen.getByText("确认无误，开始诊断");
+        return screen.getByRole("button", { name: "确认问题地图并开始诊断" });
       },
       { timeout: 2000 }
     );
     expect(startSession).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByText("确认无误，开始诊断"));
+    fireEvent.click(screen.getByRole("button", { name: "确认问题地图并开始诊断" }));
     // 进入动态问卷
     await waitFor(() => screen.getByText("字段一"));
     fireEvent.change(screen.getByPlaceholderText("ph1"), {
@@ -127,24 +127,24 @@ describe("Questionnaire conversation flow", () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByRole("button", { name: /问题地图/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "打开问题地图" })).toBeTruthy();
     expect(screen.queryByText("生成中")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /问题地图/ }));
+    fireEvent.click(screen.getByRole("button", { name: "打开问题地图" }));
     expect(screen.getByRole("dialog", { name: "问题地图" })).toBeTruthy();
     expect(screen.getByText(/问题地图会在这里逐步成形/)).toBeTruthy();
     fireEvent.pointerDown(document.body);
     expect(screen.queryByRole("dialog", { name: "问题地图" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /问题地图/ }));
+    fireEvent.click(screen.getByRole("button", { name: "打开问题地图" }));
     fireEvent.click(screen.getByRole("button", { name: "关闭" }));
 
     const input = screen.getByPlaceholderText("输入消息...");
     fireEvent.change(input, { target: { value: "获客成本越来越高" } });
     fireEvent.click(screen.getByLabelText("发送消息"));
 
-    await waitFor(() => expect(screen.getByRole("button", { name: /问题地图/ })).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("button", { name: "打开问题地图" })).toBeTruthy());
     expect(screen.queryByText("核心问题")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: /问题地图/ }));
+    fireEvent.click(screen.getByRole("button", { name: "打开问题地图" }));
     expect(screen.getByRole("dialog", { name: "问题地图" })).toBeTruthy();
     expect(screen.getAllByText("92/100").length).toBeGreaterThan(0);
     expect(screen.getByText("核心问题")).toBeTruthy();
@@ -180,11 +180,11 @@ describe("Questionnaire conversation flow", () => {
       </MemoryRouter>
     );
 
-    await waitFor(() => expect(screen.getByRole("button", { name: /问题地图/ })).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("button", { name: "打开问题地图" })).toBeTruthy());
     expect(screen.getByText("获客成本越来越高")).toBeTruthy();
-    expect(screen.queryByText("确认无误，开始诊断")).toBeNull();
+    expect(screen.queryByRole("button", { name: "确认问题地图并开始诊断" })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: /问题地图/ }));
+    fireEvent.click(screen.getByRole("button", { name: "打开问题地图" }));
     expect(screen.getByRole("dialog", { name: "问题地图" })).toBeTruthy();
     expect(screen.getAllByText("92/100").length).toBeGreaterThan(0);
     expect(screen.getByText("获客成本翻倍")).toBeTruthy();
@@ -199,13 +199,13 @@ describe("Questionnaire conversation flow", () => {
       </MemoryRouter>
     );
 
-    expect(screen.queryByText("沉淀到企业档案")).toBeNull();
+    expect(screen.queryByText("沉淀到项目档案")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "更多输入选项" }));
-    expect(screen.getByText("沉淀到企业档案")).toBeTruthy();
+    expect(screen.getByText("沉淀到项目档案")).toBeTruthy();
     fireEvent.pointerDown(document.body);
-    expect(screen.queryByText("沉淀到企业档案")).toBeNull();
+    expect(screen.queryByText("沉淀到项目档案")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "更多输入选项" }));
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: /沉淀到企业档案/ }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: /沉淀到项目档案/ }));
     expect(screen.getByText("本次不沉淀")).toBeTruthy();
 
     fireEvent.change(screen.getByPlaceholderText("输入消息..."), {

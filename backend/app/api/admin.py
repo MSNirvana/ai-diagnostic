@@ -4,6 +4,7 @@
 负责 skill 版本的查看、新增、激活——是"会进化的 skill 系统"的人工治理入口。
 所有改动都留痕（change_reason/category/reviewed_by）。
 """
+import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -13,7 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_session
 from app.db.models import SkillVersion
-from app.skills.skill_network import all_skill_definitions, skill_definition
+from app.skills.configured import card_from_version, card_requirements
+from app.skills.registry import get_skill
+from app.skills.skill_network import all_skill_definitions, skill_definition, skill_flow
 
 router = APIRouter(prefix="/admin/skills")
 
@@ -51,7 +54,11 @@ class SkillRegistryItemOut(BaseModel):
     skill_type: str
     method: str
     description: str
+    flow: str                       # 用在哪个流程（后台"?"悬停说明）
     fallback_prompt: str
+    industry_kpis: list[str] = []   # 诊断域的关键指标（脑子现场生成判断的依据）
+    judgment_hints: list[str] = []  # 诊断域的易误判提示
+    card_json: str = ""             # 诊断卡可治理数据的 JSON（后台编辑/版本化用，非诊断域为空）
     trigger_keywords: list[str]
     data_requirements: list[dict[str, object]]
     upgrade_policy: str
@@ -75,8 +82,49 @@ async def list_registry(session: AsyncSession = Depends(get_session)):
         select(SkillVersion).where(SkillVersion.is_active == True)  # noqa: E712
     ))
     active_by_module = {row.module: row for row in active_rows}
-    return [
-        SkillRegistryItemOut(
+
+    def _effective_card(key: str, active: SkillVersion | None):
+        """诊断卡的生效内容：DB 激活版本若是卡片则用它（后台改过的），否则用文件默认。
+
+        返回 (industry_kpis, judgment_hints, data_requirement_dicts, card_json)。非诊断 skill 返回空。
+        """
+        cfg = getattr(get_skill(key), "config", None)
+        if cfg is None:
+            return [], [], [], ""
+        card = card_from_version(active.system_prompt) if active else None
+        kpis = card["industry_kpis"] if card and isinstance(card.get("industry_kpis"), list) else list(cfg.industry_kpis)
+        hints = card["judgment_hints"] if card and isinstance(card.get("judgment_hints"), list) else list(cfg.judgment_hints)
+        reqs = card_requirements(card) if card and card.get("data_requirements") is not None else cfg.data_requirements
+        req_dicts = [
+            {
+                "key": r.key, "label": r.label, "reason": r.reason,
+                "source_hint": r.source_hint, "keywords": list(r.keywords), "required": r.required,
+            }
+            for r in reqs
+        ]
+        card_json = json.dumps(
+            {"industry_kpis": list(kpis), "judgment_hints": list(hints), "data_requirements": req_dicts},
+            ensure_ascii=False,
+            indent=2,
+        )
+        return list(kpis), list(hints), req_dicts, card_json
+
+    items = []
+    for definition in all_skill_definitions():
+        active = active_by_module.get(definition.key)
+        kpis, hints, req_dicts, card_json = _effective_card(definition.key, active)
+        # 诊断域：取数项来自 config（生效卡）；非诊断域：沿用定义里的 data_requirements。
+        data_reqs = req_dicts if req_dicts else [
+            {
+                "key": requirement.key,
+                "label": requirement.label,
+                "reason": requirement.reason,
+                "source_hint": requirement.source_hint,
+                "required": requirement.required,
+            }
+            for requirement in definition.data_requirements
+        ]
+        items.append(SkillRegistryItemOut(
             key=definition.key,
             label=definition.label,
             category=definition.category,
@@ -84,30 +132,22 @@ async def list_registry(session: AsyncSession = Depends(get_session)):
             skill_type=definition.skill_type,
             method=definition.method,
             description=definition.description,
+            flow=skill_flow(definition.key, definition.skill_type),
             fallback_prompt=definition.fallback_prompt,
+            industry_kpis=kpis,
+            judgment_hints=hints,
+            card_json=card_json,
             trigger_keywords=list(definition.trigger_keywords),
-            data_requirements=[
-                {
-                    "key": requirement.key,
-                    "label": requirement.label,
-                    "reason": requirement.reason,
-                    "source_hint": requirement.source_hint,
-                    "required": requirement.required,
-                }
-                for requirement in definition.data_requirements
-            ],
+            data_requirements=data_reqs,
             upgrade_policy=definition.upgrade_policy,
             evaluation_metrics=list(definition.evaluation_metrics),
             enabled=definition.enabled,
             default_core=definition.default_core,
             active_version=(
-                SkillVersionOut.model_validate(active_by_module[definition.key])
-                if definition.key in active_by_module
-                else None
+                SkillVersionOut.model_validate(active) if active else None
             ),
-        )
-        for definition in all_skill_definitions()
-    ]
+        ))
+    return items
 
 
 @router.get("/{module}/versions", response_model=list[SkillVersionOut])

@@ -51,6 +51,8 @@ def load_config(key: str) -> ExpertConfig:
         fallback_prompt=_load_prompt(meta["module"], meta.get("system_prompt")),
         data_requirements=requirements,
         scenarios=tuple(meta.get("scenarios", ())),
+        industry_kpis=tuple(meta.get("industry_kpis", ())),
+        judgment_hints=tuple(meta.get("judgment_hints", ())),
     )
 
 

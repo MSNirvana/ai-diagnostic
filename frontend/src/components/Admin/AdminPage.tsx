@@ -27,87 +27,63 @@ import type {
   L4Stats,
   ReviewQueueItem,
   ReviewDetail,
+  ModuleResult,
+  ResearchEvidenceOut,
 } from "../../types";
-import { cleanDisplayText, cleanSentenceText, displayModuleLabel } from "../../utils/displayText";
+import { cleanDisplayText, cleanSentenceText, displayModuleLabel, formatEvidenceSource } from "../../utils/displayText";
 import { AppShell } from "../Layout/AppShell";
 import { EvidencePackPanel } from "../Evidence/EvidencePackPanel";
 import "./AdminPage.css";
 
 type Tab = "skills" | "models" | "review" | "l1" | "l2" | "l3" | "l4";
 
-type SkillGroupKey = "assistant" | "intake" | "questionnaire" | "core" | "professional" | "industry" | "delivery" | "other";
+type SkillGroupKey = "intake" | "questionnaire" | "engine" | "core" | "professional" | "capability" | "delivery" | "assistant" | "other";
 type SkillFilterKey = SkillGroupKey | "all";
 
+// 按诊断流水线顺序分组：客户进入 → 数据采集 → 诊断引擎(脑子) → 诊断域(核心/专业/能力) → 证据交付；头脑风暴为辅助。
 const SKILL_GROUPS: Array<{
   key: SkillGroupKey;
   title: string;
   shortTitle: string;
 }> = [
-  {
-    key: "assistant",
-    title: "头脑风暴",
-    shortTitle: "脑暴",
-  },
-  {
-    key: "intake",
-    title: "客户进入与问题地图",
-    shortTitle: "进入",
-  },
-  {
-    key: "questionnaire",
-    title: "诊断问卷与数据采集",
-    shortTitle: "问卷",
-  },
-  {
-    key: "core",
-    title: "核心经营 Skill",
-    shortTitle: "经营",
-  },
-  {
-    key: "professional",
-    title: "专业风险 Skill",
-    shortTitle: "专业",
-  },
-  {
-    key: "industry",
-    title: "行业场景 Skill",
-    shortTitle: "行业",
-  },
-  {
-    key: "delivery",
-    title: "证据、交付与复盘",
-    shortTitle: "交付",
-  },
-  {
-    key: "other",
-    title: "其他方法",
-    shortTitle: "其他",
-  },
+  { key: "intake", title: "① 客户进入与问题地图", shortTitle: "进入" },
+  { key: "questionnaire", title: "② 数据采集与诊断问卷", shortTitle: "采集" },
+  { key: "engine", title: "③ 诊断引擎（调度脑子 + 方法脑子）", shortTitle: "引擎" },
+  { key: "core", title: "④ 诊断域 · 核心经营", shortTitle: "经营" },
+  { key: "professional", title: "④ 诊断域 · 专业风险", shortTitle: "专业" },
+  { key: "capability", title: "④ 诊断域 · 诊断能力", shortTitle: "能力" },
+  { key: "delivery", title: "⑤ 证据与交付", shortTitle: "交付" },
+  { key: "assistant", title: "辅助 · 头脑风暴", shortTitle: "脑暴" },
+  { key: "other", title: "其他方法", shortTitle: "其他" },
 ];
 const SKILL_GROUP_ORDER = SKILL_GROUPS.reduce<Record<SkillGroupKey, number>>((acc, group, index) => {
   acc[group.key] = index;
   return acc;
-}, { assistant: 0, intake: 0, questionnaire: 0, core: 0, professional: 0, industry: 0, delivery: 0, other: 0 });
+}, { intake: 0, questionnaire: 0, engine: 0, core: 0, professional: 0, capability: 0, delivery: 0, assistant: 0, other: 0 });
 
 const SKILL_CATEGORY_ORDER: Record<string, number> = {
-  assistant: 5,
   intake: 10,
   questionnaire: 20,
-  core: 30,
-  professional: 40,
-  industry: 50,
-  delivery: 60,
+  system: 30,
+  core: 40,
+  professional: 50,
+  capability: 60,
+  delivery: 70,
+  assistant: 80,
+  industry: 85,
   other: 90,
 };
 
 function normalizeGroup(category: string, skillType?: string): SkillGroupKey {
-  if (category === "assistant" || category === "intake" || category === "questionnaire" || category === "core" || category === "professional" || category === "industry" || category === "delivery") {
-    return category;
-  }
-  if (skillType === "assistant") return "assistant";
-  if (skillType === "conversation") return "intake";
-  if (skillType === "questionnaire") return "questionnaire";
-  if (skillType === "diagnosis") return "core";
+  if (skillType === "assistant" || category === "assistant") return "assistant";
+  if (skillType === "conversation" || category === "intake") return "intake";
+  if (skillType === "questionnaire" || category === "questionnaire") return "questionnaire";
+  if (skillType === "method" || category === "system") return "engine";   // 诊断引擎（调度脑子 + 方法脑子）
+  if (category === "core") return "core";
+  if (category === "professional") return "professional";
+  if (category === "capability") return "capability";                     // 诊断能力域
+  if (skillType === "delivery" || category === "delivery") return "delivery";
+  if (skillType === "diagnosis") return "core";                           // 兜底：未归类的诊断域
   return "other";
 }
 
@@ -164,7 +140,12 @@ function SkillsTab() {
 
   const selectSkill = async (skill: SkillRegistryItem) => {
     setActiveModule(skill.key);
-    setEditPrompt(skill.active_version?.system_prompt ?? skill.fallback_prompt ?? "");
+    // 诊断域编辑的是「卡片数据」(JSON)：有激活版本用它，否则用文件默认 card_json；其它 skill 编辑 prompt。
+    setEditPrompt(
+      skill.active_version?.system_prompt
+      ?? (skill.skill_type === "diagnosis" ? skill.card_json : skill.fallback_prompt)
+      ?? ""
+    );
     setReason("");
     setMsg(null);
     setVersions(null);
@@ -235,7 +216,7 @@ function SkillsTab() {
   const groupCounts = SKILL_GROUPS.reduce<Record<SkillGroupKey, number>>((acc, group) => {
     acc[group.key] = (skills ?? []).filter((skill) => normalizeGroup(skill.category, skill.skill_type) === group.key).length;
     return acc;
-  }, { assistant: 0, intake: 0, questionnaire: 0, core: 0, professional: 0, industry: 0, delivery: 0, other: 0 });
+  }, { intake: 0, questionnaire: 0, engine: 0, core: 0, professional: 0, capability: 0, delivery: 0, assistant: 0, other: 0 });
   const visibleSkills = (skills ?? [])
     .filter((skill) => activeGroup === "all" || normalizeGroup(skill.category, skill.skill_type) === activeGroup)
     .filter((skill) => {
@@ -308,7 +289,7 @@ function SkillsTab() {
               <span>全部</span>
               <strong>{totalSkills}</strong>
             </button>
-            {SKILL_GROUPS.map((group) => (
+            {SKILL_GROUPS.filter((group) => groupCounts[group.key] > 0).map((group) => (
               <button
                 key={group.key}
                 type="button"
@@ -346,12 +327,35 @@ function SkillsTab() {
                   role="row"
                 >
                   <span className="admin-skill-row__main">
-                    <strong>{s.label}</strong>
+                    <span className="admin-skill-row__title">
+                      <strong>{s.label}</strong>
+                      {s.flow && (
+                        <span
+                          className="admin-skill-help"
+                          title={s.flow}
+                          aria-label={`用途：${s.flow}`}
+                        >
+                          ?
+                        </span>
+                      )}
+                    </span>
                     <em>{s.key}</em>
                   </span>
                   <span className="admin-skill-row__type">{group?.shortTitle ?? "其他"}</span>
-                  <span className={s.active_version ? "admin-skill-row__version" : "admin-skill-row__version admin-skill-row__version--draft"}>
-                    {s.active_version ? `v${s.active_version.version}` : "待建"}
+                  <span
+                    className={
+                      s.active_version
+                        ? "admin-skill-row__version"
+                        : s.skill_type === "diagnosis"
+                          ? "admin-skill-row__version admin-skill-row__version--data"
+                          : "admin-skill-row__version admin-skill-row__version--draft"
+                    }
+                  >
+                    {s.active_version
+                      ? `v${s.active_version.version}`
+                      : s.skill_type === "diagnosis"
+                        ? "数据驱动"
+                        : "待建"}
                   </span>
                 </button>
               );
@@ -412,9 +416,34 @@ function SkillsTab() {
               </div>
             )}
 
+            {activeSkill && (activeSkill.industry_kpis.length > 0 || activeSkill.judgment_hints.length > 0) ? (
+              <div className="admin-skill-brief">
+                {activeSkill.industry_kpis.length > 0 && (
+                  <div>
+                    <h4>关键指标（脑子现场生成判断的锚点）</h4>
+                    <div className="admin-tag-row">
+                      {activeSkill.industry_kpis.map((kpi) => (
+                        <span key={kpi} className="admin-tag admin-tag--metric">{kpi}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {activeSkill.judgment_hints.length > 0 && (
+                  <div>
+                    <h4>易误判提示（喂给脑子的领域陷阱）</h4>
+                    <ul className="admin-hint-list">
+                      {activeSkill.judgment_hints.map((hint) => (
+                        <li key={hint}>{hint}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            ) : null}
+
             {activeSkill?.data_requirements.length ? (
               <div className="admin-data-needs">
-                <h4>关键数据需求</h4>
+                <h4>关键数据需求 / 取数项</h4>
                 {activeSkill.data_requirements.slice(0, 4).map((item) => (
                   <div key={item.key} className="admin-data-need">
                     <strong>{item.label}</strong>
@@ -425,11 +454,17 @@ function SkillsTab() {
               </div>
             ) : null}
 
+            {activeSkill?.skill_type === "diagnosis" ? (
+              <p className="admin-skill-note">
+                本域<strong>数据驱动</strong>：诊断判断由「诊断方法」脑子生成，本域只提供<strong>卡片数据</strong>（关键指标 / 易误判提示 / 取数项）。下方可直接编辑这张卡的 JSON，<strong>保存即新版本、可留痕回滚</strong>；留空或非卡片 JSON 则回退代码默认。要改全局判断逻辑，请编辑 <code>diagnostic_method</code> 这个脑子。
+              </p>
+            ) : null}
+
             <textarea
               className="admin-textarea"
               value={editPrompt}
               onChange={(e) => setEditPrompt(e.target.value)}
-              rows={14}
+              rows={activeSkill?.skill_type === "diagnosis" ? 16 : 14}
             />
             <input
               className="admin-input"
@@ -690,6 +725,57 @@ function ModelsTab() {
 // ── 顾问审核队列 ──────────────────────────────────────────────────────────────
 
 const SIGNAL_LABEL: Record<string, string> = { red: "🔴 红灯", yellow: "🟡 黄灯", green: "🟢 绿灯" };
+const SOURCE_STAGE_LABEL: Record<string, string> = {
+  system_pre_research: "系统预研",
+  expert_supplemental_research: "专家追搜",
+};
+
+function confidencePercent(result: ModuleResult): number | null {
+  const confidence = result.evidence_package?.confidence;
+  return typeof confidence === "number" && Number.isFinite(confidence)
+    ? Math.round(confidence * 100)
+    : null;
+}
+
+function buildReviewSummary(detail: ReviewDetail) {
+  const results = detail.results ?? [];
+  const evidence = detail.evidence_pack ?? [];
+  const confidences = results
+    .map(confidencePercent)
+    .filter((value): value is number => value !== null);
+  const dataRequestCount = results.reduce((sum, result) => sum + (result.data_requests?.length ?? 0), 0);
+  const riskCount = results.filter((result) => result.signal === "red").length;
+  const warningCount = results.filter((result) => result.signal === "yellow").length;
+  const averageConfidence = confidences.length
+    ? Math.round(confidences.reduce((sum, value) => sum + value, 0) / confidences.length)
+    : null;
+
+  return {
+    moduleCount: results.length,
+    riskCount,
+    warningCount,
+    dataRequestCount,
+    averageConfidence,
+    externalEvidenceCount: evidence.length,
+    hasExternalResearch: evidence.length > 0,
+  };
+}
+
+function evidenceProviderText(evidence: ResearchEvidenceOut[]): string {
+  const providers = Array.from(new Set(evidence.map((item) => item.provider).filter(Boolean)));
+  return providers.length > 0 ? providers.join(" / ") : "未记录";
+}
+
+function evidenceStageText(evidence: ResearchEvidenceOut[]): string {
+  const stages = Array.from(new Set(evidence.map((item) => SOURCE_STAGE_LABEL[item.source_stage] ?? item.source_stage).filter(Boolean)));
+  return stages.length > 0 ? stages.join(" / ") : "未记录";
+}
+
+function topEvidenceSources(evidence: ResearchEvidenceOut[], limit = 3): ResearchEvidenceOut[] {
+  return [...evidence]
+    .sort((a, b) => b.credibility - a.credibility)
+    .slice(0, limit);
+}
 
 function ReviewTab() {
   const [queue, setQueue] = useState<ReviewQueueItem[] | null>(null);
@@ -766,43 +852,38 @@ function ReviewTab() {
               : (
                 <>
                   <div className="review-detail__head">
-                    <h3 className="loop-tab__title">诊断草稿 · {detail.primary_module || "通用"}</h3>
+                    <div>
+                      <span className="review-detail__eyebrow">顾问审核草稿</span>
+                      <h3 className="loop-tab__title">诊断草稿 · {displayModuleLabel(detail.primary_module) || detail.primary_module || "通用"}</h3>
+                    </div>
                     <span className={`review-status-badge review-status-badge--${detail.review_status}`}>
                       {detail.review_status === "approved" ? "已通过" : detail.review_status === "rejected" ? "已打回" : "待审核"}
                     </span>
                   </div>
 
-                  <EvidencePackPanel
-                    evidence={detail.evidence_pack ?? []}
-                    title="外部证据包"
-                    emptyText="这条诊断暂未沉淀外部证据。请重点核查专家结论是否需要补充来源。"
-                    compact
-                  />
+                  <ReviewDraftOverview detail={detail} />
+                  <ReviewResearchPanel evidence={detail.evidence_pack ?? []} />
+                  <details className="review-evidence-details">
+                    <summary>查看外部证据分析与审计底稿</summary>
+                    <EvidencePackPanel
+                      evidence={detail.evidence_pack ?? []}
+                      title="外部证据包"
+                      emptyText="这条诊断暂未沉淀外部证据。请重点核查专家结论是否需要补充来源。"
+                      compact
+                    />
+                  </details>
 
-                  {detail.results.map((r, i) => (
-                    <div key={i} className="review-result">
-                      <div className="review-result__head">
-                        <code>{displayModuleLabel(r.module) || r.module}</code>
-                        <span>{SIGNAL_LABEL[r.signal] ?? r.signal}</span>
-                      </div>
-                      <p className="review-result__conclusion">{cleanSentenceText(r.conclusion, "暂无明确结论。")}</p>
-                      {r.evidence.length > 0 && (
-                        <ul className="review-result__evidence">
-                          {r.evidence.map((ev, j) => (
-                            <li key={j}>
-                              {cleanSentenceText(ev.text, "暂无可展示依据。")}
-                              {ev.source && <span className="source-badge">来源：{cleanDisplayText(ev.source, "未注明来源")}</span>}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                      {r.actions.length > 0 && (
-                        <div className="review-result__actions">
-                          <strong>建议行动：</strong>{r.actions.map((action) => cleanDisplayText(action, "")).filter(Boolean).join("；")}
-                        </div>
-                      )}
+                  <section className="review-draft-section" aria-label="专家诊断草稿">
+                    <div className="review-section-title">
+                      <span>专家诊断草稿</span>
+                      <strong>{detail.results.length} 个判断模块</strong>
                     </div>
-                  ))}
+                    <div className="review-result-grid">
+                      {detail.results.map((r, i) => (
+                        <ReviewResultCard key={`${r.module}-${i}`} result={r} index={i} />
+                      ))}
+                    </div>
+                  </section>
 
                   {detail.consultant_notes.length > 0 && (
                     <div className="review-notes">
@@ -838,6 +919,169 @@ function ReviewTab() {
         </section>
       </div>
     </div>
+  );
+}
+
+function ReviewDraftOverview({ detail }: { detail: ReviewDetail }) {
+  const summary = buildReviewSummary(detail);
+  const confidenceClass = summary.averageConfidence === null
+    ? "is-muted"
+    : summary.averageConfidence < 50
+      ? "is-low"
+      : summary.averageConfidence < 75
+        ? "is-mid"
+        : "is-high";
+  return (
+    <section className="review-overview" aria-label="审核摘要">
+      <div className="review-overview__main">
+        <span>审核摘要</span>
+        <h4>
+          {summary.riskCount > 0
+            ? `发现 ${summary.riskCount} 个高风险判断，建议先核证据再放行。`
+            : summary.warningCount > 0
+              ? `有 ${summary.warningCount} 个模块需要补充核验。`
+              : "草稿整体风险较低，可进入交付前复核。"}
+        </h4>
+        <p>
+          本草稿覆盖 {summary.moduleCount} 个专家模块，
+          {summary.dataRequestCount > 0 ? `仍有 ${summary.dataRequestCount} 项关键数据待补。` : "暂无显式待补数据。"}
+          {summary.hasExternalResearch ? ` 已沉淀 ${summary.externalEvidenceCount} 条外部证据。` : " 当前未检索到外部证据入库。"}
+        </p>
+      </div>
+      <div className="review-overview__stats">
+        <div>
+          <strong>{summary.moduleCount}</strong>
+          <span>模块</span>
+        </div>
+        <div>
+          <strong>{summary.dataRequestCount}</strong>
+          <span>待补数据</span>
+        </div>
+        <div className={confidenceClass}>
+          <strong>{summary.averageConfidence === null ? "—" : `${summary.averageConfidence}%`}</strong>
+          <span>平均置信度</span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ReviewResearchPanel({ evidence }: { evidence: ResearchEvidenceOut[] }) {
+  const hasEvidence = evidence.length > 0;
+  const sources = topEvidenceSources(evidence);
+  return (
+    <section className={`review-research ${hasEvidence ? "review-research--ready" : "review-research--missing"}`} aria-label="外部数据核验">
+      <div className="review-section-title">
+        <span>外部数据核验</span>
+        <strong>{hasEvidence ? "已搜索并入库" : "未发现外部搜索证据"}</strong>
+      </div>
+      {hasEvidence ? (
+        <>
+          <div className="review-research__meta">
+            <span>来源数量：{evidence.length}</span>
+            <span>搜索通道：{evidenceProviderText(evidence)}</span>
+            <span>检索阶段：{evidenceStageText(evidence)}</span>
+          </div>
+          <div className="review-research__sources">
+            {sources.map((item, index) => (
+              <a key={item.id} href={item.url || undefined} target={item.url ? "_blank" : undefined} rel={item.url ? "noreferrer" : undefined}>
+                <small>来源 {index + 1} · {displayModuleLabel(item.module) || item.module || "通用"}</small>
+                <span>{cleanDisplayText(item.title, item.query || "外部来源")}</span>
+              </a>
+            ))}
+          </div>
+        </>
+      ) : (
+        <p>
+          这条待审核诊断没有关联 `researchevidence` 入库记录。顾问审核时应按“内部输入草稿”处理：
+          重点检查结论是否过度确定，并决定是否打回补充外部行业、竞品、政策或官网来源。
+        </p>
+      )}
+    </section>
+  );
+}
+
+function ReviewResultCard({ result, index }: { result: ModuleResult; index: number }) {
+  const confidence = confidencePercent(result);
+  const confidenceClass = confidence === null
+    ? "is-muted"
+    : confidence < 50
+      ? "is-low"
+      : confidence < 75
+        ? "is-mid"
+        : "is-high";
+  const evidence = result.evidence ?? [];
+  const actions = (result.actions ?? []).map((action) => cleanDisplayText(action, "")).filter(Boolean);
+  const requests = result.data_requests ?? [];
+  return (
+    <article className={`review-result-card review-result-card--${result.signal || "unknown"}`}>
+      <div className="review-result-card__head">
+        <div>
+          <span>判断 {index + 1}</span>
+          <h4>{displayModuleLabel(result.module) || result.module || "通用模块"}</h4>
+        </div>
+        <div className="review-result-card__badges">
+          <span className={`review-signal review-signal--${result.signal || "unknown"}`}>{SIGNAL_LABEL[result.signal] ?? result.signal}</span>
+          <span className={`review-confidence ${confidenceClass}`}>
+            {confidence === null ? "置信度未标注" : `置信度 ${confidence}%`}
+          </span>
+        </div>
+      </div>
+
+      <div className="review-result-card__conclusion">
+        <span>核心结论</span>
+        <p>{cleanSentenceText(result.conclusion, "暂无明确结论。")}</p>
+      </div>
+
+      <div className="review-result-card__body">
+        <section>
+          <h5>依据</h5>
+          {evidence.length > 0 ? (
+            <ul className="review-evidence-list">
+              {evidence.slice(0, 3).map((ev, j) => (
+                <li key={j}>
+                  <p>{cleanSentenceText(ev.text, "暂无可展示依据。")}</p>
+                  <span>来源：{formatEvidenceSource(ev.source)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="review-muted">暂无逐条依据，需顾问补证后再通过。</p>
+          )}
+        </section>
+
+        <section>
+          <h5>建议动作</h5>
+          {actions.length > 0 ? (
+            <ol className="review-action-list">
+              {actions.slice(0, 3).map((action, j) => <li key={j}>{action}</li>)}
+            </ol>
+          ) : (
+            <p className="review-muted">暂无建议动作。</p>
+          )}
+        </section>
+      </div>
+
+      {(requests.length > 0 || result.evidence_package?.confidence_reason) && (
+        <details className="review-result-card__more">
+          <summary>查看置信度原因与待补数据</summary>
+          {result.evidence_package?.confidence_reason && (
+            <p className="review-confidence-reason">{cleanSentenceText(result.evidence_package.confidence_reason, "")}</p>
+          )}
+          {requests.length > 0 && (
+            <ul className="review-data-requests">
+              {requests.map((request) => (
+                <li key={request.key || request.label}>
+                  <strong>{cleanDisplayText(request.label, "待补数据")}</strong>
+                  <span>{cleanDisplayText(request.reason, "补齐后用于提高判断可靠性。")}</span>
+                  {request.source_hint && <em>取数建议：{cleanDisplayText(request.source_hint, "")}</em>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </details>
+      )}
+    </article>
   );
 }
 

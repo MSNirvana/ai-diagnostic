@@ -1,0 +1,42 @@
+{
+  "module": "cash_runway",
+  "method": "cash-runway-evidence",
+  "label": "现金流与回款诊断",
+  "category": "capability",
+  "description": "诊断现金能撑多久、回款与账期是否在恶化。命脉级，优先于一般财务健康判断。通用能力，按行业基准调整。",
+  "trigger_keywords": ["现金流", "现金", "回款", "账期", "应收", "应付", "runway", "资金", "周转", "垫资", "坏账", "营运资金", "断流", "DSO"],
+  "industry_kpis": ["现金跑道(月)", "经营性现金流", "回款周期DSO", "账期", "应收账款余额", "现金转换周期CCC", "坏账率", "营运资金缺口"],
+  "judgment_hints": [
+    "先算现金跑道：可用现金 ÷ 月净现金消耗；低于 6 个月是红线，低于 3 个月是命悬一线。",
+    "盈利≠安全：账面利润高但回款慢、账期长照样断现金；看经营性现金流而非净利润。",
+    "回款恶化常被增长掩盖：营收涨但回款天数(DSO)同步拉长=在用账期换增长，现金窟窿在扩大。",
+    "现金紧张时压库存/催应收/谈账期比融资更快；先看现金转换周期(CCC)哪一环最长。"
+  ],
+  "scenarios": ["b2b_solution", "manufacturing", "ecommerce_retail", "local_service"],
+  "data_requirements": [
+    {
+      "key": "cash_position",
+      "label": "现金与消耗",
+      "reason": "算不出现金跑道就无法判断安全边界，必须有可用现金和月净消耗。",
+      "source_hint": "提供当前可用现金、近 6-12 个月经营性现金流、月均净现金消耗。",
+      "keywords": ["现金", "现金流", "消耗", "余额", "资金", "跑道"],
+      "required": true
+    },
+    {
+      "key": "receivables_terms",
+      "label": "应收与账期",
+      "reason": "回款是否恶化、是否在用账期换增长，必须看应收余额、账龄和 DSO。",
+      "source_hint": "提供应收账款余额、账龄分布、回款周期(DSO)、主要客户账期与集中度。",
+      "keywords": ["应收", "账期", "回款", "DSO", "账龄", "客户集中"],
+      "required": true
+    },
+    {
+      "key": "payables_inventory",
+      "label": "应付与库存占款",
+      "reason": "现金转换周期要把应付账期和库存周转一起看，才能找到占款最重的一环。",
+      "source_hint": "提供应付账期、库存金额与周转、营运资金占用情况。",
+      "keywords": ["应付", "库存", "周转", "营运资金", "占款"],
+      "required": false
+    }
+  ]
+}

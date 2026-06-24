@@ -61,7 +61,7 @@ def _register(email: str) -> str:
     ).json()["access_token"]
 
 
-def test_create_deep_diligence_job_runs_to_pending_review(db_session, monkeypatch):
+def test_create_deep_diligence_job_blocks_when_external_research_unavailable(db_session, monkeypatch):
     monkeypatch.delenv("PERPLEXITY_API_KEY", raising=False)
     app.dependency_overrides[get_llm_client] = lambda: DiagLLM()
     token = _register("deep-job@b.com")
@@ -89,12 +89,14 @@ def test_create_deep_diligence_job_runs_to_pending_review(db_session, monkeypatc
     import asyncio
     asyncio.get_event_loop().run_until_complete(run_deep_diligence_job(job_id, db_session, DiagLLM()))
     status = client.get(f"/diagnosis-jobs/{job_id}", headers=auth).json()
-    assert status["status"] == "pending_review", status
-    assert status["record_id"]
-    assert status["progress"] == 1
+    assert status["status"] == "failed", status
+    assert status["current_step"] == "外部研究未完成"
+    assert status["record_id"] is None
+    assert status["result_summary"]["research_evidence_count"] == 0
+    assert status["result_summary"]["blocked_reason"] == "external_research_unavailable"
 
     detail = client.get(f"/project/{pid}", headers=auth).json()
-    assert detail["delivery_status"]["state"] == "pending_review"
+    assert detail["delivery_status"]["state"] in {"empty", "draft"}
     assert detail["war_room_plan"] is None
 
 
@@ -260,7 +262,7 @@ def test_deep_diligence_full_delivery_flow(db_session, monkeypatch):
     assert any(row["source_stage"] == "expert_supplemental_research" for row in project_evidence)
 
 
-async def _fake_system_research(session, *, job_id, project_id, questionnaire, client=None):
+async def _fake_system_research(session, *, job_id, project_id, questionnaire, client=None, llm=None):
     from app.research.store import save_research_evidence
     from app.research.models import ResearchBrief, ResearchQuery
 

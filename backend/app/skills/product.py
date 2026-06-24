@@ -1,13 +1,18 @@
 from app.skills.configured import ConfiguredExpertSkill, DataRequirement, ExpertConfig
-from app.skills.prompts import PRODUCT_DIAGNOSIS
 
 
+# 诊断判断由 diagnostic_method 脑子按 domain 数据现场生成；本域只提供数据骨架（零 prose）。
 PRODUCT_CONFIG = ExpertConfig(
     module="product",
     method="product-evidence",
     label="产品与服务",
-    fallback_prompt=PRODUCT_DIAGNOSIS,
+    fallback_prompt="",
     scenarios=("saas_subscription", "ecommerce_retail", "manufacturing", "b2b_solution", "local_service"),
+    industry_kpis=("留存率", "复购率", "客诉率", "交付准时率", "NPS/满意度", "续约率"),
+    judgment_hints=(
+        "先分清问题在价值主张、产品体验、服务兑现还是交付质量。",
+        "SaaS 看激活/留存/续费/功能使用；服务/项目制看交付延期/返工/验收/客诉；硬件看缺陷率/售后返修。",
+    ),
     data_requirements=(
         DataRequirement(
             key="usage_retention",

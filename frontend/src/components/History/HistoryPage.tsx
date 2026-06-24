@@ -334,7 +334,7 @@ function HistoryStage({
             <button key={item.id} type="button" className="history-item history-item--deliverable" onClick={() => openDetail(item.id)}>
               <span className="history-item__title">{deliverableTitle(item, index)}</span>
               <span className="history-item__count">
-                {fmt(item.created_at)} · {item.module_count} 个经营板块
+                {fmt(item.created_at)} · {item.module_count} 个数据板块
               </span>
               <span className={`history-item__status history-item__status--${item.review_status ?? "approved"}`}>
                 {reviewStatusLabel(item.review_status)}

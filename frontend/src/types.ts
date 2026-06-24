@@ -137,6 +137,70 @@ export interface WarRoomPlan {
   data_gaps: DataRequest[];
   checkpoints: ReviewCheckpoint[];
 }
+export type WarRoomFeedbackAdoptionStatus = "pending" | "adopted" | "deferred" | "rejected";
+export type WarRoomFeedbackResult = "none" | "effective" | "no_change" | "new_issue" | "insufficient_data";
+export type WarRoomFeedbackCardType = "decision" | "action" | "review";
+export interface WarRoomFeedbackEvent {
+  id: string;
+  project_id: string;
+  user_id?: string | null;
+  created_at: string;
+  war_room_plan_id: string;
+  record_id?: string | null;
+  card_type: WarRoomFeedbackCardType | string;
+  card_id: string;
+  card_title: string;
+  adoption_status: WarRoomFeedbackAdoptionStatus | string;
+  feedback_result: WarRoomFeedbackResult | string;
+  note: string;
+  owner: string;
+  attachments: string[];
+}
+export interface WarRoomFeedbackCreate {
+  war_room_plan_id: string;
+  record_id?: string | null;
+  card_type: WarRoomFeedbackCardType;
+  card_id: string;
+  card_title: string;
+  adoption_status: WarRoomFeedbackAdoptionStatus;
+  feedback_result: WarRoomFeedbackResult;
+  note?: string;
+  owner?: string;
+  attachments?: string[];
+}
+export interface DataSupplementFile {
+  id: string;
+  original_name: string;
+  summary_text?: string;
+  is_deleted?: boolean;
+  content_type?: string;
+  media_type?: string;
+  preview_text?: string;
+  preview_blocks?: Array<ArchivePreviewBlock | string>;
+}
+export interface DataSupplementSubmission {
+  id: string;
+  created_at: string;
+  submitter_name: string;
+  note: string;
+  files: DataSupplementFile[];
+}
+export interface DataSupplementRequest {
+  id: string;
+  token: string;
+  project_id: string;
+  created_at: string;
+  updated_at: string;
+  war_room_plan_id: string;
+  data_key: string;
+  label: string;
+  reason: string;
+  source_hint: string;
+  typical_owner: string;
+  status: string;
+  public_url: string;
+  submissions: DataSupplementSubmission[];
+}
 export interface DiagnoseResult {
   results: ModuleResult[];
   record_id: string | null;
@@ -183,6 +247,7 @@ export interface ModuleAnswer {
   facts: Record<string, string>;
   pains: string[];
   uploaded_files?: string[];
+  context?: Record<string, unknown>;
 }
 
 export interface DiagnosisSummary {
@@ -235,10 +300,6 @@ export interface GeneratedModule {
 }
 export interface GeneratedQuestionnaire {
   modules: GeneratedModule[];
-}
-export interface ABQuestionnaire {
-  option_a: GeneratedQuestionnaire;
-  option_b: GeneratedQuestionnaire;
 }
 
 export interface ChatMessage {
@@ -403,6 +464,12 @@ export interface ProjectMemoryEntry {
 export interface ProfileField {
   label: string;
   value: string;
+  display?: {
+    type?: "text" | "metric" | "list" | "table" | "trend" | "funnel" | "link_list";
+    unit?: string;
+    series?: unknown[];
+  } | null;
+  source_labels?: string[];
 }
 
 export interface ModuleFacts {
@@ -418,14 +485,22 @@ export interface ArchiveModuleOption {
   reason?: string;
 }
 
+export type ArchivePreviewBlock =
+  | { type?: "title" | "heading" | "paragraph"; text: string; level?: number }
+  | { type: "table"; rows: string[][] };
+
 export interface ArchiveFile {
   id: string;
   name: string;
   module: string;
   field: string;
   uploaded_at: string;
+  content_type?: string;
+  media_type?: string;
   extraction_status?: "none" | "pending_confirm" | "confirmed" | string;
   extracted_highlights?: ProfileField[];
+  preview_text?: string;
+  preview_blocks?: Array<ArchivePreviewBlock | string>;
 }
 
 export interface ArchiveExtractionPreview {
@@ -500,7 +575,11 @@ export interface SkillRegistryItem {
   skill_type: string;
   method: string;
   description: string;
+  flow: string;
   fallback_prompt: string;
+  industry_kpis: string[];
+  judgment_hints: string[];
+  card_json: string;
   trigger_keywords: string[];
   data_requirements: SkillDataRequirement[];
   upgrade_policy: string;

@@ -10,27 +10,12 @@ from sqlalchemy import func, select
 
 from app.db.database import AsyncSessionLocal, init_db
 from app.db.models import SkillVersion
-from app.skills.prompts import (
-    FINANCE_DIAGNOSIS,
-    MARKET_DIAGNOSIS,
-    OPS_DIAGNOSIS,
-    ORG_DIAGNOSIS,
-    PRODUCT_DIAGNOSIS,
-    QUESTIONNAIRE_AB_A,
-    QUESTIONNAIRE_AB_B,
-    SALES_DIAGNOSIS,
-)
+from app.skills.prompts import QUESTIONNAIRE_BASE, QUESTIONNAIRE_QUALITY_GATE
 
 
 UPGRADES = [
-    ("market", "diagnosis", "market-evidence", MARKET_DIAGNOSIS, "场景化市场诊断升级", "scenario_upgrade"),
-    ("product", "diagnosis", "product-evidence", PRODUCT_DIAGNOSIS, "场景化产品诊断升级", "scenario_upgrade"),
-    ("sales", "diagnosis", "funnel-evidence", SALES_DIAGNOSIS, "场景化销售诊断升级", "scenario_upgrade"),
-    ("ops", "diagnosis", "operations-evidence", OPS_DIAGNOSIS, "场景化运营诊断升级", "scenario_upgrade"),
-    ("org", "diagnosis", "organization-evidence", ORG_DIAGNOSIS, "场景化组织诊断升级", "scenario_upgrade"),
-    ("finance", "diagnosis", "finance-evidence", FINANCE_DIAGNOSIS, "场景化财务诊断升级", "scenario_upgrade"),
-    ("questionnaire_ab_a", "questionnaire", "coverage", QUESTIONNAIRE_AB_A, "全景采集版问卷升级", "questionnaire_upgrade"),
-    ("questionnaire_ab_b", "questionnaire", "painpoint", QUESTIONNAIRE_AB_B, "核心问题深挖版问卷升级", "questionnaire_upgrade"),
+    ("questionnaire", "questionnaire", "coverage", QUESTIONNAIRE_BASE, "问卷改少而精：只问内部决定性数据、公开的交给搜索", "questionnaire_upgrade"),
+    ("questionnaire_quality_gate", "questionnaire", "quality_gate", QUESTIONNAIRE_QUALITY_GATE, "质量门改少而精：字段少不判false、占位仍拒、不强求数据入口", "questionnaire_upgrade"),
 ]
 
 

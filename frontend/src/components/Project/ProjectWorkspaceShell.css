@@ -584,6 +584,19 @@
   transform: none;
 }
 
+.project-workspace-main.project-workspace-main--conversation.project-workspace-main--conversation-form {
+  height: 100vh;
+  height: 100dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0;
+}
+
+.project-workspace-main.project-workspace-main--conversation.project-workspace-main--conversation-form > * {
+  min-height: 100%;
+  height: auto;
+}
+
 .project-workspace-main > * {
   max-width: var(--container);
   margin-left: auto;

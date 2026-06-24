@@ -6,7 +6,6 @@ import type {
   BusinessProfile,
   GeneratedModule,
   GeneratedQuestionnaire,
-  ABQuestionnaire,
   ChatMessage,
   ChatResponse,
   ChatTurnResponse,
@@ -22,6 +21,11 @@ import type {
   ProjectDetail,
   ProjectArchive,
   WarRoomPlan,
+  WarRoomFeedbackCreate,
+  WarRoomFeedbackEvent,
+  DataRequest,
+  DataSupplementRequest,
+  DataSupplementSubmission,
   SkillRegistryItem,
   SkillVersionOut,
   LLMConfigOut,
@@ -232,19 +236,6 @@ export async function generateQuestionnaire(
   return body.modules as GeneratedModule[];
 }
 
-export async function generateABQuestionnaire(
-  profile: BusinessProfile,
-  projectId?: string
-): Promise<ABQuestionnaire> {
-  const resp = await fetch(`${BASE}/questionnaire/generate-ab`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify({ profile, project_id: projectId ?? null }),
-  });
-  if (!resp.ok) throw new Error(`生成失败: ${resp.status}`);
-  return (await resp.json()) as ABQuestionnaire;
-}
-
 export async function sendChatMessage(
   messages: ChatMessage[]
 ): Promise<ChatResponse> {
@@ -342,27 +333,6 @@ export async function listIdeaCards(): Promise<IdeaCard[]> {
   return (await resp.json()) as IdeaCard[];
 }
 
-export async function generateABFromSummary(
-  summary: ProblemSummary,
-  projectId?: string,
-  problemMap?: ProblemMap,
-): Promise<ABQuestionnaire> {
-  const resp = await fetch(`${BASE}/questionnaire/generate-ab`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify({
-      summary,
-      problem_map: problemMap ?? null,
-      project_id: projectId ?? null,
-    }),
-  });
-  if (!resp.ok) {
-    const detail = await resp.text().catch(() => "");
-    throw new Error(`生成失败: ${resp.status} ${detail}`.trim());
-  }
-  return (await resp.json()) as ABQuestionnaire;
-}
-
 // 单份动态问卷生成（带后端质量把关）。失败抛错，前端报错可重试，不降级固定问卷。
 export async function generateFromSummary(
   summary: ProblemSummary,
@@ -391,23 +361,6 @@ export async function generateFromSummary(
   return (await resp.json()) as GeneratedQuestionnaire;
 }
 
-export async function recordPreference(
-  profile: BusinessProfile,
-  optionA: GeneratedQuestionnaire,
-  optionB: GeneratedQuestionnaire,
-  chosen: "a" | "b"
-): Promise<void> {
-  await fetch(`${BASE}/questionnaire/preference`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify({
-      profile,
-      option_a: optionA,
-      option_b: optionB,
-      chosen,
-    }),
-  });
-}
 
 export async function startSession(projectId?: string, memoryEnabled = true): Promise<string> {
   const resp = await fetch(`${BASE}/session/start`, {
@@ -500,6 +453,86 @@ export async function getProjectWarRoom(id: string): Promise<WarRoomPlan> {
   const resp = await fetch(`${BASE}/project/${id}/war-room`, { headers: { ...authHeaders() } });
   if (!resp.ok) throw new Error(`获取项目作战室失败: ${resp.status}`);
   return (await resp.json()) as WarRoomPlan;
+}
+
+export async function listWarRoomFeedback(projectId: string): Promise<WarRoomFeedbackEvent[]> {
+  const resp = await fetch(`${BASE}/project/${projectId}/war-room/feedback`, { headers: { ...authHeaders() } });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "获取阶段反馈失败"));
+  return (await resp.json()) as WarRoomFeedbackEvent[];
+}
+
+export async function submitWarRoomFeedback(
+  projectId: string,
+  body: WarRoomFeedbackCreate,
+): Promise<WarRoomFeedbackEvent> {
+  const resp = await fetch(`${BASE}/project/${projectId}/war-room/feedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "提交阶段反馈失败"));
+  return (await resp.json()) as WarRoomFeedbackEvent;
+}
+
+export async function createDataSupplementRequest(
+  projectId: string,
+  warRoomPlanId: string,
+  dataRequest: DataRequest,
+): Promise<DataSupplementRequest> {
+  const resp = await fetch(`${BASE}/data-supplement/project/${projectId}/requests`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({
+      war_room_plan_id: warRoomPlanId,
+      data_request: dataRequest,
+    }),
+  });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "生成补资料链接失败"));
+  return (await resp.json()) as DataSupplementRequest;
+}
+
+export async function listDataSupplementRequests(projectId: string): Promise<DataSupplementRequest[]> {
+  const resp = await fetch(`${BASE}/data-supplement/project/${projectId}/requests`, { headers: { ...authHeaders() } });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "获取补资料记录失败"));
+  return (await resp.json()) as DataSupplementRequest[];
+}
+
+export async function getPublicDataSupplementRequest(token: string): Promise<DataSupplementRequest> {
+  const resp = await fetch(`${BASE}/data-supplement/public/${token}`);
+  if (!resp.ok) throw new Error(await errorMessage(resp, "补资料链接不存在或已失效"));
+  return (await resp.json()) as DataSupplementRequest;
+}
+
+export async function submitPublicDataSupplement(
+  token: string,
+  body: { submitterName?: string; note?: string; files?: File[] },
+): Promise<DataSupplementSubmission> {
+  const form = new FormData();
+  form.append("submitter_name", body.submitterName ?? "");
+  form.append("note", body.note ?? "");
+  for (const file of body.files ?? []) {
+    form.append("files", file);
+  }
+  const resp = await fetch(`${BASE}/data-supplement/public/${token}/submit`, {
+    method: "POST",
+    body: form,
+  });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "提交资料失败"));
+  return (await resp.json()) as DataSupplementSubmission;
+}
+
+export async function deleteDataSupplementFile(
+  projectId: string,
+  requestId: string,
+  submissionId: string,
+  fileId: string,
+): Promise<DataSupplementRequest> {
+  const resp = await fetch(
+    `${BASE}/data-supplement/project/${projectId}/requests/${requestId}/submissions/${submissionId}/files/${fileId}`,
+    { method: "DELETE", headers: { ...authHeaders() } },
+  );
+  if (!resp.ok) throw new Error(await errorMessage(resp, "删除补资料文件失败"));
+  return (await resp.json()) as DataSupplementRequest;
 }
 
 export async function patchProject(
@@ -685,6 +718,46 @@ export async function listSessionFiles(sessionId: string): Promise<UploadedFileO
 export async function deleteSessionFile(fileId: string): Promise<void> {
   const resp = await fetch(`${BASE}/files/${fileId}`, { method: "DELETE", headers: { ...authHeaders() } });
   if (!resp.ok) throw new Error(await errorMessage(resp, "删除文件失败"));
+}
+
+async function fetchSessionFileBlob(fileId: string, download = false): Promise<Blob> {
+  const suffix = download ? "?download=true" : "";
+  const resp = await fetch(`${BASE}/files/${fileId}/content${suffix}`, { headers: { ...authHeaders() } });
+  if (!resp.ok) throw new Error(await errorMessage(resp, download ? "下载文件失败" : "打开文件失败"));
+  return await resp.blob();
+}
+
+export async function getSessionFileBlob(fileId: string): Promise<Blob> {
+  return await fetchSessionFileBlob(fileId, false);
+}
+
+function downloadBlob(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName || "download";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+}
+
+export async function viewSessionFile(fileId: string, fileName: string): Promise<void> {
+  const previewWindow = window.open("about:blank", "_blank");
+  if (!previewWindow) {
+    throw new Error("浏览器阻止了新窗口，请允许弹窗后重试，或先下载原件查看。");
+  }
+  previewWindow.document.write(`<title>${fileName}</title><p style="font-family: sans-serif; padding: 24px;">正在打开资料...</p>`);
+  previewWindow.opener = null;
+  const blob = await fetchSessionFileBlob(fileId, false);
+  const url = URL.createObjectURL(blob);
+  previewWindow.location.href = url;
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+export async function downloadSessionFile(fileId: string, fileName: string): Promise<void> {
+  const blob = await fetchSessionFileBlob(fileId, true);
+  downloadBlob(blob, fileName);
 }
 
 // ── Loop 治理 API ─────────────────────────────────────────────────────────────

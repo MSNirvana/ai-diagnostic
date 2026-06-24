@@ -30,6 +30,84 @@ async def init_db() -> None:
 
 
 async def _ensure_sqlite_columns(conn) -> None:
+    await conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS warroomfeedbackevent (
+            id VARCHAR NOT NULL,
+            project_id VARCHAR NOT NULL,
+            user_id VARCHAR,
+            created_at TIMESTAMP NOT NULL,
+            war_room_plan_id VARCHAR NOT NULL,
+            record_id VARCHAR,
+            card_type VARCHAR NOT NULL,
+            card_id VARCHAR NOT NULL,
+            card_title VARCHAR NOT NULL,
+            adoption_status VARCHAR NOT NULL,
+            feedback_result VARCHAR NOT NULL,
+            note VARCHAR NOT NULL,
+            owner VARCHAR NOT NULL,
+            attachments_json VARCHAR NOT NULL,
+            PRIMARY KEY (id),
+            FOREIGN KEY(project_id) REFERENCES project (id)
+        )
+    """))
+    await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_warroomfeedbackevent_project_id ON warroomfeedbackevent (project_id)"))
+    await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_warroomfeedbackevent_user_id ON warroomfeedbackevent (user_id)"))
+    await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_warroomfeedbackevent_war_room_plan_id ON warroomfeedbackevent (war_room_plan_id)"))
+    await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_warroomfeedbackevent_record_id ON warroomfeedbackevent (record_id)"))
+    await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_warroomfeedbackevent_card_type ON warroomfeedbackevent (card_type)"))
+    await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_warroomfeedbackevent_card_id ON warroomfeedbackevent (card_id)"))
+    await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_warroomfeedbackevent_adoption_status ON warroomfeedbackevent (adoption_status)"))
+    await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_warroomfeedbackevent_feedback_result ON warroomfeedbackevent (feedback_result)"))
+
+    await conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS datasupplementrequest (
+            id VARCHAR NOT NULL,
+            token VARCHAR NOT NULL,
+            project_id VARCHAR NOT NULL,
+            user_id VARCHAR,
+            created_at TIMESTAMP NOT NULL,
+            updated_at TIMESTAMP NOT NULL,
+            war_room_plan_id VARCHAR NOT NULL,
+            data_key VARCHAR NOT NULL,
+            label VARCHAR NOT NULL,
+            reason VARCHAR NOT NULL,
+            source_hint VARCHAR NOT NULL,
+            typical_owner VARCHAR NOT NULL,
+            status VARCHAR NOT NULL,
+            PRIMARY KEY (id),
+            FOREIGN KEY(project_id) REFERENCES project (id),
+            UNIQUE (token)
+        )
+    """))
+    await conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_datasupplementrequest_token ON datasupplementrequest (token)"))
+    await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_datasupplementrequest_project_id ON datasupplementrequest (project_id)"))
+    await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_datasupplementrequest_user_id ON datasupplementrequest (user_id)"))
+    await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_datasupplementrequest_war_room_plan_id ON datasupplementrequest (war_room_plan_id)"))
+    await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_datasupplementrequest_data_key ON datasupplementrequest (data_key)"))
+    await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_datasupplementrequest_status ON datasupplementrequest (status)"))
+
+    await conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS datasupplementsubmission (
+            id VARCHAR NOT NULL,
+            request_id VARCHAR NOT NULL,
+            project_id VARCHAR NOT NULL,
+            created_at TIMESTAMP NOT NULL,
+            submitter_name VARCHAR NOT NULL,
+            note VARCHAR NOT NULL,
+            file_ids_json VARCHAR NOT NULL,
+            deleted_file_ids_json VARCHAR NOT NULL DEFAULT '[]',
+            PRIMARY KEY (id),
+            FOREIGN KEY(request_id) REFERENCES datasupplementrequest (id),
+            FOREIGN KEY(project_id) REFERENCES project (id)
+        )
+    """))
+    await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_datasupplementsubmission_request_id ON datasupplementsubmission (request_id)"))
+    await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_datasupplementsubmission_project_id ON datasupplementsubmission (project_id)"))
+    supplement_submission_result = await conn.execute(text("PRAGMA table_info(datasupplementsubmission)"))
+    supplement_submission_columns = {row[1] for row in supplement_submission_result.fetchall()}
+    if supplement_submission_columns and "deleted_file_ids_json" not in supplement_submission_columns:
+        await conn.execute(text("ALTER TABLE datasupplementsubmission ADD COLUMN deleted_file_ids_json TEXT DEFAULT '[]'"))
+
     diagnosis_result = await conn.execute(text("PRAGMA table_info(diagnosisrecord)"))
     diagnosis_columns = {row[1] for row in diagnosis_result.fetchall()}
     if "war_room_plan_json" not in diagnosis_columns:

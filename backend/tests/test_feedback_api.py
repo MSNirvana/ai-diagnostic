@@ -119,11 +119,12 @@ def test_admin_skill_registry_lists_extensible_network(db_session):
         "channel_franchise",
         "evidence_confidence",
         "archive_extraction",
+        "archive_refinement",
     }.issubset(keys)
 
     legal = next(item for item in body if item["key"] == "legal_compliance")
     assert legal["category"] == "professional"
-    assert legal["fallback_prompt"]
+    assert legal["fallback_prompt"] == ""  # 诊断域零 prose：判断由 diagnostic_method 脑子现场生成
     assert any(req["label"] == "经营资质与许可文件" for req in legal["data_requirements"])
     assert "低评分率" in legal["evaluation_metrics"]
 
@@ -141,6 +142,11 @@ def test_admin_skill_registry_lists_extensible_network(db_session):
     assert archive_extraction["method"] == "archive_extraction"
     assert "报告性质" in archive_extraction["fallback_prompt"]
     assert "撰写人" in archive_extraction["fallback_prompt"]
+
+    archive_refinement = next(item for item in body if item["key"] == "archive_refinement")
+    assert archive_refinement["category"] == "delivery"
+    assert archive_refinement["method"] == "archive_refinement"
+    assert "不直接摘抄" in archive_refinement["fallback_prompt"]
 
     free_chat = next(item for item in body if item["key"] == "free_chat")
     assert free_chat["category"] == "assistant"

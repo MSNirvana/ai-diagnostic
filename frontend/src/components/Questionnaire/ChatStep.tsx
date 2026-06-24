@@ -8,7 +8,7 @@ const OPENING =
   "你好，我是你的诊断顾问。先告诉我，当前最让你头疼的一个问题是什么？";
 
 type Phase = "intake" | "confirm" | "done";
-type ChatBlockKind = "paragraph" | "question" | "heading" | "list_item" | "quote";
+type ChatBlockKind = "paragraph" | "question" | "heading" | "list_item" | "ordered_list_item" | "quote" | "separator";
 export type ProjectChatMode = "consulting" | "brainstorm";
 
 const PROJECT_CHAT_MODES: Record<ProjectChatMode, {
@@ -41,6 +41,7 @@ const PROJECT_CHAT_MODES: Record<ProjectChatMode, {
 interface ChatBlock {
   kind: ChatBlockKind;
   text: string;
+  order?: string;
 }
 
 interface ChatAttachmentView {
@@ -144,8 +145,31 @@ export function formatChatBlocks(content: string, role: ChatMessage["role"]): Ch
   return rawBlocks.map((rawText) => {
     const text = rawText.trim();
     if (role === "assistant") {
+      if (/^[-*_]{3,}$/.test(text)) {
+        return { kind: "separator", text: "" };
+      }
+      const markdownHeadingMatch = text.match(/^#{1,4}\s+(.{2,56})$/);
+      if (markdownHeadingMatch?.[1]) {
+        return { kind: "heading", text: markdownHeadingMatch[1].trim() };
+      }
+      const orderedListMatch = text.match(/^([0-9]+)[.、)]\s+(.+)$/);
+      if (orderedListMatch?.[1] && orderedListMatch?.[2]) {
+        return { kind: "ordered_list_item", order: orderedListMatch[1], text: orderedListMatch[2].trim() };
+      }
       if (/^(#{1,4}\s*)?([一二三四五六七八九十]+|[0-9]+)[、.．]\s*\S{2,28}$/.test(text)) {
         return { kind: "heading", text: text.replace(/^#{1,4}\s*/, "") };
+      }
+      const boldHeadingMatch = text.match(/^(?:\*\*|__)\s*(.{2,42}?[：:])\s*(?:\*\*|__)$/);
+      if (boldHeadingMatch?.[1]) {
+        return { kind: "heading", text: boldHeadingMatch[1].trim() };
+      }
+      const boldOnlyHeadingMatch = text.match(/^(?:\*\*|__)\s*(.{2,36})\s*(?:\*\*|__)$/);
+      if (boldOnlyHeadingMatch?.[1]) {
+        return { kind: "heading", text: boldOnlyHeadingMatch[1].trim() };
+      }
+      const colonHeadingMatch = text.match(/^(.{2,28}[：:])\s*$/);
+      if (colonHeadingMatch?.[1]) {
+        return { kind: "heading", text: colonHeadingMatch[1].trim() };
       }
       if (/^[-*•]\s+/.test(text)) {
         return { kind: "list_item", text: text.replace(/^[-*•]\s+/, "") };
@@ -159,6 +183,35 @@ export function formatChatBlocks(content: string, role: ChatMessage["role"]): Ch
     }
     return { kind: "paragraph", text };
   });
+}
+
+function renderInlineText(text: string, keyPrefix: string): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  const pattern = /(\*\*.+?\*\*|__.+?__|`[^`]+`)/g;
+  let cursor = 0;
+  let index = 0;
+
+  for (const match of text.matchAll(pattern)) {
+    const value = match[0];
+    const start = match.index ?? 0;
+    if (start > cursor) {
+      nodes.push(text.slice(cursor, start));
+    }
+
+    if (value.startsWith("`")) {
+      nodes.push(<code key={`${keyPrefix}-code-${index}`}>{value.slice(1, -1)}</code>);
+    } else {
+      nodes.push(<strong key={`${keyPrefix}-strong-${index}`}>{value.slice(2, -2).trim()}</strong>);
+    }
+
+    cursor = start + value.length;
+    index += 1;
+  }
+
+  if (cursor < text.length) {
+    nodes.push(text.slice(cursor));
+  }
+  return nodes.length ? nodes : [text];
 }
 
 function DocumentAttachmentCard({ file }: { file: ChatAttachmentView }) {
@@ -186,11 +239,18 @@ function ChatMessageContent({
       {blocks.map((block, index) => (
         block.kind === "heading" ? (
           <h3 className="chat-bubble__heading" key={`${block.kind}-${index}`}>
-            {block.text}
+            {renderInlineText(block.text, `${block.kind}-${index}`)}
           </h3>
+        ) : block.kind === "separator" ? (
+          <hr className="chat-bubble__separator" key={`${block.kind}-${index}`} />
         ) : block.kind === "list_item" ? (
           <p className="chat-bubble__paragraph chat-bubble__list-item" key={`${block.kind}-${index}`}>
-            {block.text}
+            {renderInlineText(block.text, `${block.kind}-${index}`)}
+          </p>
+        ) : block.kind === "ordered_list_item" ? (
+          <p className="chat-bubble__paragraph chat-bubble__ordered-list-item" key={`${block.kind}-${index}`}>
+            <span>{block.order}</span>
+            <em>{renderInlineText(block.text, `${block.kind}-${index}`)}</em>
           </p>
         ) : (
           <p
@@ -203,7 +263,7 @@ function ChatMessageContent({
             }
             key={`${block.kind}-${index}`}
           >
-            {block.text}
+            {renderInlineText(block.text, `${block.kind}-${index}`)}
           </p>
         )
       ))}
@@ -225,6 +285,7 @@ interface ChatStepProps {
   diagnosisPlanActive?: boolean;
   initialProblemMap?: ProblemMap | null;
   onProblemMapChange?: (problemMap: ProblemMap) => void;
+  onSessionStarted?: (sessionId: string, firstMessage?: string) => void;
   brainstormMessages?: ChatMessage[];
   brainstormDraft?: string;
   brainstormLoading?: boolean;
@@ -249,6 +310,7 @@ export function ChatStep({
   diagnosisPlanActive = false,
   initialProblemMap = null,
   onProblemMapChange,
+  onSessionStarted,
   brainstormMessages = [],
   brainstormDraft = "",
   brainstormLoading = false,
@@ -306,6 +368,13 @@ export function ChatStep({
     || Boolean(uploadingFileName)
     || uploadedFiles.length > 0;
   const shouldLockProjectMode = isProjectInline && hasStartedConversation;
+  const notifiedSessionRef = useRef<string | null>(resumeSessionId ?? null);
+
+  const rememberStartedSession = (nextSessionId: string, firstMessage?: string) => {
+    if (notifiedSessionRef.current === nextSessionId) return;
+    notifiedSessionRef.current = nextSessionId;
+    onSessionStarted?.(nextSessionId, firstMessage);
+  };
 
   // 续聊用已有 session；新诊断不在挂载时建空会话，避免用户只点进页面就污染历史。
   useEffect(() => {
@@ -361,6 +430,19 @@ export function ChatStep({
     prevLoadingRef.current = loading;
   }, [loading, phase]);
 
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    const lineHeight = Number.parseFloat(window.getComputedStyle(textarea).lineHeight) || 24;
+    const verticalPadding = textarea.offsetHeight - textarea.clientHeight;
+    const minHeight = isProjectInline ? 36 : lineHeight * 2 + verticalPadding;
+    const maxHeight = lineHeight * 3 + verticalPadding;
+    const nextHeight = Math.min(Math.max(textarea.scrollHeight, minHeight), maxHeight);
+    textarea.style.height = `${nextHeight}px`;
+    textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden";
+  }, [activeDraft, isProjectInline]);
+
   const send = async () => {
     const text = draft.trim();
     if (!text || loading) return;
@@ -382,7 +464,10 @@ export function ChatStep({
       setMapPopoverOpen(false);
     try {
       const activeSessionId = sessionId ?? await startSession(projectId, memoryEnabled);
-      if (!sessionId) setSessionId(activeSessionId);
+      if (!sessionId) {
+        setSessionId(activeSessionId);
+        rememberStartedSession(activeSessionId, text);
+      }
       const resp = await sessionChat(activeSessionId, text, memoryEnabled);
       setMessages([...next, { role: "assistant", content: resp.message }]);
       setPhase(resp.phase);
@@ -415,6 +500,7 @@ export function ChatStep({
     if (sessionId) return sessionId;
     const createdSessionId = await startSession(projectId, memoryEnabled);
     setSessionId(createdSessionId);
+    rememberStartedSession(createdSessionId);
     return createdSessionId;
   };
 
@@ -486,6 +572,7 @@ export function ChatStep({
     : hasConversation
       ? "生成中"
       : "";
+  const showConfirmAction = !isBrainstormMode && !diagnosisPlanActive && phase === "confirm" && Boolean(problemMap);
 
   return (
     <div className={isProjectInline ? "chat-step chat-step--project-inline" : "chat-step chat-step--split"}>
@@ -499,7 +586,23 @@ export function ChatStep({
               像跟顾问对话一样，我会一次问一个，帮你理清核心问题，再生成诊断方案。
             </p>
           )}
-        </header>}
+          </header>}
+
+        {!isProjectInline && showConfirmAction && problemMap && (
+          <div className="confirm-banner">
+            <p className="confirm-banner__hint">
+              我已经整理出问题地图。对吗？不对可以在下方继续补充；没问题就开始诊断。
+            </p>
+            <button
+              type="button"
+              className="btn-primary btn-primary--final"
+              aria-label="确认问题地图并开始诊断"
+              onClick={() => onComplete(problemMap, sessionId!)}
+            >
+              确认无误，开始诊断
+            </button>
+          </div>
+        )}
 
         {hasConversation && (
           <div className="chat-stream" ref={scrollRef}>
@@ -539,20 +642,6 @@ export function ChatStep({
               </div>
             )}
 
-            {!isBrainstormMode && !diagnosisPlanActive && phase === "confirm" && problemMap && (
-              <div className="confirm-banner">
-                <p className="confirm-banner__hint">
-                  我已经整理出问题地图。对吗？不对可以在下方继续补充；没问题就开始诊断。
-                </p>
-                <button
-                  type="button"
-                  className="btn-primary btn-primary--final"
-                  onClick={() => onComplete(problemMap, sessionId!)}
-                >
-                  确认无误，开始诊断
-                </button>
-              </div>
-            )}
           </div>
         )}
 
@@ -585,34 +674,48 @@ export function ChatStep({
         {displayedError && <p className="chat-error">{displayedError}</p>}
 
         <div className={isProjectInline && hasStartedConversation ? "chat-input-stack chat-input-stack--anchored" : isProjectInline ? "chat-input-stack" : "chat-input-stack chat-input-stack--default"}>
-          {isProjectInline && inputNotice && (
-            <div className="chat-input-notice">
-              {inputNotice}
-            </div>
-          )}
           {isProjectInline && (
-            <div className="chat-mode-tabs" aria-label="对话模式">
-              {shouldLockProjectMode ? (
-                <span className="chat-mode-tab chat-mode-tab--locked is-active">
-                  <span>{activeModeConfig.label}</span>
-                </span>
-              ) : (
-                <>
+            <div className="chat-input-toolbar">
+              <div className="chat-mode-tabs" aria-label="对话模式">
+                {shouldLockProjectMode ? (
+                  <span className="chat-mode-tab chat-mode-tab--locked is-active">
+                    <span>{activeModeConfig.label}</span>
+                  </span>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className={projectMode === "consulting" ? "chat-mode-tab is-active" : "chat-mode-tab"}
+                      onClick={() => onProjectModeChange?.("consulting")}
+                    >
+                      <span>{PROJECT_CHAT_MODES.consulting.label}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={projectMode === "brainstorm" ? "chat-mode-tab is-active" : "chat-mode-tab"}
+                      onClick={() => onProjectModeChange?.("brainstorm")}
+                    >
+                      <span>{PROJECT_CHAT_MODES.brainstorm.label}</span>
+                    </button>
+                  </>
+                )}
+              </div>
+              {showConfirmAction && problemMap && (
+                <div className="chat-confirm-compact" aria-label="诊断确认">
+                  <span>问题地图已整理好</span>
                   <button
                     type="button"
-                    className={projectMode === "consulting" ? "chat-mode-tab is-active" : "chat-mode-tab"}
-                    onClick={() => onProjectModeChange?.("consulting")}
+                    aria-label="确认问题地图并开始诊断"
+                    onClick={() => onComplete(problemMap, sessionId!)}
                   >
-                    <span>{PROJECT_CHAT_MODES.consulting.label}</span>
+                    开始诊断
                   </button>
-                  <button
-                    type="button"
-                    className={projectMode === "brainstorm" ? "chat-mode-tab is-active" : "chat-mode-tab"}
-                    onClick={() => onProjectModeChange?.("brainstorm")}
-                  >
-                    <span>{PROJECT_CHAT_MODES.brainstorm.label}</span>
-                  </button>
-                </>
+                </div>
+              )}
+              {inputNotice && (
+                <div className="chat-input-notice">
+                  {inputNotice}
+                </div>
               )}
             </div>
           )}
@@ -672,10 +775,10 @@ export function ChatStep({
                     >
                       <span className={(isBrainstormMode ? brainstormUseProjectContext : memoryEnabled) ? "chat-plus-menu__switch is-on" : "chat-plus-menu__switch"} />
                       <span className="chat-plus-menu__copy">
-                        <strong>{isBrainstormMode ? "带入项目信息" : "沉淀到企业档案"}</strong>
+                        <strong>{isBrainstormMode ? "带入项目信息" : "沉淀到项目档案"}</strong>
                         <em>
                           {isBrainstormMode
-                            ? (brainstormUseProjectContext ? "会参考企业档案和作战室" : "只围绕本轮想法推演")
+                            ? (brainstormUseProjectContext ? "会参考项目档案和作战室" : "只围绕本轮想法推演")
                             : (memoryEnabled ? "默认开启，会提取有用信息进入本项目档案" : "本次不沉淀")}
                         </em>
                       </span>
@@ -695,7 +798,7 @@ export function ChatStep({
             <textarea
               ref={textareaRef}
               className="chat-input"
-              rows={2}
+              rows={1}
               placeholder={inputPlaceholder}
               value={activeDraft}
               onChange={(e) => {
@@ -733,6 +836,7 @@ export function ChatStep({
                 <button
                   type="button"
                   className={mapPopoverOpen ? "chat-map-toggle is-open" : "chat-map-toggle"}
+                  aria-label="打开问题地图"
                   aria-expanded={mapPopoverOpen}
                   onClick={() => {
                     setPlusMenuOpen(false);

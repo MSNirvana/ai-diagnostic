@@ -1,16 +1,18 @@
-from app.skills.prompts import MARKET_DIAGNOSIS
 from app.skills.configured import ConfiguredExpertSkill, DataRequirement, ExpertConfig
 
-# DB 无激活版本时的兜底 prompt（保证系统在空库下仍能诊断）
-_SYSTEM_FALLBACK = MARKET_DIAGNOSIS
 
-
+# 诊断判断由 diagnostic_method 脑子按 domain 数据现场生成；本域只提供数据骨架（零 prose）。
 MARKET_CONFIG = ExpertConfig(
     module="market",
     method="market-evidence",
     label="市场与客户",
-    fallback_prompt=_SYSTEM_FALLBACK,
+    fallback_prompt="",
     scenarios=("live_commerce", "ecommerce_retail", "b2b_solution", "local_service"),
+    industry_kpis=("获客成本", "渠道结构占比", "自然/付费流量占比", "客群匹配度", "市场份额", "竞品价格带"),
+    judgment_hints=(
+        "先判断更像渠道结构、投放效率、客群定位，还是市场环境变化，别一上来归因单点。",
+        "直播/电商看账号矩阵+自然/付费流量+投产退货；B2B 看线索质量+决策链+赢单周期；本地/连锁看区域差异+到店链路。",
+    ),
     data_requirements=(
         DataRequirement(
             key="promotion_account",

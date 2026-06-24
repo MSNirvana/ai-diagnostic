@@ -61,6 +61,37 @@ export function cleanDisplayText(value: unknown, fallback = "暂无可展示内�
   return text;
 }
 
+export function formatEvidenceSource(value: unknown, fallback = "客户自述（诊断问答）"): string {
+  const text = cleanDisplayText(value, "");
+  const normalized = text.trim().toLowerCase();
+  if (
+    !normalized ||
+    normalized === "未注明" ||
+    normalized === "未注明来源" ||
+    normalized === "无" ||
+    normalized === "n/a" ||
+    normalized === "na" ||
+    normalized === "none" ||
+    normalized === "null"
+  ) {
+    return fallback;
+  }
+  if (
+    text.includes("你提供") ||
+    text.includes("用户输入") ||
+    text.includes("用户自述") ||
+    text.includes("客户自述") ||
+    text.includes("诊断问答") ||
+    text.includes("经营数据")
+  ) {
+    return "客户自述（诊断问答）";
+  }
+  if (text.includes("上传") || text.includes("文件") || text.includes("报告")) {
+    return text;
+  }
+  return text;
+}
+
 function humanTextFromObject(value: unknown): string | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const source = value as Record<string, unknown>;

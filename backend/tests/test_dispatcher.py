@@ -38,6 +38,30 @@ async def test_dispatcher_runs_registered_module():
     assert outcome.skill_version_ids["market"] == "fallback"
 
 
+async def test_dispatcher_injects_structured_research_evidence():
+    q = Questionnaire(
+        answers=[ModuleAnswer(module="market", pains=["获客贵"])],
+        problem_map={"core_problem": "获客成本上涨"},
+    )
+
+    outcome = await diagnose_all(
+        q,
+        llm=FakeLLM(),
+        research_evidence=[
+            {
+                "module": "market",
+                "title": "公开行业报告",
+                "url": "https://example.com/report",
+                "snippet": "直播电商获客成本上涨。",
+                "credibility": 0.82,
+            }
+        ],
+    )
+
+    assert len(outcome.results) >= 1
+    assert outcome.results[0].module == "market"
+
+
 async def test_dispatcher_skips_unregistered_module():
     q = Questionnaire(answers=[ModuleAnswer(module="unknown")])
     outcome = await diagnose_all(q, llm=FakeLLM())

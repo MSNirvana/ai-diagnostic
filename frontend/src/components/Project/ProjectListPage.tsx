@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { listProjects, createProject } from "../../api/client";
+import { listProjects, createProject, patchProject } from "../../api/client";
 import { AppShell } from "../Layout/AppShell";
 import type { ProjectSummary } from "../../types";
 import "./ProjectListPage.css";
@@ -12,6 +12,8 @@ export function ProjectListPage() {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [showArchived, setShowArchived] = useState(false);
+  const [busyProjectId, setBusyProjectId] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const load = () => {
     listProjects()
@@ -34,6 +36,26 @@ export function ProjectListPage() {
     }
   };
 
+  const updateProjectStatus = async (project: ProjectSummary, status: "active" | "archived" | "deleted") => {
+    setBusyProjectId(project.id);
+    setError(null);
+    try {
+      const updated = await patchProject(project.id, { status });
+      setProjects((current) => {
+        if (!current) return current;
+        if (status === "deleted") {
+          return current.filter((item) => item.id !== project.id);
+        }
+        return current.map((item) => item.id === project.id ? { ...item, ...updated } : item);
+      });
+      if (status === "deleted") setDeleteConfirmId(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "更新项目失败");
+    } finally {
+      setBusyProjectId(null);
+    }
+  };
+
   const fmt = (iso: string) => new Date(iso).toLocaleString("zh-CN");
   const sortedProjects = projects ? [...projects].sort((a, b) => {
     const delta = new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
@@ -41,12 +63,16 @@ export function ProjectListPage() {
     return a.name.localeCompare(b.name, "zh-CN");
   }) : null;
   const featuredProject = sortedProjects?.[0] ?? null;
-  const activeCount = sortedProjects?.filter((project) => project.status !== "archived").length ?? 0;
+  const activeCount = sortedProjects?.filter((project) => project.status !== "archived" && project.status !== "deleted").length ?? 0;
   const archivedCount = sortedProjects?.filter((project) => project.status === "archived").length ?? 0;
   const visibleProjects = sortedProjects?.filter((project) =>
-    showArchived ? project.status === "archived" : project.status !== "archived"
+    showArchived ? project.status === "archived" : project.status !== "archived" && project.status !== "deleted"
   );
-  const featuredVisibleProject = showArchived ? null : featuredProject?.status === "archived" ? visibleProjects?.[0] ?? null : featuredProject;
+  const featuredVisibleProject = showArchived
+    ? null
+    : featuredProject?.status === "archived" || featuredProject?.status === "deleted"
+      ? visibleProjects?.[0] ?? null
+      : featuredProject;
   const memoryPreview = (summary: string) => {
     const latest = summary.split("\n").filter(Boolean).slice(-1)[0] ?? "";
     const cleaned = latest
@@ -101,7 +127,7 @@ export function ProjectListPage() {
           <div>
             <span className="proj-panel-kicker">New Project</span>
             <h2>新建项目</h2>
-            <p>建议用企业名或业务线命名，后续诊断、资料、作战室都会归到这里。</p>
+            <p>建议用项目名、品牌名或业务线命名，后续诊断、资料、作战室都会归到这里。</p>
           </div>
           <div className="proj-create-row">
             <input
@@ -197,11 +223,9 @@ export function ProjectListPage() {
             </div>
           )}
           {visibleProjects?.map((p, index) => (
-            <button
+            <article
               key={p.id}
-              type="button"
               className={p.status === "archived" ? "proj-card proj-card--archived" : "proj-card"}
-              onClick={() => navigate(`/projects/${p.id}`)}
             >
               <span className="proj-card__index">{String(index + 1).padStart(2, "0")}</span>
               <span className="proj-card__name">{p.name}</span>
@@ -215,8 +239,60 @@ export function ProjectListPage() {
                   尚未开始诊断。
                 </span>
               )}
-              <span className="proj-card__arrow">进入</span>
-            </button>
+              <span className="proj-card__actions">
+                <button type="button" className="proj-card__arrow" onClick={() => navigate(`/projects/${p.id}`)}>
+                  进入
+                </button>
+                {p.status === "archived" ? (
+                  <>
+                    <button
+                      type="button"
+                      className="proj-card__action-btn"
+                      aria-label={`恢复项目：${p.name}`}
+                      disabled={busyProjectId === p.id}
+                      onClick={() => void updateProjectStatus(p, "active")}
+                    >
+                      恢复
+                    </button>
+                    {deleteConfirmId === p.id ? (
+                      <span className="proj-card__confirm">
+                        <button
+                          type="button"
+                          aria-label={`确认删除项目：${p.name}`}
+                          disabled={busyProjectId === p.id}
+                          onClick={() => void updateProjectStatus(p, "deleted")}
+                        >
+                          确认删除
+                        </button>
+                        <button type="button" onClick={() => setDeleteConfirmId(null)}>
+                          取消
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="proj-card__action-btn proj-card__action-btn--danger"
+                        aria-label={`删除项目：${p.name}`}
+                        disabled={busyProjectId === p.id}
+                        onClick={() => setDeleteConfirmId(p.id)}
+                      >
+                        删除
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className="proj-card__action-btn"
+                    aria-label={`归档项目：${p.name}`}
+                    disabled={busyProjectId === p.id}
+                    onClick={() => void updateProjectStatus(p, "archived")}
+                  >
+                    归档
+                  </button>
+                )}
+              </span>
+            </article>
           ))}
         </div>
       </section>

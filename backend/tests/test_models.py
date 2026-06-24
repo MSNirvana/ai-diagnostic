@@ -40,6 +40,25 @@ def test_questionnaire_can_carry_problem_map_for_triage():
     assert q.problem_map["diagnosis_focus"] == "sales"
 
 
+def test_module_answer_context_accepts_structured_research_evidence():
+    answer = ModuleAnswer(
+        module="market",
+        context={
+            "industry": "直播电商",
+            "research_evidence": [
+                {
+                    "title": "行业报告",
+                    "url": "https://example.com/report",
+                    "snippet": "获客成本上涨。",
+                    "credibility": 0.8,
+                }
+            ],
+        },
+    )
+
+    assert answer.context["research_evidence"][0]["title"] == "行业报告"
+
+
 def test_triage_summary_contract():
     summary = TriageSummary(
         primary_module="sales",

@@ -89,12 +89,17 @@ describe("AdminPage review evidence pack", () => {
     fireEvent.click(screen.getByText("market"));
 
     expect(await screen.findByText("外部证据包")).toBeTruthy();
+    expect(screen.getByText("外部数据核验")).toBeTruthy();
+    expect(screen.getByText("已搜索并入库")).toBeTruthy();
+    expect(screen.getByText("专家诊断草稿")).toBeTruthy();
+    expect(screen.getAllByText("核心结论").length).toBeGreaterThan(0);
+    expect(screen.getByText("建议动作")).toBeTruthy();
     expect(screen.getByText("证据分析报告")).toBeTruthy();
     expect(screen.getByText("审核目的")).toBeTruthy();
     expect(screen.getByText(/招商承诺需要先证据化核验/)).toBeTruthy();
     expect(screen.getByText(/宣传口径核验线索/)).toBeTruthy();
     expect(screen.getAllByRole("link", { name: "查看来源 1" }).length).toBeGreaterThan(0);
-    expect(screen.queryByText("电火灶招商加盟页")).toBeNull();
+    expect(screen.getByText("电火灶招商加盟页")).toBeTruthy();
     expect(screen.queryByText(/公开招商页强调回本周期/)).toBeNull();
     expect(screen.getByText(/1 条原始证据已归档/)).toBeTruthy();
   });

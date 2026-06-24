@@ -31,6 +31,9 @@ OWNER_ROLES = {
     "acquisition_efficiency": "投放 / 营销负责人",
     "private_traffic": "私域 / 用户运营负责人",
     "channel_expansion": "渠道 / 招商负责人",
+    "pricing_power": "定价 / 商业负责人",
+    "retention_churn": "用户运营 / 客户成功负责人",
+    "cash_runway": "财务负责人",
     "overall": "业务负责人",
 }
 
@@ -101,8 +104,12 @@ def compose_war_room_plan(
     primary = _primary_battlefield(results, triage)
     secondary = _secondary_battlefield(results, triage, primary)
     ordered_results = _ordered_results(results, primary, secondary)
-    data_gaps = _dedupe_data_requests(ordered_results)
-    actions = _department_actions(ordered_results, primary, secondary)
+    # A：只有 red（确信有判断）的域进作战室出部门卡；其余多是「无数据无法判断」的 defer，
+    #    不出卡，避免一摊 10 张「上传XX数据」的无关作业。没有 red 时兜底取最严重的 1-2 个，防空作战室。
+    findings = [r for r in ordered_results if r.signal == "red"] or ordered_results[:2]
+    # C：待补数据只收主战场相关（findings）的，封顶 5 条；不再把所有域的缺数据堆成几十项。
+    data_gaps = _dedupe_data_requests(findings)[:5]
+    actions = _department_actions(findings, primary, secondary)
 
     return WarRoomPlan(
         id=f"wr_{uuid4().hex[:12]}",
@@ -118,11 +125,11 @@ def compose_war_room_plan(
         confidence=_overall_confidence(results, primary, secondary, data_gaps),
         accumulation_note=_accumulation_note(iteration_count=1 if record_id else 0),
         decision_items=_decision_items(actions, primary, data_gaps),
-        battle_chain=_battle_chain(ordered_results, primary, secondary, triage),
+        battle_chain=_battle_chain(findings, primary, secondary, triage),
         department_actions=actions,
         priority_board=_priority_board(actions),
         evidence_summary=_evidence_summary(ordered_results, primary, secondary),
-        risk_summary=_risk_summary(triage, ordered_results, data_gaps),
+        risk_summary=_risk_summary(triage, findings, data_gaps),
         data_gaps=data_gaps,
         checkpoints=_checkpoints(primary),
     )
@@ -166,16 +173,50 @@ def _summary(
 ) -> str:
     if not results:
         return "当前输入不足，建议先补齐经营数据，再生成完整部门作战方案。"
+    primary_label = skill_label(primary)
     secondary_label = skill_label(secondary)
     primary_result = _find_result(results, primary)
-    conclusion = primary_result.conclusion if primary_result else "核心经营瓶颈"
+    # E：取结论第一句、不再外套「」（结论本身常带「」，外套会嵌套成病句），并控长度。
+    core = _one_line(primary_result.conclusion) if primary_result else "核心经营瓶颈"
     if secondary:
-        summary = f"本轮经营会先围绕「{conclusion}」定动作；{secondary_label}只处理会影响落地的支撑事项，避免多线分散。"
+        summary = f"本轮先打{primary_label}：{core}。{secondary_label}只做支撑，不铺开多线。"
     else:
-        summary = f"本轮经营会先围绕「{conclusion}」定动作，把判断落到负责人、时间窗和验收标准。"
+        summary = f"本轮先打{primary_label}：{core}，把判断落到负责人、时间窗和验收。"
     if has_data_gap:
-        return f"{summary} 由于关键数据未补齐，当前只能作为保守方案，需先补证据再加码。"
+        summary += "关键数据未齐，先按保守方案推进、补数后再加码。"
     return summary
+
+
+def _one_line(text: str, limit: int = 56) -> str:
+    """取结论第一个分句并控长度，避免把整段塞进 summary 造成长病句。
+
+    按最早出现的句界（。；;：:）切——结论常是「判断：展开」结构，取冒号前那句即headline。
+    """
+    t = _clean_boss_text(text, "")
+    cut = len(t)
+    for sep in ("。", "；", ";", "：", ":"):
+        i = t.find(sep)
+        if 0 <= i < cut:
+            cut = i
+    t = (t[:cut] if cut else t).strip()
+    if len(t) > limit:
+        t = t[:limit].rstrip("，,、（(「") + "…"
+    return t
+
+
+def _split_action(text: str) -> tuple[str, str]:
+    """把一长句动作拆成（短标题, 详情）。优先按冒号切；无冒号则截断做标题。"""
+    t = _clean_boss_text(text, "")
+    if not t:
+        return "", ""
+    for sep in ("：", ":"):
+        if sep in t:
+            head, _, rest = t.partition(sep)
+            head = head.strip()
+            if 2 <= len(head) <= 30:
+                return head, rest.strip()
+    head = t if len(t) <= 24 else t[:24].rstrip("，,、") + "…"
+    return head, t
 
 
 def _objective(questionnaire: Questionnaire, results: list[ModuleResult], primary: str) -> str:
@@ -253,7 +294,7 @@ def _department_actions(
     results: list[ModuleResult], primary: str, secondary: str
 ) -> list[DepartmentAction]:
     actions: list[DepartmentAction] = []
-    for result in results[:10]:
+    for result in results[:6]:
         priority = _priority_for(result, primary, secondary)
         confidence = (
             result.evidence_package.confidence if result.evidence_package is not None else None
@@ -262,9 +303,13 @@ def _department_actions(
             result.evidence_package.confidence_reason if result.evidence_package is not None else ""
         )
         required_data = _dedupe_data_requests([result])
-        action_title = _clean_boss_text(result.actions[0], "明确一个可执行动作")
+        # B：把一长句动作拆成「短标题 + 详情」，长文只放在 action_detail 出现一次；
+        #    decision_items / priority_board 复用短 action_title，不再三处复制整段。
+        head, detail_lead = _split_action(result.actions[0] if result.actions else "")
+        action_title = head or "明确一个可执行动作"
+        extra = "；".join(result.actions[1:3]) if len(result.actions) > 1 else ""
         action_detail = _clean_boss_text(
-            "；".join(result.actions[1:3]) if len(result.actions) > 1 else result.conclusion,
+            "；".join(x for x in (detail_lead, extra) if x) or result.conclusion,
             result.conclusion,
         )
         start_window = _start_window(priority)

@@ -378,11 +378,11 @@ async def run_chat_turn(
     )
     system = system + "\n\n" + completeness_prompt
 
-    # 注入项目长期记忆，让"再次诊断"能基于这家企业的历史，而非从零开始
+    # 注入项目长期记忆，让"再次诊断"能基于这个项目的历史，而非从零开始
     if project_memory.strip():
         system = (
             system
-            + "\n\n【这家企业的历史诊断记忆（供参考，延续上下文）】\n"
+            + "\n\n【这个项目的历史诊断记忆（供参考，延续上下文）】\n"
             + project_memory
         )
 

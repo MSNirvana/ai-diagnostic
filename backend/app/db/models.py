@@ -20,7 +20,7 @@ class User(SQLModel, table=True):
 
 
 class Project(SQLModel, table=True):
-    """一个持续诊断项目 = 一家企业的诊断档案。
+    """一个持续诊断项目 = 一个项目的诊断档案。
 
     一个用户可有多个项目。项目下沉淀多次诊断会话、诊断记录，
     随时间持续更新——这是从"一次性诊断"走向"持续诊断"的核心。
@@ -29,15 +29,15 @@ class Project(SQLModel, table=True):
     user_id: str = Field(foreign_key="user.id", index=True)
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)
-    name: str                              # 项目名（企业名/业务线名）
+    name: str                              # 项目名（项目/品牌/业务线名）
     profile_json: str | None = None        # 最新画像/问题地图
     memory_summary: str = ""               # 项目长期记忆（重点摘要，供后续对话注入）
     war_room_plan_json: str | None = None   # 项目当前作战室快照（由多次诊断迭代更新）
-    status: str = "active"                 # active | archived
+    status: str = "active"                 # active | archived | deleted (user-hidden, data retained)
 
 
 class ProjectMemoryEntry(SQLModel, table=True):
-    """企业长期档案的一条结构化时间线事件。
+    """项目长期档案的一条结构化时间线事件。
 
     memory_summary 是给 LLM 复诊注入的短摘要；这里保留可审计原始事件，
     方便前端展示、后续检索和反馈驱动迭代。
@@ -50,6 +50,28 @@ class ProjectMemoryEntry(SQLModel, table=True):
     summary: str
     payload_json: str = "{}"
     source_id: str | None = Field(default=None, index=True)
+
+
+class WarRoomFeedbackEvent(SQLModel, table=True):
+    """老板作战室的阶段反馈事件。
+
+    作战室计划本身是交付快照；现场是否采纳、阶段效果和新增问题单独记录，
+    用于后续复诊和项目档案迭代，避免把咨询系统做成 OA 任务流。
+    """
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    project_id: str = Field(foreign_key="project.id", index=True)
+    user_id: str | None = Field(default=None, index=True)
+    created_at: datetime = Field(default_factory=_now)
+    war_room_plan_id: str = Field(index=True)
+    record_id: str | None = Field(default=None, index=True)
+    card_type: str = Field(default="decision", index=True)  # decision | action | review
+    card_id: str = Field(index=True)
+    card_title: str
+    adoption_status: str = Field(default="pending", index=True)  # pending | adopted | deferred | rejected
+    feedback_result: str = Field(default="none", index=True)  # none | effective | no_change | new_issue | insufficient_data
+    note: str = ""
+    owner: str = ""
+    attachments_json: str = "[]"
 
 
 class DiagnosisRecord(SQLModel, table=True):
@@ -276,6 +298,38 @@ class UploadedFile(SQLModel, table=True):
     created_at: datetime = Field(default_factory=_now)
 
 
+class DataSupplementRequest(SQLModel, table=True):
+    """作战室待补资料的公开收集链接。
+
+    老板复制链接给负责人；负责人无需登录即可多次上传文件和文字说明。
+    """
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    token: str = Field(default_factory=_uuid, unique=True, index=True)
+    project_id: str = Field(foreign_key="project.id", index=True)
+    user_id: str | None = Field(default=None, index=True)
+    created_at: datetime = Field(default_factory=_now)
+    updated_at: datetime = Field(default_factory=_now)
+    war_room_plan_id: str = Field(index=True)
+    data_key: str = Field(index=True)
+    label: str
+    reason: str = ""
+    source_hint: str = ""
+    typical_owner: str = ""
+    status: str = Field(default="open", index=True)  # open | closed
+
+
+class DataSupplementSubmission(SQLModel, table=True):
+    """公开补资料链接下的一次提交记录。"""
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    request_id: str = Field(foreign_key="datasupplementrequest.id", index=True)
+    project_id: str = Field(foreign_key="project.id", index=True)
+    created_at: datetime = Field(default_factory=_now)
+    submitter_name: str = ""
+    note: str = ""
+    file_ids_json: str = "[]"
+    deleted_file_ids_json: str = "[]"
+
+
 class RoutingSample(SQLModel, table=True):
     """一次诊断的路由决策 + 结果快照——router 越用越准的训练燃料（Loop 2）。
 
@@ -299,8 +353,8 @@ class CaseAsset(SQLModel, table=True):
     """脱敏后的结构化案例资产——Loop 3 案例飞轮的核心沉淀物。
 
     与 DiagnosisRecord 的区别：
-    - DiagnosisRecord 是给用户看的原始历史（含企业名/精确数字，仅本人可见）。
-    - CaseAsset 是脱敏后跨客户复用的"教材"：企业名抹掉、金额模糊成量级，
+    - DiagnosisRecord 是给用户看的原始历史（含项目名/精确数字，仅本人可见）。
+    - CaseAsset 是脱敏后跨客户复用的"教材"：项目名抹掉、金额模糊成量级，
       保留行业/场景/KPI 结构。客户越多，系统对行业理解越准——这是真护城河。
 
     匿名诊断也归档（脱敏后无 PII，正是飞轮要的料）。归档失败绝不影响诊断。
@@ -312,7 +366,7 @@ class CaseAsset(SQLModel, table=True):
     industry: str = Field(default="", index=True)   # 行业标签，按行业聚合召回先验
     scenario_key: str = Field(default="", index=True)
     primary_module: str = ""                         # 主战场 skill
-    company_profile_json: str = "{}"                 # 脱敏企业画像
+    company_profile_json: str = "{}"                 # 脱敏项目画像
     problem_map_json: str = "{}"                      # 脱敏问题地图
     skills_used_json: str = "[]"                     # 本案召回的 skill 列表
     diagnosis_summary_json: str = "{}"                # {module: {signal, conclusion(脱敏), confidence}}

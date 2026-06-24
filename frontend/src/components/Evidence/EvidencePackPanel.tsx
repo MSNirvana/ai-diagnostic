@@ -299,13 +299,13 @@ function buildEvidenceOverview(evidence: ResearchEvidenceOut[], insights: Eviden
     return {
       problem: "本证据包重点回答：电火灶项目的招商增长叙事、渠道规模宣称、合规安全背书和竞品信号，是否足以支撑继续放量获客与招商决策。",
       conclusion: "当前公开证据能证明市场上存在品牌推广、招商动作、渠道扩张和安全合规叙事，但不能证明代理模型已经被真实动销、回本周期和区域经营数据验证。",
-      auditPurpose: "顾问审核时应把公开宣传与企业内部数据对齐，优先核验推广账号、招商合同、代理流水、终端成交、售后客诉和认证材料，避免把宣传热度误判为确定性需求。",
+      auditPurpose: "顾问审核时应把公开宣传与项目内部数据对齐，优先核验推广账号、招商合同、代理流水、终端成交、售后客诉和认证材料，避免把宣传热度误判为确定性需求。",
     };
   }
 
   const modules = uniqueModules(evidence).join("、") || "当前业务";
   return {
-    problem: `本证据包重点回答：${modules}相关公开信息能否支撑诊断判断，并识别哪些结论仍需要企业内部数据复核。`,
+    problem: `本证据包重点回答：${modules}相关公开信息能否支撑诊断判断，并识别哪些结论仍需要项目内部数据复核。`,
     conclusion: insights.length
       ? `当前已形成 ${insights.length} 个可审核判断点，公开证据可以支撑方向判断，但不足以单独替代经营数据和顾问复核。`
       : "当前公开证据质量有限，只能证明存在相关信息，暂不能形成稳定经营判断。",
@@ -318,7 +318,7 @@ function summarizeGenericSources(items: ResearchEvidenceOut[]) {
     .map((item) => conciseSnippet(item.snippet))
     .filter(Boolean);
   if (snippets.length === 0) {
-    return "当前外部证据只能证明存在相关公开信息，仍需结合企业内部数据进行复核。";
+    return "当前外部证据只能证明存在相关公开信息，仍需结合项目内部数据进行复核。";
   }
   return ensurePeriod(Array.from(new Set(snippets)).slice(0, 2).join("；"));
 }
@@ -343,15 +343,15 @@ function conciseSnippet(value: string) {
 
 function buildRiskText(module: string, statement: string) {
   if (/招商|加盟|合同|资质|回本|政策|合规|风险/.test(statement) || module.includes("compliance")) {
-    return "涉及公开承诺、资质或政策边界，进入交付前需要核验原始页面、合同条款和企业实际履约数据。";
+    return "涉及公开承诺、资质或政策边界，进入交付前需要核验原始页面、合同条款和项目实际履约数据。";
   }
   if (/投诉|评价|舆情|安全|召回|负面/.test(statement)) {
-    return "公开评价或舆情只能说明市场信号，不能替代企业真实客诉、售后和质量数据。";
+    return "公开评价或舆情只能说明市场信号，不能替代项目真实客诉、售后和质量数据。";
   }
   if (/竞品|市场|渠道|投放|流量|获客/.test(statement) || module === "market" || module === "sales") {
-    return "公开市场信息可支撑方向判断，但还需要企业渠道消耗、线索质量和转化数据完成定量校准。";
+    return "公开市场信息可支撑方向判断，但还需要项目渠道消耗、线索质量和转化数据完成定量校准。";
   }
-  return "该判断来自公开来源融合分析，需要结合企业内部经营数据和顾问复核后再进入最终交付。";
+  return "该判断来自公开来源融合分析，需要结合项目内部经营数据和顾问复核后再进入最终交付。";
 }
 
 function buildDataGapText(evidence: ResearchEvidenceOut[]) {
@@ -365,7 +365,7 @@ function buildDataGapText(evidence: ResearchEvidenceOut[]) {
   if (/投诉|评价|售后|安全/.test(text)) {
     return "真实客诉记录、售后工单、质量检测材料和近 30 到 90 天用户反馈。";
   }
-  return "企业内部经营数据、原始文件、账号后台截图或可审计导出表。";
+  return "项目内部经营数据、原始文件、账号后台截图或可审计导出表。";
 }
 
 function ensurePeriod(value: string) {

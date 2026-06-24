@@ -47,6 +47,13 @@ describe("ModuleCard", () => {
     expect(screen.getByText(/方法版本 fallback/)).toBeTruthy();
   });
 
+  it("labels legacy missing evidence source as customer self-report", () => {
+    render(<ModuleCard result={{ ...result, evidence: [{ text: "20 个注册用户主要来自创始人朋友圈", source: "未注明" }] }} />);
+
+    expect(screen.getByText("来源：客户自述（诊断问答）")).toBeTruthy();
+    expect(screen.queryByText(/未注明来源/)).toBeNull();
+  });
+
   it("hides feedback area for anonymous (no recordId)", () => {
     render(<ModuleCard result={result} />);
     expect(screen.queryByText("这个诊断对你有帮助吗？")).toBeNull();

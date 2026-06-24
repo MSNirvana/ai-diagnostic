@@ -12,13 +12,17 @@ function primaryMetric(action: DepartmentAction): string {
   return cleanDisplayText(action.acceptance_rule);
 }
 
+function plainConsultingText(value: string): string {
+  return value.replace(/证据完整度/g, "把握度").replace(/低置信/g, "把握不足");
+}
+
 export function DepartmentActionCard({ action }: DepartmentActionCardProps) {
   const title = cleanDisplayText(action.action_title, "待明确执行动作。");
   const goal = cleanSentenceText(action.battle_goal, "待明确本动作要解决的问题。");
   const detail = cleanSentenceText(action.action_detail, "暂无更多执行说明。");
   const acceptance = cleanSentenceText(action.acceptance_rule, "下次复盘时提交执行记录和指标变化。");
   const risk = action.risk_note ? cleanSentenceText(action.risk_note, "") : "";
-  const confidenceReason = action.confidence_reason ? cleanSentenceText(action.confidence_reason, "") : "";
+  const confidenceReason = action.confidence_reason ? plainConsultingText(cleanSentenceText(action.confidence_reason, "")) : "";
 
   return (
     <article className="department-card">
@@ -97,7 +101,7 @@ export function DepartmentActionCard({ action }: DepartmentActionCardProps) {
       </details>
 
       {typeof action.confidence === "number" && (
-        <span className="department-card__confidence">证据完整度 {formatPercent(action.confidence)}</span>
+        <span className="department-card__confidence">把握度 {formatPercent(action.confidence)}</span>
       )}
     </article>
   );

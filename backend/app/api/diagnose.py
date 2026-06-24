@@ -1,4 +1,5 @@
 import json
+import uuid
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
@@ -11,10 +12,13 @@ from app.memory.project_memory import (
     append_feedback_memory,
     append_problem_map_memory,
 )
+from app.memory.archive_refiner import refine_questionnaire_archive
 from app.models.questionnaire import Questionnaire
 from app.models.result import ModuleResult, TriageSummary
 from app.models.warroom import WarRoomPlan
 from app.orchestrator.dispatcher import diagnose_all
+from app.research.engine import gather_pre_research_evidence
+from app.research.store import attach_evidence_to_record
 from app.warroom.composer import compose_war_room_plan
 from app.warroom.enhancer import enhance_war_room_plan
 from app.cases.archiver import archive_case
@@ -120,6 +124,15 @@ async def _save_history(
             user_id=user.id,
             source_id=record.id,
         )
+        await refine_questionnaire_archive(
+            session,
+            project_id=questionnaire.project_id,
+            questionnaire=questionnaire,
+            results=results,
+            llm=None,
+            user_id=user.id,
+            source_id=record.id,
+        )
         await session.commit()
     return record.id, war_room_plan
 
@@ -146,7 +159,12 @@ async def diagnose(
     session: AsyncSession = Depends(get_session),
 ) -> DiagnoseResponse:
     await _merge_stored_files(session, questionnaire)
-    outcome = await diagnose_all(questionnaire, llm, session)
+    # 外部预研（best-effort）：先上网搜行业基准/竞品/政策/口碑，喂进诊断并作为结论来源。无 key/失败→空，不阻断。
+    research_job_id = uuid.uuid4().hex
+    research_evidence = await gather_pre_research_evidence(
+        session, questionnaire, job_id=research_job_id, project_id=questionnaire.project_id, llm=llm,
+    )
+    outcome = await diagnose_all(questionnaire, llm, session, research_evidence=research_evidence)
     war_room_plan = compose_war_room_plan(
         questionnaire,
         outcome.results,
@@ -164,6 +182,8 @@ async def diagnose(
     )
     if not war_room_plan.record_id:
         war_room_plan.record_id = record_id
+    if record_id and research_evidence:
+        await attach_evidence_to_record(session, job_id=research_job_id, record_id=record_id)
     # Loop 3 案例飞轮：脱敏归档为可复用案例资产（旁路，失败不影响返回）
     await archive_case(session, questionnaire, outcome.results, outcome.triage, record_id)
     return DiagnoseResponse(
@@ -215,7 +235,12 @@ async def diagnose_with_upload(
 
     # 合并该会话已存文件（之前即时上传的）
     await _merge_stored_files(session, questionnaire)
-    outcome = await diagnose_all(questionnaire, llm, session)
+    # 外部预研（best-effort）：先上网搜行业基准/竞品/政策/口碑，喂进诊断并作为结论来源。无 key/失败→空，不阻断。
+    research_job_id = uuid.uuid4().hex
+    research_evidence = await gather_pre_research_evidence(
+        session, questionnaire, job_id=research_job_id, project_id=questionnaire.project_id, llm=llm,
+    )
+    outcome = await diagnose_all(questionnaire, llm, session, research_evidence=research_evidence)
     war_room_plan = compose_war_room_plan(
         questionnaire,
         outcome.results,
@@ -233,6 +258,8 @@ async def diagnose_with_upload(
     )
     if not war_room_plan.record_id:
         war_room_plan.record_id = record_id
+    if record_id and research_evidence:
+        await attach_evidence_to_record(session, job_id=research_job_id, record_id=record_id)
     # Loop 3 案例飞轮：脱敏归档为可复用案例资产（旁路，失败不影响返回）
     await archive_case(session, questionnaire, outcome.results, outcome.triage, record_id)
     return DiagnoseResponse(

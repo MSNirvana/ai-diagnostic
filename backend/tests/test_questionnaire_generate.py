@@ -62,6 +62,67 @@ class ValidLLM:
         return json.dumps(_VALID, ensure_ascii=False)
 
 
+class PlaceholderFieldLLM:
+    async def complete(self, system: str, prompt: str) -> str:
+        if "available_skills" not in prompt:
+            return json.dumps({"passed": True, "score": 88}, ensure_ascii=False)
+        data = json.loads(json.dumps(_VALID, ensure_ascii=False))
+        data["modules"][0] = {
+            "key": "data_systems",
+            "label": "数据与系统",
+            "subtitle": "核验数据口径与系统连接",
+            "fields": [
+                {
+                    "key": "system_map",
+                    "label": "系统与数据流向图",
+                    "placeholder": "补充当前使用的 CRM、ERP、财务、广告、客服系统和数据流转方式。",
+                    "accept_file": True,
+                },
+                {
+                    "key": "metric_definitions",
+                    "label": "核心指标口径",
+                    "placeholder": "上传经营指标口径表、报表截图、看板字段或数据字典。",
+                    "accept_file": True,
+                },
+                {
+                    "key": "id_mapping",
+                    "label": "客户/订单/线索 ID 对齐方式",
+                    "placeholder": "说明广告线索、CRM 客户、订单、合同、回款之间是否有统一 ID 或匹配规则。",
+                    "accept_file": False,
+                },
+                {
+                    "key": "dashboard_usage",
+                    "label": "经营看板与使用频率",
+                    "placeholder": "上传当前经营看板截图，或说明老板/部门每周查看哪些指标、由谁维护。",
+                    "accept_file": False,
+                },
+            ],
+            "pains": ["口径不一致", "系统割裂"],
+            "free_text_label": "补充数据系统背景",
+        }
+        return json.dumps(data, ensure_ascii=False)
+
+
+class BadPlaceholderFieldLLM(PlaceholderFieldLLM):
+    async def complete(self, system: str, prompt: str) -> str:
+        if "available_skills" not in prompt:
+            return json.dumps({"passed": True, "score": 88}, ensure_ascii=False)
+        data = json.loads(await super().complete(system, prompt))
+        data["modules"][0]["fields"][2] = {
+            "key": "cover_data_systems_5",
+            "label": "数据与系统关键指标5",
+            "placeholder": "例如：近90天按周趋势、渠道拆分、区域拆分",
+            "accept_file": False,
+        }
+        data["modules"][0]["fields"][3] = {
+            "key": "cover_data_systems_6",
+            "label": "数据与系统关键指标6",
+            "placeholder": "例如：近90天按周趋势、渠道拆分、区域拆分",
+            "accept_file": False,
+        }
+        return json.dumps(data, ensure_ascii=False)
+
+
 class GarbageLLM:
     async def complete(self, system: str, prompt: str) -> str:
         return "这不是 JSON，模型抽风了"
@@ -122,7 +183,54 @@ def test_generate_returns_valid_questionnaire(db_session):
     body = resp.json()
     assert body["modules"][0]["key"] == "market"
     assert body["modules"][0]["fields"][0]["accept_file"] is True
-    assert len(body["modules"][0]["fields"]) == 6
+    assert 4 <= len(body["modules"][0]["fields"]) <= 6
+
+
+def test_generate_does_not_pad_placeholder_key_metrics(db_session):
+    app.dependency_overrides[get_llm_client] = lambda: PlaceholderFieldLLM()
+    resp = client.post("/questionnaire/generate", json={**_PROFILE, "problem_map": {
+        "company_name": "测试公司",
+        "industry": "企业服务",
+        "main_business": "多渠道销售",
+        "business_model": "B2B 服务",
+        "scale": "60人",
+        "stage": "成长期",
+        "core_problem": "系统数据口径不一致，经营会无法判断投放与销售责任",
+        "goal": "统一经营指标和复盘看板",
+        "data_readiness": "有 CRM 和财务报表",
+        "diagnosis_focus": "数据与系统",
+    }})
+    app.dependency_overrides.pop(get_llm_client, None)
+
+    assert resp.status_code == 200
+    fields = resp.json()["modules"][0]["fields"]
+    labels = [field["label"] for field in fields]
+    assert "数据与系统关键指标5" not in labels
+    assert "数据与系统关键指标6" not in labels
+    assert len(fields) == 4
+    assert "系统与数据流向图" in labels
+    assert "核心指标口径" in labels
+
+
+def test_generate_rejects_placeholder_key_metrics(db_session):
+    app.dependency_overrides[get_llm_client] = lambda: BadPlaceholderFieldLLM()
+    resp = client.post("/questionnaire/generate", json={**_PROFILE, "problem_map": {
+        "company_name": "测试公司",
+        "industry": "企业服务",
+        "main_business": "多渠道销售",
+        "business_model": "B2B 服务",
+        "scale": "60人",
+        "stage": "成长期",
+        "core_problem": "系统数据口径不一致",
+        "goal": "统一经营指标和复盘看板",
+        "data_readiness": "有 CRM 和财务报表",
+        "diagnosis_focus": "数据与系统",
+    }})
+    app.dependency_overrides.pop(get_llm_client, None)
+
+    assert resp.status_code == 422
+    # 占位字段是质量硬伤，必须拒（与字段数量无关）
+    assert "占位字段" in resp.json()["detail"]
 
 
 def test_generate_malformed_output_returns_422(db_session):

@@ -83,3 +83,15 @@ def test_archive_extraction_skill_is_seeded_for_iteration():
     assert method == "archive_extraction"
     assert "报告性质" in prompt
     assert "参与人" in prompt
+
+
+def test_archive_refinement_skill_is_seeded_for_iteration():
+    seeded = {module: (skill_type, method, prompt) for module, skill_type, method, prompt in SEEDS}
+
+    assert "archive_refinement" in seeded
+    skill_type, method, prompt = seeded["archive_refinement"]
+    assert skill_type == "delivery"
+    assert method == "archive_refinement"
+    assert "不直接摘抄" in prompt
+    assert "按领域归档" in prompt
+    assert "display.type" in prompt

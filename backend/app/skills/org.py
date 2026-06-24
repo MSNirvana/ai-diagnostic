@@ -1,13 +1,18 @@
 from app.skills.configured import ConfiguredExpertSkill, DataRequirement, ExpertConfig
-from app.skills.prompts import ORG_DIAGNOSIS
 
 
+# 诊断判断由 diagnostic_method 脑子按 domain 数据现场生成；本域只提供数据骨架（零 prose）。
 ORG_CONFIG = ExpertConfig(
     module="org",
     method="organization-evidence",
     label="组织与人才",
-    fallback_prompt=ORG_DIAGNOSIS,
+    fallback_prompt="",
     scenarios=("saas_subscription", "b2b_solution", "local_service", "manufacturing", "general_business"),
+    industry_kpis=("人均产值", "管理跨度", "关键岗位空缺", "离职率", "目标达成率", "中层断层"),
+    judgment_hints=(
+        "先分清是组织设计、岗位职责、管理机制还是激励失效。",
+        "初创/老板驱动看是否过度依赖老板+关键岗位空缺+职责重叠；扩张期看中层断层+跨部门协作+管理跨度；连锁/制造看区域管理+执行一致性。",
+    ),
     data_requirements=(
         DataRequirement(
             key="org_structure",

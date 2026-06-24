@@ -1,13 +1,18 @@
 from app.skills.configured import ConfiguredExpertSkill, DataRequirement, ExpertConfig
-from app.skills.prompts import FINANCE_DIAGNOSIS
 
 
+# 诊断判断由 diagnostic_method 脑子按 domain 数据现场生成；本域只提供数据骨架（零 prose）。
 FINANCE_CONFIG = ExpertConfig(
     module="finance",
     method="finance-evidence",
     label="财务与资本",
-    fallback_prompt=FINANCE_DIAGNOSIS,
+    fallback_prompt="",
     scenarios=("live_commerce", "ecommerce_retail", "b2b_solution", "saas_subscription", "manufacturing"),
+    industry_kpis=("毛利率", "现金流", "回款周期", "单位经济", "费用率", "营运资金"),
+    judgment_hints=(
+        "先判断问题在收入质量、毛利、费用失控、现金流还是营运资金。",
+        "电商/直播看投流成本/退款损失/渠道扣点/单单盈利；B2B 看应收/账期/项目毛利/客户集中度；SaaS 看 CAC 回收/续费/现金消耗速度。",
+    ),
     data_requirements=(
         DataRequirement(
             key="financial_statements",

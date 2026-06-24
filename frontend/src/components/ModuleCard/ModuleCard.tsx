@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { ModuleResult } from "../../types";
 import { DrillDown } from "../DrillDown/DrillDown";
 import { submitFeedback } from "../../api/client";
-import { cleanDisplayText, cleanSentenceText, displayModuleLabel } from "../../utils/displayText";
+import { cleanDisplayText, cleanSentenceText, displayModuleLabel, formatEvidenceSource } from "../../utils/displayText";
 import "./ModuleCard.css";
 
 const SIGNAL_LABEL: Record<string, string> = { red: "高优先级", yellow: "需跟进", green: "运行稳定" };
@@ -80,7 +80,7 @@ export function ModuleCard({ result, recordId, skillVersionId }: ModuleCardProps
             {evidenceItems.map((e, i) => (
               <li key={i}>
                 {cleanSentenceText(e.text, "暂无可展示依据。")}
-                <span className="evidence-source">来源：{cleanDisplayText(e.source, "未注明来源")}</span>
+                <span className="evidence-source">来源：{formatEvidenceSource(e.source)}</span>
               </li>
             ))}
           </ul>
@@ -129,7 +129,7 @@ export function ModuleCard({ result, recordId, skillVersionId }: ModuleCardProps
                   <ul>
                     {evidencePackage.citations.map((citation, index) => (
                       <li key={`${citation.source}-${index}`}>
-                        {cleanSentenceText(citation.text)}（{cleanDisplayText(citation.source, "未注明来源")}）
+                        {cleanSentenceText(citation.text)}（{formatEvidenceSource(citation.source)}）
                       </li>
                     ))}
                   </ul>
@@ -142,7 +142,7 @@ export function ModuleCard({ result, recordId, skillVersionId }: ModuleCardProps
                   <ul>
                     {evidencePackage.benchmarks.map((benchmark) => (
                       <li key={`${benchmark.name}-${benchmark.source}`}>
-                        {cleanDisplayText(benchmark.name, "外部基准")}：{cleanDisplayText(benchmark.value)}（{cleanDisplayText(benchmark.source, "未注明来源")}）
+                        {cleanDisplayText(benchmark.name, "外部基准")}：{cleanDisplayText(benchmark.value)}（{cleanDisplayText(benchmark.source, "外部基准")}）
                       </li>
                     ))}
                   </ul>

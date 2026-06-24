@@ -16,7 +16,7 @@ interface FieldSpec {
 }
 
 const PROFILE_FIELDS: FieldSpec[] = [
-  { key: "company_name", label: "公司名称", placeholder: "如：杭州明远科技有限公司" },
+  { key: "company_name", label: "项目/品牌名称", placeholder: "如：华火新能源电火灶项目" },
   { key: "industry", label: "所属行业", placeholder: "如：直播电商、钢铁制造、SaaS软件" },
   { key: "main_business", label: "主营业务", placeholder: "如：为中小制造企业提供智能排产系统" },
   { key: "business_model", label: "商业模式", placeholder: "如：订阅制 SaaS、按项目交付、批发分销" },
@@ -44,7 +44,7 @@ export function ProfileStep({ onGenerate, generating, error }: ProfileStepProps)
     <div className="questionnaire">
       <section className="wizard-card">
         <header className="module-head">
-          <h2 className="module-head__title">先了解你的企业</h2>
+          <h2 className="module-head__title">先了解你的项目</h2>
           <p className="module-head__subtitle">
             我们将据此为你定制诊断问卷，让每个问题都贴合你的业务
           </p>

@@ -219,6 +219,7 @@ def _append_summary_line(project: Project, entry_type: str, summary: str) -> Non
         "problem_map": "问题地图",
         "diagnosis": "诊断",
         "feedback": "反馈",
+        "war_room_feedback": "阶段反馈",
         "uploaded_file": "上传资料",
     }.get(entry_type, entry_type)
     lines = [line for line in project.memory_summary.split("\n") if line.strip()]

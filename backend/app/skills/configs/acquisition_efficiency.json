@@ -6,6 +6,11 @@
   "description": "诊断付费获客是否健康、卡在素材点击/承接转化/单位经济哪一环。通用能力，按输入行业调整基准（DTC/跨境/本地/B2B 通吃）。",
   "trigger_keywords": ["投放", "广告", "ROAS", "ROI", "获客成本", "CAC", "ACOS", "TACOS", "PPC", "信息流", "千川", "投流", "素材", "点击率", "转化率", "落地页", "竞价"],
   "industry_kpis": ["ROAS", "CAC", "CTR", "CPC", "CVR", "转化率", "客单价", "毛利率", "复购率", "回本周期", "LTV"],
+  "judgment_hints": [
+    "把获客拆三段定位卡点：素材点击(CTR/CPC)→承接转化(CVR)→单位经济(客单价/毛利/复购能否撑住CAC)，先判断卡在哪段。",
+    "ROAS/CAC 必须结合毛利和复购看：高ROAS但毛利薄、或低复购一次性消费，照样亏现金。",
+    "把「获客成本高」直接归因于出价/预算常是误判，真因常是承接转化差或客单价过低，先看转化漏斗。"
+  ],
   "scenarios": ["ecommerce_retail", "live_commerce", "b2b_solution", "local_service"],
   "data_requirements": [
     {

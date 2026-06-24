@@ -1,13 +1,18 @@
 from app.skills.configured import ConfiguredExpertSkill, DataRequirement, ExpertConfig
-from app.skills.prompts import SALES_DIAGNOSIS
 
 
+# 诊断判断由 diagnostic_method 脑子按 domain 数据现场生成；本域只提供数据骨架（零 prose）。
 SALES_CONFIG = ExpertConfig(
     module="sales",
     method="funnel-evidence",
     label="销售与增长",
-    fallback_prompt=SALES_DIAGNOSIS,
+    fallback_prompt="",
     scenarios=("live_commerce", "ecommerce_retail", "b2b_solution", "saas_subscription", "local_service"),
+    industry_kpis=("转化率", "赢单率", "获客成本", "销售周期", "客单价", "复购率"),
+    judgment_hints=(
+        "先判断卡在线索质量、销售响应、过程跟进、成交策略还是复购。",
+        "直播/电商看投流到成交的衔接别只看 ROI；B2B 看 MQL/SQL/商机/赢单周期/丢单原因；SaaS 看试用激活/续费扩张而非只看新签。",
+    ),
     data_requirements=(
         DataRequirement(
             key="sales_funnel",

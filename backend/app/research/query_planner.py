@@ -1,12 +1,73 @@
+import json
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.llm.base import LLMClient
 from app.models.questionnaire import Questionnaire
 from app.orchestrator.dispatcher import _route_experts
+from app.skills.parsing import parse_json_object
+from app.skills.prompts import RESEARCH_PLANNER
 from app.skills.skill_network import skill_label
 from app.skills.scenario_catalog import render_problem_text
+from app.skills.store import get_active_skill_version
 
 from .models import ResearchQuery
 
 
 MAX_QUERIES_PER_MODULE = 5
+RESEARCH_PLANNER_KEY = "research_planner"
+
+
+def _modules_for(questionnaire: Questionnaire) -> list[str]:
+    routes = _route_experts(questionnaire)
+    modules = [route.answer.module for route in routes]
+    if not modules:
+        modules = [answer.module for answer in questionnaire.answers[:3]]
+    return modules[:8]
+
+
+async def plan_research_queries(
+    questionnaire: Questionnaire,
+    llm: LLMClient | None = None,
+    session: AsyncSession | None = None,
+) -> list[ResearchQuery]:
+    """规划外部研究查询：优先用 research_planner 脑子（LLM，按问题现想搜什么），
+    无 llm / 无核心问题 / 失败 → 回退确定性规则模板。可版本化、不阻断。"""
+    rule_based = plan_system_research_queries(questionnaire)
+    problem_map = questionnaire.problem_map or {}
+    if llm is None or not str(problem_map.get("core_problem") or "").strip():
+        return rule_based
+
+    system = RESEARCH_PLANNER
+    ver = await get_active_skill_version(session, RESEARCH_PLANNER_KEY)
+    if ver and ver.system_prompt.strip():
+        system = ver.system_prompt
+    payload = json.dumps(
+        {
+            "problem_map": problem_map,
+            "modules": [{"key": m, "label": skill_label(m)} for m in _modules_for(questionnaire)],
+        },
+        ensure_ascii=False,
+    )
+    try:
+        raw = await llm.complete(system=system, prompt=payload)
+        data = parse_json_object(raw)
+    except Exception:  # noqa: BLE001 — 规划失败不阻断，回退规则
+        return rule_based
+
+    out: list[ResearchQuery] = []
+    for item in (data.get("queries") or [])[:12]:
+        if not isinstance(item, dict):
+            continue
+        query = " ".join(str(item.get("query") or "").split())
+        if not query:
+            continue
+        out.append(ResearchQuery(
+            module=str(item.get("module") or ""),
+            query=query,
+            purpose=str(item.get("purpose") or "")[:120],
+        ))
+    return _dedupe_queries(out) or rule_based
 
 
 def plan_system_research_queries(questionnaire: Questionnaire) -> list[ResearchQuery]:

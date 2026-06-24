@@ -1,0 +1,42 @@
+{
+  "module": "retention_churn",
+  "method": "retention-churn-evidence",
+  "label": "留存流失诊断",
+  "category": "capability",
+  "description": "诊断客户为什么流失、留存曲线卡在哪一段。聚焦全盘留存与流失结构（私域复购归 private_traffic）。通用能力，按行业基准调整。",
+  "trigger_keywords": ["留存", "流失", "复购", "续费", "churn", "退订", "召回", "生命周期", "流失率", "留存率", "沉默用户", "净留存", "NRR"],
+  "industry_kpis": ["留存率", "流失率", "复购率", "续费率", "净留存NRR", "生命周期LT", "LTV", "召回率"],
+  "judgment_hints": [
+    "先看留存曲线形状：首周/首月断崖=新客承接与激活问题；长期缓降=产品价值或竞争问题。",
+    "区分主动流失(不满意/被竞品挖走)与被动流失(支付失败/失联)；被动流失常被忽略却最好救。",
+    "别只看整体流失率，按客群/渠道/首单来源拆；某个渠道拉来的客天生留不住是常见真因。",
+    "高复购会掩盖高流失：少数铁粉撑高均值、沉默大多数正在流失，必须看分层(队列)留存。"
+  ],
+  "scenarios": ["saas_subscription", "ecommerce_retail", "local_service", "b2b_solution"],
+  "data_requirements": [
+    {
+      "key": "retention_curve",
+      "label": "留存/流失曲线（队列）",
+      "reason": "没有按周期分层的留存/流失/复购数据，无法判断流失卡在承接、激活还是长期价值。",
+      "source_hint": "上传按 1/7/30/90 天或按月的队列(cohort)留存率、流失率、复购率。",
+      "keywords": ["留存", "流失", "复购", "续费", "队列", "cohort", "周期"],
+      "required": true
+    },
+    {
+      "key": "churn_reasons",
+      "label": "流失原因与样本",
+      "reason": "判断主动/被动流失和真因，必须有流失原因分类和典型样本。",
+      "source_hint": "提供流失原因分类、退订/失联/被竞品挖走占比、典型流失客户样本。",
+      "keywords": ["流失原因", "退订", "失联", "竞品", "满意度", "客诉"],
+      "required": true
+    },
+    {
+      "key": "cohort_segmentation",
+      "label": "客群/渠道分层",
+      "reason": "不同客群、渠道、首单来源的留存差异，常能定位到「拉新质量」这一真因。",
+      "source_hint": "提供按客群、渠道、首单来源拆分的留存差异。",
+      "keywords": ["客群", "渠道", "首单", "来源", "分层"],
+      "required": false
+    }
+  ]
+}

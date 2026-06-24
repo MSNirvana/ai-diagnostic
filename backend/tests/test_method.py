@@ -21,26 +21,28 @@ def test_compose_is_idempotent():
     domain = "你是XX诊断专家。"
     once = compose_preview(domain)
     twice = compose_preview(once)              # 对已合成 prompt 再合成
-    assert once == twice                       # 不二次叠加方法
-    assert twice.count(_METHOD_SENTINEL) == 1
+    assert twice.count(_METHOD_SENTINEL) == 1  # 不二次叠加方法
+    assert domain in twice                     # 领域切片仍在
+    assert twice == once.strip()               # 幂等到内容（_compose 会 strip 收尾空白）
 
 
 def test_compose_empty_domain_falls_back_to_method_only():
-    assert compose_preview("") == DIAGNOSTIC_METHOD
-    assert compose_preview(None) == DIAGNOSTIC_METHOD
+    # 空领域 → 只剩通用方法（可能附带运行时追加的来源纪律），不带领域前缀
+    out = compose_preview("")
+    assert out.startswith(DIAGNOSTIC_METHOD)
+    assert _METHOD_SENTINEL in out
+    assert compose_preview(None).startswith(DIAGNOSTIC_METHOD)
 
 
-def test_thin_domain_prompts_carry_no_output_contract():
-    # 薄领域 prompt 不应再自带输出 JSON 契约（避免与主方法重复）
-    from app.skills.prompts import (
-        FINANCE_DIAGNOSIS,
-        MARKET_DIAGNOSIS,
-        SALES_DIAGNOSIS,
-    )
+def test_diagnosis_domains_are_zero_prose_with_data():
+    # 诊断域零 prose（判断由脑子现场生成），但必须携带 domain 数据：label/KPI/易误判提示
+    from app.skills.registry import get_skill
 
-    for p in (MARKET_DIAGNOSIS, SALES_DIAGNOSIS, FINANCE_DIAGNOSIS):
-        assert "严格输出 JSON" not in p
-        assert _METHOD_SENTINEL not in p
+    for key in ("market", "finance", "legal_compliance", "acquisition_efficiency"):
+        cfg = get_skill(key).config
+        assert cfg.fallback_prompt == ""   # 零 prose
+        assert cfg.industry_kpis           # 有 KPI 锚点
+        assert cfg.judgment_hints          # 有易误判提示
 
 
 def test_method_is_a_registered_versionable_skill():

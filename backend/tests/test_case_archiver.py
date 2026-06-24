@@ -71,7 +71,7 @@ def test_build_case_asset_structure_and_anonymized():
     assert case.industry == "新能源厨电"
     assert case.primary_module == "channel_franchise"
     assert case.source_record_id == "rec_1"
-    # 企业名不得出现在任何脱敏字段里
+    # 项目名不得出现在任何脱敏字段里
     assert "花火" not in case.company_profile_json
     assert "花火" not in case.problem_map_json
     # 诊断摘要结构完整

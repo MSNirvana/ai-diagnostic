@@ -1,4 +1,4 @@
-"""对话追问端点 + generate-ab 接受 summary 测试。"""
+"""对话追问端点测试。"""
 import json
 
 from fastapi.testclient import TestClient
@@ -408,35 +408,6 @@ def test_chat_returns_clear_error_when_llm_unavailable(db_session):
     assert resp.status_code == 503
     assert "模型通道暂时不可用" in resp.json()["detail"]
     assert "没接住" not in resp.text
-
-
-def test_generate_ab_accepts_summary(db_session):
-    valid = {
-        "modules": [{
-            "key": "market", "label": "市场与客户", "subtitle": "x",
-            "fields": [{"key": "f", "label": "f", "placeholder": "p", "accept_file": False}],
-            "pains": ["p1"], "free_text_label": "补充",
-        }]
-    }
-
-    class GenLLM:
-        async def complete(self, system: str, prompt: str) -> str:
-            # 断言 summary 的核心问题进了 prompt
-            assert "获客成本" in prompt
-            return json.dumps(valid, ensure_ascii=False)
-
-    app.dependency_overrides[get_llm_client] = lambda: GenLLM()
-    resp = client.post("/questionnaire/generate-ab", json={
-        "summary": {
-            "core_problem": "获客成本翻倍",
-            "context": "近半年", "suspected_cause": "渠道红利消失", "tried": "换代理",
-            "company_name": "", "industry": "直播电商", "main_business": "带货",
-            "business_model": "撮合", "scale": "85人", "stage": "成长期",
-        }
-    })
-    app.dependency_overrides.pop(get_llm_client, None)
-    assert resp.status_code == 200
-    assert resp.json()["option_a"]["modules"][0]["key"] == "market"
 
 
 # ── phase 状态机（intake → confirm → done） ───────────────
