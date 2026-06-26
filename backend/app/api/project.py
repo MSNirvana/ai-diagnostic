@@ -7,6 +7,7 @@ import json
 import mimetypes
 import re
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -33,9 +34,23 @@ from app.llm.base import LLMClient
 from app.skills.prompts import ARCHIVE_EXTRACTION
 from app.skills.parsing import parse_json_object
 from app.skills.store import get_active_skill_version
+from app.models.questionnaire import Questionnaire, ModuleAnswer
+from app.models.result import ModuleResult, TriageSummary
 from app.models.warroom import WarRoomPlan
+from app.models.transformation import TransformationPlan
 from app.research.store import list_project_evidence
-from app.warroom.history import can_build_war_room_plan, get_or_build_project_war_room_plan
+from app.skills.registry import get_skill
+from app.transformation.generator import (
+    build_all_domain_transformations,
+    build_domain_transformation,
+)
+from app.warroom.composer import compose_war_room_plan
+from app.warroom.history import (
+    add_project_accumulation_note,
+    can_build_war_room_plan,
+    get_or_build_project_war_room_plan,
+)
+from app.warroom.normalizer import normalize_war_room_plan
 
 router = APIRouter(prefix="/project")
 
@@ -89,6 +104,7 @@ class RecordBrief(BaseModel):
     module_count: int
     has_war_room_plan: bool = False
     review_status: str = "approved"
+    session_id: str | None = None
 
 
 class ProjectDeliveryStatus(BaseModel):
@@ -642,6 +658,7 @@ async def get_project(
                 module_count=mc,
                 has_war_room_plan=r.review_status == "approved" and can_build_war_room_plan(r),
                 review_status=r.review_status,
+                session_id=r.session_id,
             )
         )
 
@@ -891,6 +908,184 @@ async def get_project_war_room(
         if status.rejected_count > 0:
             raise HTTPException(status_code=409, detail="最近诊断已被顾问打回，请补充资料后重新诊断")
         raise HTTPException(status_code=404, detail="作战室尚未建立")
+    return plan
+
+
+class RediagnoseRequest(BaseModel):
+    domain_key: str
+
+
+@router.post("/{project_id}/rediagnose-domain", response_model=WarRoomPlan)
+async def rediagnose_domain(
+    project_id: str,
+    body: RediagnoseRequest,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    llm: LLMClient = Depends(get_llm_client),
+) -> WarRoomPlan:
+    """针对作战室某一个域重新诊断（用户质疑建议或补充数据后的定向刷新）。
+
+    不创建新诊断记录；只重跑目标域、替换其结果、重组作战室，迭代历史保持不变。
+    """
+    p = await session.get(Project, project_id)
+    if p is None or p.user_id != user.id:
+        raise HTTPException(status_code=404, detail="项目不存在")
+
+    # 取最近一条有 results 的记录（优先 approved，否则取最新）
+    record = await session.scalar(
+        select(DiagnosisRecord)
+        .where(DiagnosisRecord.project_id == project_id)
+        .where(DiagnosisRecord.results_json.is_not(None))
+        .order_by(DiagnosisRecord.created_at.desc())
+        .limit(1)
+    )
+    if record is None:
+        raise HTTPException(status_code=400, detail="没有可用的诊断记录，请先完成一次完整诊断")
+
+    q = Questionnaire.model_validate_json(record.answers_json)
+    existing_results = [ModuleResult.model_validate(r) for r in json.loads(record.results_json)]
+
+    skill = get_skill(body.domain_key)
+    if skill is None:
+        raise HTTPException(status_code=400, detail=f"域 {body.domain_key!r} 不存在")
+
+    # 构造目标域的 ModuleAnswer（含共享上下文）
+    from app.orchestrator.dispatcher import _build_shared_context, _hydrate_answer_contexts
+    q_hydrated = _hydrate_answer_contexts(q)
+    answer = next((a for a in q_hydrated.answers if a.module == body.domain_key), None)
+    if answer is None:
+        shared = _build_shared_context(q.problem_map or {})
+        answer = ModuleAnswer(module=body.domain_key).model_copy(update={"context": dict(shared)})
+
+    new_result = await skill.diagnose(answer, llm, session)
+    new_results = [r for r in existing_results if r.module != body.domain_key] + [new_result]
+
+    # 保留旧作战室的迭代轨迹，只刷新当前域的结论
+    old_plan: WarRoomPlan | None = None
+    if p.war_room_plan_json:
+        try:
+            old_plan = WarRoomPlan.model_validate_json(p.war_room_plan_json)
+        except Exception:
+            pass
+    triage = TriageSummary(primary_module=old_plan.primary_battlefield if old_plan else None)
+    plan = compose_war_room_plan(q, new_results, triage, {}, record.id)
+    plan = normalize_war_room_plan(plan)
+    if old_plan:
+        plan = plan.model_copy(update={
+            "id": old_plan.id,
+            "iterations": old_plan.iterations,
+            "iteration_count": old_plan.iteration_count,
+            "source_record_ids": old_plan.source_record_ids,
+        })
+    plan = await add_project_accumulation_note(session, plan, project_id)
+    p.war_room_plan_json = plan.model_dump_json()
+    session.add(p)
+    await session.commit()
+    return plan
+
+
+async def _latest_diagnosed_record(session: AsyncSession, project_id: str) -> DiagnosisRecord | None:
+    """取项目最近一条有 results 的诊断记录（优先 approved，否则最新）。"""
+    approved = await session.scalar(
+        select(DiagnosisRecord)
+        .where(DiagnosisRecord.project_id == project_id)
+        .where(DiagnosisRecord.results_json.is_not(None))
+        .where(DiagnosisRecord.review_status == "approved")
+        .order_by(DiagnosisRecord.created_at.desc())
+        .limit(1)
+    )
+    if approved is not None:
+        return approved
+    return await session.scalar(
+        select(DiagnosisRecord)
+        .where(DiagnosisRecord.project_id == project_id)
+        .where(DiagnosisRecord.results_json.is_not(None))
+        .order_by(DiagnosisRecord.created_at.desc())
+        .limit(1)
+    )
+
+
+@router.get("/{project_id}/transformation-plan", response_model=TransformationPlan)
+async def get_transformation_plan(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> TransformationPlan:
+    """读取项目已生成的 AI 改造方案（按域 items）；未生成则 404。"""
+    p = await session.get(Project, project_id)
+    if p is None or p.user_id != user.id:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    if not p.transformation_plan_json:
+        raise HTTPException(status_code=404, detail="尚未生成 AI 改造方案")
+    try:
+        return TransformationPlan.model_validate_json(p.transformation_plan_json)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="改造方案数据已失效，请重新生成")
+
+
+@router.post("/{project_id}/transformation-plan", response_model=TransformationPlan)
+async def generate_transformation_plan(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    llm: LLMClient = Depends(get_llm_client),
+) -> TransformationPlan:
+    """基于最近一次诊断，为【每个诊断问题】各生成一份 AI 改造并落库。"""
+    p = await session.get(Project, project_id)
+    if p is None or p.user_id != user.id:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    record = await _latest_diagnosed_record(session, project_id)
+    if record is None:
+        raise HTTPException(status_code=400, detail="没有可用的诊断记录，请先完成一次完整诊断")
+    plan = await build_all_domain_transformations(p, record, llm, session)
+    p.transformation_plan_json = plan.model_dump_json()
+    session.add(p)
+    await session.commit()
+    return plan
+
+
+class TransformDomainRequest(BaseModel):
+    module: str
+
+
+@router.post("/{project_id}/transformation-plan/domain", response_model=TransformationPlan)
+async def generate_transformation_domain(
+    project_id: str,
+    body: TransformDomainRequest,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    llm: LLMClient = Depends(get_llm_client),
+) -> TransformationPlan:
+    """只为某一个诊断问题（域）生成/重新生成改造，merge 进现有方案并落库。"""
+    p = await session.get(Project, project_id)
+    if p is None or p.user_id != user.id:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    record = await _latest_diagnosed_record(session, project_id)
+    if record is None:
+        raise HTTPException(status_code=400, detail="没有可用的诊断记录，请先完成一次完整诊断")
+    item = await build_domain_transformation(p, record, body.module, llm, session)
+    if item is None:
+        raise HTTPException(status_code=400, detail=f"诊断结果里没有域 {body.module!r}，无法生成改造")
+
+    # merge 进现有 plan(没有则新建),只更新这一个域
+    plan: TransformationPlan | None = None
+    if p.transformation_plan_json:
+        try:
+            plan = TransformationPlan.model_validate_json(p.transformation_plan_json)
+        except ValueError:
+            plan = None
+    if plan is None:
+        plan = TransformationPlan(
+            id=f"tf_{uuid4().hex[:12]}",
+            project_id=project_id,
+            record_id=record.id,
+            created_at=datetime.now(timezone.utc),
+            items={},
+        )
+    plan.items[body.module] = item
+    p.transformation_plan_json = plan.model_dump_json()
+    session.add(p)
+    await session.commit()
     return plan
 
 

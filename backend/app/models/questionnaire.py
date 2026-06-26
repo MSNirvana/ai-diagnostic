@@ -19,3 +19,5 @@ class Questionnaire(BaseModel):
     project_id: str | None = None
     # 对话 intake 产出的问题地图，用于专家分诊编排
     problem_map: dict | None = None
+    # 是否请顾问复核（默认否）：否=诊断完成即出给老板看（零等待）；是=进 pending_review 等顾问。
+    request_review: bool = False

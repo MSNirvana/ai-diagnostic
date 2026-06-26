@@ -255,8 +255,9 @@ export function Questionnaire({
         setChatMessages(detail.messages);
         setStoredProblemMap(detail.problem_map);
         onProblemMapChange?.(detail.problem_map);
-        // 已生成诊断的会话再次打开时应回到对话页；资料采集草稿只服务于未提交诊断的中途流程。
-        if (detail.diagnosis_record_id) {
+        // 已进入后台定制/尽调的会话再次打开时应回到对话页；
+        // 资料采集草稿只服务于未提交诊断的中途流程，避免页面切换后误回到表单。
+        if (detail.diagnosis_record_id || diagnosisPlanActive) {
           setMode("chatting");
           setResumeReady(true);
           return;
@@ -364,6 +365,12 @@ export function Questionnaire({
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
   }, [mode, chatMessages, storedSummary, storedProblemMap, storedSessionId, activeModules, current, facts, pains, freeText, files, userId, projectId]);
+
+  useEffect(() => {
+    if (!isProjectInline || !diagnosisPlanActive || mode !== "ready") return;
+    if (lastOpenDataCollectionRequestRef.current > 0) return;
+    setMode("chatting");
+  }, [diagnosisPlanActive, isProjectInline, mode]);
 
   const resumeDraft = () => {
     const d = pendingDraft;
@@ -499,7 +506,9 @@ export function Questionnaire({
     };
     setStoredSummary(summary);
     if (isProjectInline) {
-      await runInlinePlanGeneration(summary, problemMap, sessionId);
+      // 诊断前置：对话产出问题地图后【直接起诊断】（空 answers，后端按问题地图 + 外部搜索起步），
+      // 不再前置问卷表单——缺的关键内部数据等诊断出来后，在结果里「提交关键信息」定向补刀再复诊。
+      await onSubmit([], [], sessionId, projectId, problemMap);
       return;
     }
     await runGeneration(summary, problemMap);

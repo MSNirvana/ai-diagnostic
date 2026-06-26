@@ -21,6 +21,7 @@ import type {
   ProjectDetail,
   ProjectArchive,
   WarRoomPlan,
+  TransformationPlan,
   WarRoomFeedbackCreate,
   WarRoomFeedbackEvent,
   DataRequest,
@@ -30,7 +31,12 @@ import type {
   SkillVersionOut,
   LLMConfigOut,
   UploadedFileOut,
-  L1Stats,
+  MeResponse,
+  ProjectLedgerPage,
+  CaseProductGroups,
+  CaseProjectDetail,
+  CaseProjectFilters,
+  CaseInsights,
   L2Stats,
   L3Stats,
   L4Stats,
@@ -102,6 +108,17 @@ export async function createDiagnosisJob(
   });
   if (!resp.ok) throw new Error(await errorMessage(resp, "创建深度尽调任务失败"));
   return (await resp.json()) as DiagnosisJobCreated;
+}
+
+export async function requestConsultantReview(
+  recordId: string
+): Promise<{ record_id: string; review_status: string }> {
+  const resp = await fetch(`${BASE}/diagnose/${recordId}/request-review`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+  });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "请求顾问复核失败"));
+  return (await resp.json()) as { record_id: string; review_status: string };
 }
 
 export async function getDiagnosisJob(jobId: string): Promise<DiagnosisJobStatus> {
@@ -455,6 +472,41 @@ export async function getProjectWarRoom(id: string): Promise<WarRoomPlan> {
   return (await resp.json()) as WarRoomPlan;
 }
 
+export async function rediagnoseProjectDomain(projectId: string, domainKey: string): Promise<WarRoomPlan> {
+  const resp = await fetch(`${BASE}/project/${projectId}/rediagnose-domain`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ domain_key: domainKey }),
+  });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "重新诊断失败"));
+  return (await resp.json()) as WarRoomPlan;
+}
+
+export async function getTransformationPlan(projectId: string): Promise<TransformationPlan> {
+  const resp = await fetch(`${BASE}/project/${projectId}/transformation-plan`, { headers: { ...authHeaders() } });
+  if (!resp.ok) throw new Error(`获取 AI 改造方案失败: ${resp.status}`);
+  return (await resp.json()) as TransformationPlan;
+}
+
+export async function generateTransformationPlan(projectId: string): Promise<TransformationPlan> {
+  const resp = await fetch(`${BASE}/project/${projectId}/transformation-plan`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+  });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "生成 AI 改造方案失败"));
+  return (await resp.json()) as TransformationPlan;
+}
+
+export async function generateTransformationDomain(projectId: string, module: string): Promise<TransformationPlan> {
+  const resp = await fetch(`${BASE}/project/${projectId}/transformation-plan/domain`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ module }),
+  });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "生成改造方案失败"));
+  return (await resp.json()) as TransformationPlan;
+}
+
 export async function listWarRoomFeedback(projectId: string): Promise<WarRoomFeedbackEvent[]> {
   const resp = await fetch(`${BASE}/project/${projectId}/war-room/feedback`, { headers: { ...authHeaders() } });
   if (!resp.ok) throw new Error(await errorMessage(resp, "获取阶段反馈失败"));
@@ -760,13 +812,9 @@ export async function downloadSessionFile(fileId: string, fileName: string): Pro
   downloadBlob(blob, fileName);
 }
 
-// ── Loop 治理 API ─────────────────────────────────────────────────────────────
-
-export async function fetchL1Stats(): Promise<L1Stats> {
-  const resp = await fetch(`${BASE}/admin/loops/l1`, { headers: { ...authHeaders() } });
-  if (!resp.ok) throw new Error(`L1 stats failed: ${resp.status}`);
-  return resp.json();
-}
+// ── 系统健康 API ──────────────────────────────────────────────────────────────
+// 后端 /admin/loops/* 采集管线保持运行；前端只读用其中三路（路由/案例/交付）。
+// l1（旧 Skill 生产线评测）已从后台界面下线，不再有前端引用。
 
 export async function fetchL2Stats(): Promise<L2Stats> {
   const resp = await fetch(`${BASE}/admin/loops/l2`, { headers: { ...authHeaders() } });
@@ -784,6 +832,58 @@ export async function fetchL4Stats(): Promise<L4Stats> {
   const resp = await fetch(`${BASE}/admin/loops/l4`, { headers: { ...authHeaders() } });
   if (!resp.ok) throw new Error(`L4 stats failed: ${resp.status}`);
   return resp.json();
+}
+
+// ── 当前用户 / 案例库 API ─────────────────────────────────────────────────────
+
+export async function fetchMe(): Promise<MeResponse> {
+  const resp = await fetch(`${BASE}/auth/me`, { headers: { ...authHeaders() } });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "获取当前用户失败"));
+  return (await resp.json()) as MeResponse;
+}
+
+export async function fetchCaseProjects(
+  filters: CaseProjectFilters = {}
+): Promise<ProjectLedgerPage> {
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(filters)) {
+    if (v) params.set(k, v);
+  }
+  const qs = params.toString();
+  const resp = await fetch(`${BASE}/admin/cases/projects${qs ? `?${qs}` : ""}`, {
+    headers: { ...authHeaders() },
+  });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "案例库加载失败"));
+  return (await resp.json()) as ProjectLedgerPage;
+}
+
+export async function fetchCaseProductGroups(
+  filters: CaseProjectFilters = {}
+): Promise<CaseProductGroups> {
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(filters)) {
+    if (v) params.set(k, v);
+  }
+  const qs = params.toString();
+  const resp = await fetch(`${BASE}/admin/cases/product-groups${qs ? `?${qs}` : ""}`, {
+    headers: { ...authHeaders() },
+  });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "案例库加载失败"));
+  return (await resp.json()) as CaseProductGroups;
+}
+
+export async function fetchCaseProjectDetail(projectId: string): Promise<CaseProjectDetail> {
+  const resp = await fetch(`${BASE}/admin/cases/projects/${projectId}`, {
+    headers: { ...authHeaders() },
+  });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "案例详情加载失败"));
+  return (await resp.json()) as CaseProjectDetail;
+}
+
+export async function fetchCaseInsights(): Promise<CaseInsights> {
+  const resp = await fetch(`${BASE}/admin/cases/insights`, { headers: { ...authHeaders() } });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "案例洞察加载失败"));
+  return (await resp.json()) as CaseInsights;
 }
 
 // ── 顾问审核 API ──────────────────────────────────────────────────────────────

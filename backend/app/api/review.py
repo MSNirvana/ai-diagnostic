@@ -23,7 +23,9 @@ from app.db.models import Project
 from app.research.store import list_record_evidence
 from app.warroom.history import get_or_build_project_war_room_plan
 
-router = APIRouter(prefix="/admin/review")
+from app.auth.jwt import require_admin
+
+router = APIRouter(prefix="/admin/review", dependencies=[Depends(require_admin)])
 
 SLA_HOURS = 24
 

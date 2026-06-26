@@ -76,6 +76,9 @@ export interface DepartmentAction {
   department: string;
   department_label: string;
   battle_goal: string;
+  problem?: string;
+  internal_evidence?: string[];
+  external_evidence?: string[];
   priority: WarRoomUrgency;
   action_title: string;
   action_detail: string;
@@ -137,6 +140,39 @@ export interface WarRoomPlan {
   data_gaps: DataRequest[];
   checkpoints: ReviewCheckpoint[];
 }
+
+// V2 AI 改造方案（按域：每个诊断问题一个改造）
+export interface BeforeAfterRow {
+  dimension: string;
+  before: string;
+  after: string;
+}
+export interface TransformStage {
+  window: string;
+  result: string;
+  how: string;
+  ai_does?: string;
+  you_do?: string;
+  ai_capabilities?: string[];
+}
+export interface DomainTransformation {
+  module: string;
+  label?: string;
+  problem?: string;
+  redesign_headline?: string;
+  before_after: BeforeAfterRow[];
+  stages: TransformStage[];
+  investment?: string;
+  prereq_risk?: string;
+  generated?: boolean;
+}
+export interface TransformationPlan {
+  id: string;
+  project_id?: string | null;
+  record_id?: string | null;
+  created_at?: string | null;
+  items: Record<string, DomainTransformation>;
+}
 export type WarRoomFeedbackAdoptionStatus = "pending" | "adopted" | "deferred" | "rejected";
 export type WarRoomFeedbackResult = "none" | "effective" | "no_change" | "new_issue" | "insufficient_data";
 export type WarRoomFeedbackCardType = "decision" | "action" | "review";
@@ -155,6 +191,10 @@ export interface WarRoomFeedbackEvent {
   note: string;
   owner: string;
   attachments: string[];
+}
+export interface WarRoomFeedbackAttachment {
+  id: string;
+  name: string;
 }
 export interface WarRoomFeedbackCreate {
   war_room_plan_id: string;
@@ -450,6 +490,7 @@ export interface ProjectRecordBrief {
   module_count: number;
   has_war_room_plan?: boolean;
   review_status?: "pending_review" | "approved" | "rejected" | string;
+  session_id?: string | null;
 }
 
 export interface ProjectMemoryEntry {
@@ -672,6 +713,129 @@ export interface L4Stats {
   recent_feedback_count: number;
   avg_rating: number | null;
   useful_rate: number | null;
+}
+
+// ── 当前用户 / 权限 ───────────────────────────────────────────────────────────
+
+export interface MeResponse {
+  id: string;
+  email: string;
+  is_admin: boolean;
+}
+
+// ── 案例库类型 ────────────────────────────────────────────────────────────────
+
+export interface ProjectLedgerItem {
+  id: string;
+  name: string;
+  user_email: string;
+  industry: string;
+  main_business: string;
+  core_problem: string;
+  product?: string;
+  primary_module: string;
+  latest_signal: "red" | "yellow" | "green" | "";
+  diagnosis_count: number;
+  delivery_state: string;
+  review_status: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectLedgerPage {
+  total: number;
+  items: ProjectLedgerItem[];
+  industries: string[];
+}
+
+export interface CaseProductModuleGroup {
+  module: string;
+  count: number;
+  projects: ProjectLedgerItem[];
+}
+
+export interface CaseProductGroup {
+  product: string;
+  count: number;
+  modules: CaseProductModuleGroup[];
+}
+
+export interface CaseProductGroups {
+  total: number;
+  groups: CaseProductGroup[];
+  industries: string[];
+}
+
+export interface CaseModuleSignal {
+  module: string;
+  signal: string;
+  conclusion: string;
+  confidence: number | null;
+}
+
+export interface CaseRecordDetail {
+  id: string;
+  created_at: string;
+  review_status: string;
+  primary_module: string;
+  signals: CaseModuleSignal[];
+  consultant_notes: string[];
+}
+
+export interface CaseFeedback {
+  count: number;
+  avg_rating: number | null;
+  useful_rate: number | null;
+}
+
+export interface CaseProjectDetail {
+  id: string;
+  name: string;
+  user_email: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  industry: string;
+  main_business: string;
+  core_problem: string;
+  goal: string;
+  company_name: string;
+  records: CaseRecordDetail[];
+  war_room_summary: string;
+  war_room_objective: string;
+  evidence_count: number;
+  feedback: CaseFeedback;
+}
+
+export interface CaseDistItem {
+  label: string;
+  count: number;
+}
+
+export interface CaseModuleConfidence {
+  module: string;
+  avg_confidence: number;
+  sample: number;
+}
+
+export interface CaseInsights {
+  total_cases: number;
+  industry_dist: CaseDistItem[];
+  scenario_dist: CaseDistItem[];
+  module_dist: CaseDistItem[];
+  signal_dist: CaseDistItem[];
+  avg_confidence_per_module: CaseModuleConfidence[];
+  data_gaps_top: CaseDistItem[];
+}
+
+export interface CaseProjectFilters {
+  industry?: string;
+  primary_module?: string;
+  signal?: string;
+  delivery_state?: string;
+  status?: string;
+  q?: string;
 }
 
 // ── 顾问审核队列类型 ──────────────────────────────────────────────────────────

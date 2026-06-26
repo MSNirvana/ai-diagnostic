@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from app.skills.configured import DataRequirement, ExpertConfig
 from app.skills.method import DIAGNOSTIC_METHOD, METHOD_MODULE_KEY
+from app.skills.transformation import AI_TRANSFORMATION_METHOD, TRANSFORM_MODULE_KEY
 from app.skills.prompts import (
     ARCHIVE_EXTRACTION,
     ARCHIVE_REFINEMENT,
@@ -13,6 +14,7 @@ from app.skills.prompts import (
     QUESTIONNAIRE_BASE,
     QUESTIONNAIRE_QUALITY_GATE,
     RESEARCH_PLANNER,
+    WAR_ROOM_ENHANCER,
 )
 
 
@@ -444,6 +446,19 @@ SYSTEM_DEFINITIONS: tuple[SkillDefinition, ...] = (
         evaluation_metrics=("证据相关度", "专家引用率", "漏搜补搜率", "查询有效率"),
     ),
     SkillDefinition(
+        key=TRANSFORM_MODULE_KEY,
+        label="AI 改造方法（改造脑子）",
+        category="system",
+        category_label="改造方法",
+        skill_type="method",
+        method="ai_transformation",
+        description="V2 改造大脑：基于 V1 诊断出的卡点，生成「30 天把这门生意重做成 AI native」的改造方案。每个改造主题必须锚定一条诊断结论，输出结果层(改造前后对比)+实现层(分周怎么搭)。",
+        trigger_keywords=("AI改造", "改造方案", "AI native", "transformation", "改造"),
+        fallback_prompt=AI_TRANSFORMATION_METHOD,
+        upgrade_policy="作为全局改造脑子，任何改动影响所有改造方案；按方案被采纳率、落地有效率迭代，人工审核后激活，保留可回滚历史版本。",
+        evaluation_metrics=("锚定诊断命中率", "方案可落地率", "工具具体度", "改造采纳率"),
+    ),
+    SkillDefinition(
         key="free_chat",
         label="头脑风暴陪练",
         category="assistant",
@@ -544,6 +559,19 @@ SYSTEM_DEFINITIONS: tuple[SkillDefinition, ...] = (
         upgrade_policy="根据用户对档案字段的修改、误分板块、重复字段和复诊引用情况迭代提炼纪律，人工审核后激活。",
         evaluation_metrics=("字段合并率", "误分板块率", "重复字段率", "复诊引用率", "用户修正率"),
     ),
+    SkillDefinition(
+        key="war_room_enhancer",
+        label="作战室叙事收敛",
+        category="delivery",
+        category_label="证据交付",
+        skill_type="delivery",
+        method="war_room_enhance",
+        description="把作战室方案草稿的叙事字段（summary/objective/决策/动作）改写成懂行、点到痛处的人话；只改叙事，不碰结构、不编造数字。",
+        trigger_keywords=("作战室", "叙事", "收敛", "经营会", "war room"),
+        fallback_prompt=WAR_ROOM_ENHANCER,
+        upgrade_policy="根据老板可读性反馈、套话率、编造数字拦截率和结论先行率迭代，人工审核后激活。",
+        evaluation_metrics=("可读性", "套话率", "编造数字拦截率", "结论先行率"),
+    ),
 )
 
 
@@ -638,6 +666,7 @@ _FLOW_BY_KEY: dict[str, str] = {
     "intake_completeness": "客户进入阶段·完整度闸门：判断问题地图是否够格进入诊断，缺关键字段时继续追问。",
     "evidence_confidence": "证据交付阶段：给每条诊断结论校准可审计的置信度（百分比可解释到来源/缺口）。",
     "archive_extraction": "证据交付阶段：把上传资料沉淀成可长期复用的项目档案事实。",
+    "war_room_enhancer": "证据交付阶段·作战室收敛：把方案草稿的叙事改写成给老板看的人话（只改叙事，不碰结构、不编数字）。",
 }
 
 

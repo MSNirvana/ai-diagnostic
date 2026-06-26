@@ -12,13 +12,19 @@ LLM 不可用、超时、或产出不过 critic —— 一律优雅降级回原�
 import asyncio
 import json
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.eval.assertions import TEMPLATE_PHRASES, _NUMBER_TOKEN_RE
 from app.llm.base import LLMClient
 from app.models.result import ModuleResult
 from app.models.warroom import WarRoomPlan
+from app.skills.prompts import WAR_ROOM_ENHANCER
+from app.skills.store import get_active_skill_version
 
 # LLM 增强的硬超时：宁可降级给模板，也不让老板干等。
 _ENHANCE_TIMEOUT_S = 25.0
+# 「作战室收敛」脑子的 module key —— 可在后台版本化治理。
+WAR_ROOM_ENHANCER_KEY = "war_room_enhancer"
 
 
 def _norm_num(token: str) -> str:
@@ -75,19 +81,19 @@ def _critic_accepts(candidate: str, original: str, allowed: set[str]) -> bool:
     return True
 
 
-def _build_prompt(plan: WarRoomPlan, results: list[ModuleResult]) -> tuple[str, str]:
-    system = (
-        "你是给中小企业老板写经营作战方案的资深顾问。"
-        "下面给你一份已经算好结构的方案草稿（战场、优先级、指标都已定，不要改），"
-        "你的唯一任务：把其中几段【叙事文字】改写得像一个懂行的人在跟老板讲话——"
-        "具体、有判断、点到痛处，而不是正确的废话。\n"
-        "硬规则：\n"
-        "1. 不要引入任何草稿里没有出现过的数字。\n"
-        "2. 禁止套话：'未来30天优先打''建议关注''需要引起重视''助力企业''持续改进'等一律不准用。\n"
-        "3. 每段控制在 1-2 句，结论先行。\n"
-        "4. 只输出 JSON：{\"summary\":\"...\",\"objective\":\"...\",\"decision_details\":[\"...\"],\"action_details\":[\"...\"]}，"
-        "decision_details 和 action_details 的条数必须和草稿给的条数一致，按顺序对应。"
-    )
+async def _resolve_system(session: AsyncSession | None) -> str:
+    """取「作战室收敛」skill 的激活版本（可后台版本化），无则用代码兜底常量。"""
+    if session is not None:
+        try:
+            ver = await get_active_skill_version(session, WAR_ROOM_ENHANCER_KEY)
+            if ver and ver.system_prompt.strip():
+                return ver.system_prompt
+        except Exception:  # noqa: BLE001 — 取版本失败不影响增强，退兜底
+            pass
+    return WAR_ROOM_ENHANCER
+
+
+def _build_draft_prompt(plan: WarRoomPlan, results: list[ModuleResult]) -> str:
     draft = {
         "primary_battlefield": plan.primary_battlefield,
         "summary": plan.summary,
@@ -98,20 +104,21 @@ def _build_prompt(plan: WarRoomPlan, results: list[ModuleResult]) -> tuple[str, 
         "action_details": [a.action_detail for a in plan.department_actions],
         "key_evidence": plan.evidence_summary[:5],
     }
-    prompt = "方案草稿：\n" + json.dumps(draft, ensure_ascii=False, indent=2)
-    return system, prompt
+    return "方案草稿：\n" + json.dumps(draft, ensure_ascii=False, indent=2)
 
 
 async def enhance_war_room_plan(
     plan: WarRoomPlan,
     results: list[ModuleResult],
     llm: LLMClient | None,
+    session: AsyncSession | None = None,
 ) -> WarRoomPlan:
     """用 LLM 重写叙事字段；任何失败都优雅降级返回原 plan。"""
     if llm is None or not plan.department_actions and not plan.summary:
         return plan
     try:
-        system, prompt = _build_prompt(plan, results)
+        system = await _resolve_system(session)
+        prompt = _build_draft_prompt(plan, results)
         raw = await asyncio.wait_for(
             llm.complete(system=system, prompt=prompt), timeout=_ENHANCE_TIMEOUT_S
         )
@@ -123,9 +130,9 @@ async def enhance_war_room_plan(
 
     allowed = _allowed_numbers(results)
 
-    # summary
+    # summary —— 额外硬约束：必须保持一句话，过长的改写一律弃用，退回 composer 的精简版
     cand = payload.get("summary", "")
-    if isinstance(cand, str) and _critic_accepts(cand, plan.summary, allowed):
+    if isinstance(cand, str) and len(cand.strip()) <= 56 and _critic_accepts(cand, plan.summary, allowed):
         plan.summary = cand.strip()
 
     # objective

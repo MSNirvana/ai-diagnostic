@@ -12,13 +12,14 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.jwt import require_admin
 from app.db.database import get_session
 from app.db.models import SkillVersion
 from app.skills.configured import card_from_version, card_requirements
 from app.skills.registry import get_skill
 from app.skills.skill_network import all_skill_definitions, skill_definition, skill_flow
 
-router = APIRouter(prefix="/admin/skills")
+router = APIRouter(prefix="/admin/skills", dependencies=[Depends(require_admin)])
 
 
 class NewVersionRequest(BaseModel):

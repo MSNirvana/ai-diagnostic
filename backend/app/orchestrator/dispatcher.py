@@ -11,8 +11,14 @@ from app.skills.skill_network import _score_definitions, diagnosis_skill_definit
 from app.filters.moat import scrub_method_language
 from app.orchestrator.routing_collector import collect_routing_sample
 from app.orchestrator.scout import adhoc_skill, scout_angles
+from app.warroom.history import build_feedback_digest
 
 SIGNAL_WEIGHT = {"red": 0, "yellow": 1, "green": 2}
+
+# 路由来源（用于「scout 权威路由」：纯关键词命中的、scout 没采纳又没人填的，剔除掉省算力）
+_REASON_ANSWERED = "用户填写了该模块"
+_REASON_FOCUS = "问题地图建议优先诊断"
+_REASON_KEYWORD = "问题地图提到相关经营信号"
 
 
 @dataclass
@@ -32,8 +38,44 @@ async def diagnose_all(
 
     同时收集每个模块用了哪个 skill 版本（供反馈关联）。
     """
+    # 反馈闭环：把项目历次作战室反馈当上下文喂进本轮（无效别重复、无变化重做约束定位、有新问题纳入）。best-effort。
+    feedback_digest = await build_feedback_digest(session, getattr(q, "project_id", None))
+    if feedback_digest:
+        q = q.model_copy(update={"problem_map": {**(q.problem_map or {}), "prior_feedback": feedback_digest}})
     questionnaire = _hydrate_answer_contexts(q, research_evidence=research_evidence or [])
-    routes = list(_route_experts(questionnaire))
+    base_routes = list(_route_experts(questionnaire))
+
+    # 调度脑子先跑，拿到本次「相关域」集合（best-effort，失败/无核心问题返回 []）。
+    problem_map = questionnaire.problem_map or {}
+    known = [(d.key, d.label) for d in diagnosis_skill_definitions()]
+    angles = await scout_angles(problem_map, known, llm, session)
+
+    # 权威路由：scout 跑了，就只跑「scout 采纳 / 诊断焦点 / 用户真填了数据」的域；
+    # 其余（关键词投机命中、或旧问卷生成但用户没填的空壳模块）一律不跑——省算力，也不让无关域污染结果。
+    # scout 没跑（无核心问题/失败）则退回原行为，绝不漏诊。
+    if angles:
+        endorsed = {a.module for a in angles if a.known}
+        routes = [
+            r for r in base_routes
+            if r.answer.module in endorsed
+            or r.reason == _REASON_FOCUS
+            or _has_user_data(r.answer)
+        ]
+    else:
+        routes = base_routes
+
+    # 给所有最终路由（含关键词/焦点合成的空 answer）注入共享上下文，确保每个被诊断的域都看到
+    # 完整问题背景（含 prior_feedback）——之前合成 answer 的 context 是空的，会让这些域半盲诊断。
+    shared_ctx = _build_shared_context(questionnaire.problem_map or {}, research_evidence or [])
+    routes = [
+        _Route(
+            r.answer.model_copy(update={"context": {**shared_ctx, **(r.answer.context or {})}}),
+            r.reason,
+            r.priority,
+        )
+        for r in routes
+    ]
+
     modules: list[str] = []
     tasks = []
     for route in routes:
@@ -43,17 +85,18 @@ async def diagnose_all(
             modules.append(answer.module)
             tasks.append(skill.diagnose(answer, llm, session))
 
-    # 起跑库不设边界：调度脑子从问题再决定还要看哪些角度（含注册表外新角度）。best-effort，失败不影响上面的关键词路由。
-    extra_modules, extra_tasks, extra_routes = await _scout_extra(
+    # 起跑库不设边界：把 scout 采纳的、还没在 routes 里的已有域 + 注册表外新角度补进来。
+    extra_modules, extra_tasks, extra_routes = _scout_apply(
         questionnaire,
-        llm,
-        session,
+        angles,
         already=set(modules),
+        llm=llm,
+        session=session,
         research_evidence=research_evidence or [],
     )
     modules += extra_modules
     tasks += extra_tasks
-    routes += extra_routes
+    routes = list(routes) + extra_routes
 
     pairs = await asyncio.gather(*tasks)  # list[(ModuleResult, version_id)]
 
@@ -82,25 +125,24 @@ async def diagnose_all(
     return DiagnoseOutcome(results=results, skill_version_ids=version_ids, triage=triage)
 
 
-async def _scout_extra(
+def _scout_apply(
     questionnaire: Questionnaire,
-    llm: LLMClient,
-    session: AsyncSession | None,
+    angles: list,
     *,
     already: set[str],
+    llm: LLMClient,
+    session: AsyncSession | None,
     research_evidence: list[dict],
 ):
-    """调度脑子建议的额外诊断角度 → (modules, tasks, routes)。无建议/失败返回空。
+    """把调度脑子采纳的额外角度变成诊断任务 → (modules, tasks, routes)。
 
     - known 角度：走注册表（复用其 KPI/取数项/负责人/基准），沿用已填问卷数据或合成空 answer。
     - 新角度：现场建 ad-hoc 域，脑子按 label + 问题上下文诊断（无人填数据→诚实降置信并提数据请求）。
+    angles 由 diagnose_all 预先算好传入，避免二次调用 LLM。
     """
-    problem_map = questionnaire.problem_map or {}
-    known = [(d.key, d.label) for d in diagnosis_skill_definitions()]
-    angles = await scout_angles(problem_map, known, llm, session)
     if not angles:
         return [], [], []
-
+    problem_map = questionnaire.problem_map or {}
     shared = _build_shared_context(problem_map, research_evidence)
     by_module = {answer.module: answer for answer in questionnaire.answers}
 
@@ -144,14 +186,14 @@ def _route_experts(q: Questionnaire) -> list[_Route]:
 
     for order, answer in enumerate(q.answers):
         if get_skill(answer.module) is not None:
-            selected[answer.module] = _Route(answer, "用户填写了该模块", 10 + order)
+            selected[answer.module] = _Route(answer, _REASON_ANSWERED, 10 + order)
 
     problem_map = q.problem_map or {}
     focus = resolve_skill_key(str(problem_map.get("diagnosis_focus") or ""))
     if focus and get_skill(focus) is not None:
         selected[focus] = _Route(
             by_module.get(focus) or ModuleAnswer(module=focus),
-            "问题地图建议优先诊断",
+            _REASON_FOCUS,
             0,
         )
 
@@ -161,7 +203,7 @@ def _route_experts(q: Questionnaire) -> list[_Route]:
             module,
             _Route(
                 by_module.get(module) or ModuleAnswer(module=module),
-                "问题地图提到相关经营信号",
+                _REASON_KEYWORD,
                 20 + len(selected),
             ),
         )
@@ -178,6 +220,11 @@ def _problem_text(problem_map: dict) -> str:
 
 def _keyword_modules(text: str) -> list[str]:
     return skill_keys_from_text(text)
+
+
+def _has_user_data(answer: ModuleAnswer) -> bool:
+    """用户是否真给了这个域数据（填了字段或勾了痛点）——给了就尊重、必跑，不被 scout 否决。"""
+    return bool(answer.facts) or bool(answer.pains)
 
 
 def _summarize_triage(routes: list[_Route], results: list[ModuleResult]) -> TriageSummary:
@@ -313,6 +360,7 @@ def _build_shared_context(
         "tried": str(problem_map.get("tried") or ""),
         "data_readiness": str(problem_map.get("data_readiness") or ""),
         "diagnosis_focus": str(problem_map.get("diagnosis_focus") or ""),
+        "prior_feedback": str(problem_map.get("prior_feedback") or ""),
         "scenario_key": scenario.key,
         "scenario_label": scenario.label,
         "research_evidence": research_evidence or [],

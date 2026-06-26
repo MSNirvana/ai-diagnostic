@@ -30,7 +30,7 @@ export function RecordDetailPage() {
 
   return (
     <AppShell
-      eyebrow="Diagnostic Deliverable"
+      eyebrow="诊断交付"
       title="诊断交付详情"
       description={detail ? `交付时间：${fmt(detail.created_at)}` : "正在载入诊断交付"}
       actions={

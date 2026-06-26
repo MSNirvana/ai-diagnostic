@@ -23,7 +23,7 @@ export function DepartmentActionGrid({ actions }: DepartmentActionGridProps) {
     <section className="war-panel">
       <div className="war-panel__heading">
         <div>
-          <span>Department Actions</span>
+          <span>部门动作</span>
           <h3>分配执行动作</h3>
         </div>
         <strong className="war-panel__count">{visibleActions.length}/{actions.length} 项</strong>

@@ -142,6 +142,8 @@ async def _ensure_sqlite_columns(conn) -> None:
     project_columns = {row[1] for row in project_result.fetchall()}
     if "war_room_plan_json" not in project_columns:
         await conn.execute(text("ALTER TABLE project ADD COLUMN war_room_plan_json TEXT"))
+    if "transformation_plan_json" not in project_columns:
+        await conn.execute(text("ALTER TABLE project ADD COLUMN transformation_plan_json TEXT"))
 
     job_result = await conn.execute(text("PRAGMA table_info(diagnosisjob)"))
     job_columns = {row[1] for row in job_result.fetchall()}
@@ -189,6 +191,35 @@ async def _ensure_sqlite_columns(conn) -> None:
     for col, col_type in upload_extra_columns.items():
         if upload_columns and col not in upload_columns:
             await conn.execute(text(f"ALTER TABLE uploadedfile ADD COLUMN {col} {col_type}"))
+
+    # 运营后台权限位。"user" 是 SQLite 保留字，必须加引号。
+    user_result = await conn.execute(text('PRAGMA table_info("user")'))
+    user_columns = {row[1] for row in user_result.fetchall()}
+    if user_columns and "is_admin" not in user_columns:
+        await conn.execute(text('ALTER TABLE "user" ADD COLUMN is_admin BOOLEAN DEFAULT 0'))
+    # 存量用户里命中 ADMIN_EMAILS 的，登录前就提权（解决"无 UI 设标志"的鸡生蛋）。
+    await _sync_admin_emails(conn)
+
+
+def _admin_email_set() -> set[str]:
+    """解析 ADMIN_EMAILS 环境变量（逗号分隔，小写）。'*' 表示所有人都是管理员。"""
+    raw = os.environ.get("ADMIN_EMAILS", "")
+    return {e.strip().lower() for e in raw.split(",") if e.strip()}
+
+
+async def _sync_admin_emails(conn) -> None:
+    emails = _admin_email_set()
+    if not emails:
+        return
+    if "*" in emails:
+        await conn.execute(text('UPDATE "user" SET is_admin = 1'))
+        return
+    # 参数化逐个置位，避免 IN 子句的方言差异
+    for email in emails:
+        await conn.execute(
+            text('UPDATE "user" SET is_admin = 1 WHERE lower(email) = :email'),
+            {"email": email},
+        )
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:

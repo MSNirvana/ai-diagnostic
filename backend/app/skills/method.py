@@ -45,6 +45,7 @@ DIAGNOSTIC_METHOD = """所有诊断专家共用的通用方法与输出纪律（
 - domain：本次要诊断的领域。含 label（领域名）、industry_kpis（该领域关键指标）、judgment_hints（该领域易误判点，可能为空）
 - scenario：业务场景（key/label/evidence_lens/benchmark_keywords），决定优先看哪些信号
 - problem_map / context：老板的核心问题、目标、约束、成功标准、项目画像
+- prior_feedback：项目上一轮作战室动作的真实执行反馈（可能为空）
 - facts：用户已填写或上传解析出的事实数据；pains：老板勾选的痛点
 - benchmark：行业基准，可能带 _estimated 估算标记，也可能缺失
 - similar_cases：同行业/同场景的脱敏历史先例，仅供参考，不是本项目事实
@@ -63,6 +64,7 @@ DIAGNOSTIC_METHOD = """所有诊断专家共用的通用方法与输出纪律（
    若更像表象（如转化差其实源于流量质量、毛利低其实源于定价或获客成本），
    必须在 conclusion 里点明真正的约束可能在哪一环，而不是把表象当根因下死结论。
 3. 数据诚实：缺关键数据时，绝不编造或假装看到了结论；降低置信度，并把缺口落成可执行的数据请求。
+4. 反馈闭环：若 prior_feedback 非空（上一轮动作的真实结果），无效/无明显变化的动作别再原样推荐——该领域要重新做约束定位（根因很可能在别处）；出现新问题要纳入本轮判断；已验证有效的可顺势推进深化，不要原地打转。
 
 【证据纪律】
 - benchmark 用于内外对比；benchmark 缺失或为 _estimated 估算时，必须明显降低置信度并注明。
@@ -71,14 +73,20 @@ DIAGNOSTIC_METHOD = """所有诊断专家共用的通用方法与输出纪律（
 - 引用外部事实时，evidence.source 必须写明来源标题或 URL。
 
 【严格输出 JSON，不要任何额外文字】
-{signal, conclusion, evidence[], actions[], drilldown{data_points[], comparisons[]}}
+{signal, problem, conclusion, evidence[], actions[], drilldown{data_points[], comparisons[]}, data_needs[]}
 - signal：red / yellow / green
-- conclusion：结论先行，一句话讲清本领域最关键的判断，并命中至少一个本领域关键指标
+- problem：用业务大白话说清本域当前【要解决的问题/症状】——可观察的现象本身（例「20个注册用户只有1人在持续用」「线索来了3天才跟进」），一句话、不带分析、不给方案；它要和 conclusion 明确区分（problem 是现象，conclusion 是你对现象的判断）
+- conclusion：结论先行，一句话讲清本领域最关键的判断（problem 背后的真正约束/根因），并命中至少一个本领域关键指标
 - evidence：最多 3 条，每条 {text, source}，用结果语言陈述事实；
   引用的数字必须来自 facts 或 benchmark，禁止编造；衍生指标写明算式（如 转化率=成交/点击）
 - actions：2-3 条按优先级，每条含强动作动词（暂停/下调/改写/重投/收窄/扩量/核验/暂缓…），
   可直接进入经营会动作清单
 - drilldown：只放事实数据和对比，不写方法/假设/框架
+- data_needs：本域诊断还真正缺、且只有这家公司内部才有的关键数据，每条 {key, label, reason}。铁律：
+  · 只列与这家公司【真实情况】相关的——它明确没有的业务，绝不列对应数据（例：明说没投放/没销售团队，就绝不要投放报表、广告账号、CRM 这类）。
+  · 公开能查的（行业基准、竞品、政策）不要列，系统会自己联网搜。
+  · 能对上输入 data_requirements 里某条的就复用它的 key（系统好跨轮追踪）；确有该公司特有、清单里没有的，可新增（key 自拟）。
+  · 没有真正缺的关键数据就给空数组 []。这是你按这家公司实际情况筛过的「该补什么」，不是套清单。
 - 若证据仍不足以支撑判断，可加 research_questions 数组，说明还需补搜或补数什么
 - JSON 字符串内部禁止使用英文双引号 "；需要强调或引用短语一律用中文引号「」，否则会破坏 JSON 结构"""
 

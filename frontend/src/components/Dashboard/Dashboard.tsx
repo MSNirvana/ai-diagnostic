@@ -19,7 +19,7 @@ export function Dashboard({ results, recordId, skillVersionIds, triage }: Dashbo
       {triage && triage.selected_experts.length > 0 && (
         <section className="triage-panel">
           <div className="triage-panel__intro">
-            <span className="triage-panel__eyebrow">Consulting Triage</span>
+            <span className="triage-panel__eyebrow">会诊分诊</span>
             <h2 className="triage-panel__title">会诊路径与优先级</h2>
             <p className="triage-panel__primary">
               主诊专家：{primaryLabel ?? triage.primary_module ?? "待判定"}

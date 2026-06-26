@@ -17,6 +17,7 @@ class User(SQLModel, table=True):
     email: str = Field(unique=True, index=True)
     hashed_password: str
     created_at: datetime = Field(default_factory=_now)
+    is_admin: bool = Field(default=False)   # 运营后台访问权；由 ADMIN_EMAILS 环境变量 bootstrap
 
 
 class Project(SQLModel, table=True):
@@ -33,6 +34,7 @@ class Project(SQLModel, table=True):
     profile_json: str | None = None        # 最新画像/问题地图
     memory_summary: str = ""               # 项目长期记忆（重点摘要，供后续对话注入）
     war_room_plan_json: str | None = None   # 项目当前作战室快照（由多次诊断迭代更新）
+    transformation_plan_json: str | None = None  # 项目 AI 改造方案快照（V2，基于诊断生成）
     status: str = "active"                 # active | archived | deleted (user-hidden, data retained)
 
 

@@ -872,6 +872,19 @@
   padding: 24px 0;
 }
 
+/* 系统健康：三块体检信号堆叠在一个页里，用细分隔线区隔。 */
+.loop-health__intro {
+  margin: 4px 0 0;
+}
+
+.loop-health .loop-tab {
+  border-top: 1px solid var(--border-soft, rgba(20, 30, 50, 0.08));
+}
+
+.loop-health .loop-tab:first-of-type {
+  border-top: 0;
+}
+
 .loop-tab__title {
   font-size: 1rem;
   font-weight: 600;
@@ -1395,4 +1408,180 @@
 
 @media (max-width: 860px) {
   .review-layout { grid-template-columns: 1fr; }
+}
+
+/* ── 案例库 ─────────────────────────────────────────────────────────────── */
+.case-lib { padding: 20px 0; }
+
+.case-lib__switch {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(27, 38, 54, 0.05);
+  margin-bottom: 18px;
+}
+.case-lib__switch button {
+  border: 0;
+  background: transparent;
+  border-radius: 999px;
+  padding: 6px 18px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.case-lib__switch button.is-on {
+  background: #fff;
+  color: var(--accent);
+  box-shadow: 0 1px 3px rgba(20, 30, 50, 0.12);
+}
+
+/* 台账工具条 */
+.case-ledger__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.case-ledger__search {
+  flex: 1 1 220px;
+  min-width: 180px;
+  height: 34px;
+  border: 1px solid rgba(20, 30, 50, 0.16);
+  border-radius: 8px;
+  padding: 0 12px;
+  font-size: 0.85rem;
+}
+.case-ledger__toolbar select {
+  height: 34px;
+  border: 1px solid rgba(20, 30, 50, 0.16);
+  border-radius: 8px;
+  padding: 0 8px;
+  font-size: 0.82rem;
+  background: #fff;
+  color: var(--ink);
+}
+.case-ledger__count { font-size: 0.8rem; color: var(--ink-soft); margin-left: auto; }
+
+/* 台账列表（按行业折叠分组） */
+.case-ledger__list { max-height: 70vh; overflow-y: auto; }
+.case-group { margin-bottom: 8px; }
+.case-group__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  background: rgba(27, 38, 54, 0.04);
+  border-radius: 8px;
+  padding: 7px 10px;
+  cursor: pointer;
+  font-weight: 800;
+  font-size: 0.82rem;
+  color: var(--ink);
+}
+.case-group__chevron { color: var(--ink-soft); font-size: 0.7rem; }
+.case-group__name { flex: 1; text-align: left; }
+.case-group__count {
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+  background: #fff;
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+/* 二级：诊断域（主战场）小标题 */
+.case-subgroup { margin: 2px 0 2px 12px; border-left: 1px solid rgba(27, 38, 54, 0.07); }
+.case-subgroup__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 10px 3px 12px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+.case-subgroup__count {
+  background: rgba(27, 38, 54, 0.05);
+  border-radius: 999px;
+  padding: 0 7px;
+  font-size: 0.68rem;
+}
+.case-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  border-radius: 8px;
+  padding: 8px 10px 8px 16px;
+  cursor: pointer;
+  text-align: left;
+}
+.case-row:hover { background: rgba(14, 74, 125, 0.05); }
+.case-row--on { background: var(--accent-soft, #eef2ff); }
+.case-row__dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: #cbd5e1; }
+.case-row__dot--red { background: var(--signal-red, #ef4444); }
+.case-row__dot--yellow { background: var(--signal-yellow, #f59e0b); }
+.case-row__dot--green { background: var(--signal-green, #16a34a); }
+.case-row__name { flex: 1; font-size: 0.85rem; font-weight: 650; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.case-row__meta { font-size: 0.72rem; color: var(--ink-soft); flex: 0 0 auto; }
+
+/* 台账详情 */
+.case-detail__head h3 { margin: 0; font-size: 1.05rem; }
+.case-detail__sub { font-size: 0.8rem; color: var(--ink-soft); }
+.case-detail__profile {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+  margin: 16px 0;
+}
+.case-detail__profile > div {
+  background: rgba(27, 38, 54, 0.035);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+.case-detail__profile span { display: block; font-size: 0.72rem; color: var(--ink-soft); }
+.case-detail__profile b { font-size: 0.86rem; font-weight: 650; }
+.case-detail__warroom { background: rgba(14, 74, 125, 0.045); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; }
+.case-detail__warroom p { margin: 4px 0; font-size: 0.85rem; }
+
+.case-rec {
+  border: 1px solid rgba(20, 30, 50, 0.1);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+.case-rec__head { display: flex; justify-content: space-between; font-size: 0.76rem; color: var(--ink-soft); margin-bottom: 6px; }
+.case-rec__status { font-weight: 700; }
+.case-sig { display: flex; gap: 10px; padding: 4px 0; border-left: 3px solid #cbd5e1; padding-left: 10px; margin: 4px 0; }
+.case-sig--red { border-color: var(--signal-red, #ef4444); }
+.case-sig--yellow { border-color: var(--signal-yellow, #f59e0b); }
+.case-sig--green { border-color: var(--signal-green, #16a34a); }
+.case-sig__mod { flex: 0 0 150px; font-size: 0.8rem; font-weight: 700; }
+.case-sig__concl { flex: 1; font-size: 0.82rem; color: var(--ink); }
+.case-rec__notes { margin: 8px 0 0; padding-left: 18px; font-size: 0.8rem; color: var(--accent); }
+
+/* 洞察条形图 */
+.case-insights__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 18px;
+  margin-bottom: 8px;
+}
+.case-bars-block h5 { margin: 0 0 8px; font-size: 0.82rem; font-weight: 700; color: var(--ink); }
+.case-bars { display: flex; flex-direction: column; gap: 6px; }
+.case-bar { display: grid; grid-template-columns: 110px 1fr 32px; align-items: center; gap: 8px; }
+.case-bar__label { font-size: 0.78rem; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.case-bar__track { height: 12px; background: rgba(27, 38, 54, 0.07); border-radius: 999px; overflow: hidden; }
+.case-bar__fill { display: block; height: 100%; background: var(--accent); border-radius: 999px; min-width: 2px; }
+.case-bar__num { font-size: 0.76rem; color: var(--ink-soft); text-align: right; }
+
+@media (max-width: 860px) {
+  .case-detail__profile { grid-template-columns: 1fr; }
+  .case-sig { flex-direction: column; gap: 2px; }
+  .case-sig__mod { flex-basis: auto; }
 }

@@ -122,6 +122,7 @@ def test_diagnosis_writes_project_memory(db_session):
         "/diagnose",
         json={
             "answers": [{"module": "market", "facts": {}, "pains": ["获客贵"]}],
+            "request_review": True,   # 测审核门：显式请复核（审核现为可选默认不选）
             "project_id": pid,
             "problem_map": {
                 "core_problem": "获客成本过高",
@@ -166,6 +167,7 @@ def test_project_war_room_is_hidden_until_consultant_approval(db_session):
         "/diagnose",
         json={
             "answers": [{"module": "market", "facts": {}, "pains": ["获客贵"]}],
+            "request_review": True,   # 测审核门：显式请复核（审核现为可选默认不选）
             "project_id": pid,
             "problem_map": {"diagnosis_focus": "market", "goal": "降低获客成本"},
         },
@@ -211,6 +213,7 @@ def test_project_war_room_is_one_project_state_with_iterations(db_session):
         "/diagnose",
         json={
             "answers": [{"module": "market", "facts": {}, "pains": ["获客贵"]}],
+            "request_review": True,   # 测审核门：显式请复核（审核现为可选默认不选）
             "project_id": pid,
             "problem_map": {"diagnosis_focus": "market", "goal": "降低获客成本"},
         },
@@ -220,6 +223,7 @@ def test_project_war_room_is_one_project_state_with_iterations(db_session):
         "/diagnose",
         json={
             "answers": [{"module": "sales", "facts": {}, "pains": ["成交慢"]}],
+            "request_review": True,   # 测审核门：显式请复核（审核现为可选默认不选）
             "project_id": pid,
             "problem_map": {"diagnosis_focus": "sales", "goal": "提升成交效率"},
         },
@@ -263,6 +267,7 @@ def test_war_room_stage_feedback_writes_event_and_memory(db_session):
         "/diagnose",
         json={
             "answers": [{"module": "market", "facts": {}, "pains": ["获客贵"]}],
+            "request_review": True,   # 测审核门：显式请复核（审核现为可选默认不选）
             "project_id": pid,
             "problem_map": {"diagnosis_focus": "market", "goal": "降低获客成本"},
         },
@@ -321,6 +326,7 @@ def test_public_data_supplement_link_accepts_repeat_uploads(db_session):
         "/diagnose",
         json={
             "answers": [{"module": "market", "facts": {}, "pains": ["获客贵"]}],
+            "request_review": True,   # 测审核门：显式请复核（审核现为可选默认不选）
             "project_id": pid,
             "problem_map": {"diagnosis_focus": "market", "goal": "降低获客成本"},
         },

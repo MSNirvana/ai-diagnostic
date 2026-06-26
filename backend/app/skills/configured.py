@@ -206,10 +206,15 @@ class ConfiguredExpertSkill(Skill):
             signal = "yellow"
         evidence = [to_evidence(e) for e in (data.get("evidence") or [])[:3]]
         actions = to_actions(data.get("actions"))
+        # 让脑子按这家公司真实情况决定「该补什么数据」（没有的业务不列）；脑子没给才退回静态死清单。
+        brain_reqs = _brain_data_requests(data, card_reqs)
+        if brain_reqs is not None:
+            data_requests = brain_reqs
         return (
             ModuleResult(
                 module=self.module,
                 signal=signal,
+                problem=str(data.get("problem") or "").strip(),
                 conclusion=data.get("conclusion", "（模型未给出结论）"),
                 evidence=evidence,
                 actions=actions,
@@ -229,6 +234,42 @@ class ConfiguredExpertSkill(Skill):
             ),
             version_id,
         )
+
+
+def _brain_data_requests(data: dict, card_reqs: tuple[DataRequirement, ...]) -> list[DataRequest] | None:
+    """把脑子输出的 data_needs 转成数据请求——脑子已按这家公司真实情况筛过（没有的业务不列）。
+
+    返回 None 表示脑子没给（data_needs 缺失/非法）→ 调用方退回静态死清单兜底；
+    返回 [] 表示脑子判定「没有真正缺的关键数据」→ 就该不显示任何补数项。
+    能对上静态清单 key 的复用其 source_hint（系统好跨轮追踪 + 取数指引）。
+    """
+    needs = data.get("data_needs")
+    if not isinstance(needs, list):
+        return None
+    by_key = {req.key: req for req in card_reqs}
+    out: list[DataRequest] = []
+    seen: set[str] = set()
+    for item in needs:
+        if not isinstance(item, dict):
+            continue
+        label = str(item.get("label") or "").strip()
+        if not label:
+            continue
+        key = str(item.get("key") or "").strip() or f"need_{len(out) + 1}"
+        if key in seen:
+            continue
+        seen.add(key)
+        base = by_key.get(key)
+        out.append(
+            DataRequest(
+                key=key,
+                label=label,
+                reason=str(item.get("reason") or "").strip() or (base.reason if base else ""),
+                source_hint=str(item.get("source_hint") or "").strip() or (base.source_hint if base else ""),
+                required=bool(item.get("required", True)),
+            )
+        )
+    return out
 
 
 def missing_data_requests(

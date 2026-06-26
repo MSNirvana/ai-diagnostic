@@ -10,7 +10,7 @@ export function PriorityTimeline({ board }: PriorityTimelineProps) {
   return (
     <section className="war-panel">
       <div className="war-panel__heading">
-        <span>Priority Timeline</span>
+        <span>优先级总表</span>
         <h3>优先级总表</h3>
       </div>
       <div className="priority-board">

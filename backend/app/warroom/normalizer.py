@@ -58,6 +58,9 @@ def _normalize_action(action):
     return action.model_copy(
         update={
             "battle_goal": _clean_boss_sentence(action.battle_goal, "明确本轮要解决的经营问题。"),
+            "problem": _clean_boss_sentence(action.problem, "") if action.problem else "",
+            "internal_evidence": [_clean_boss_text(item, "") for item in action.internal_evidence if _clean_boss_text(item, "")],
+            "external_evidence": [_clean_boss_text(item, "") for item in action.external_evidence if _clean_boss_text(item, "")],
             "action_title": _clean_boss_text(action.action_title, "明确一个可执行动作"),
             "action_detail": _clean_boss_sentence(action.action_detail, "暂无更多执行说明。"),
             "acceptance_rule": _clean_boss_sentence(action.acceptance_rule, "下次复盘时提交执行记录和指标变化。"),

@@ -223,6 +223,16 @@
   background: rgba(27, 38, 54, 0.095) !important;
 }
 
+.project-diagnosis-inline-status__review {
+  background: transparent !important;
+  color: var(--accent) !important;
+  box-shadow: inset 0 0 0 1px rgba(14, 74, 125, 0.32);
+}
+
+.project-diagnosis-inline-status__review:hover {
+  background: rgba(14, 74, 125, 0.08) !important;
+}
+
 @media (max-width: 1080px) {
   .project-diagnosis-inline-status__stages {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1032,7 +1042,67 @@
 .pd-info-tip:hover .pd-info-tip__bubble,
 .pd-info-tip:focus-within .pd-info-tip__bubble {
   opacity: 1;
+  pointer-events: auto;
   transform: translate(-50%, 0);
+}
+
+.archive-source-tip {
+  display: grid;
+  gap: 8px;
+}
+
+.archive-source-tip__group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.archive-source-tip__tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 0.72rem;
+  font-weight: 760;
+  padding: 0 9px;
+}
+
+.archive-source-tip__group--links {
+  display: grid;
+  gap: 8px;
+}
+
+.archive-source-tip__group--links a {
+  display: grid;
+  gap: 2px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.92);
+  padding: 8px 10px;
+  text-decoration: none;
+}
+
+.archive-source-tip__group--links a:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.archive-source-tip__group--links strong,
+.archive-source-tip__group--links em {
+  color: inherit;
+  font-style: normal;
+}
+
+.archive-source-tip__group--links strong {
+  font-size: 0.76rem;
+  font-weight: 820;
+}
+
+.archive-source-tip__group--links em {
+  opacity: 0.78;
+  font-size: 0.72rem;
+  font-weight: 560;
 }
 
 .project-archive-nav {
@@ -1642,9 +1712,17 @@
   padding-top: 0;
 }
 
-.project-archive-domain-card__fact span {
+.project-archive-domain-card__fact-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.project-archive-domain-card__fact-label > span {
   color: var(--ink-soft);
   font-size: 0.76rem;
+  font-weight: 700;
   line-height: 1.5;
 }
 
@@ -1655,18 +1733,6 @@
   font-weight: 720;
   letter-spacing: 0;
   line-height: 1.7;
-}
-
-.project-archive-domain-card__fact p small,
-.project-archive-fact-links small,
-.project-archive-fact-metric small {
-  display: block;
-  flex-basis: 100%;
-  margin-top: 4px;
-  color: var(--ink-muted);
-  font-size: 0.72rem;
-  font-weight: 700;
-  line-height: 1.45;
 }
 
 .project-archive-fact-links {
@@ -3310,4 +3376,48 @@
   .pd-fact-modules {
     grid-template-columns: 1fr;
   }
+}
+
+/* 作战室卡片反馈状态徽标 —— 让「已采纳·有效 / 无变化」闭环肉眼可见 */
+.recommendation-detail__tags {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.wr-fb-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: nowrap;
+  font-style: normal;
+}
+
+.consulting-recommendation-tab .wr-fb-badge {
+  margin-left: auto;
+  font-size: 0.62rem;
+  padding: 1px 6px;
+}
+
+.wr-fb-badge--good {
+  background: rgba(34, 160, 90, 0.12);
+  color: #1c7a48;
+  border: 1px solid rgba(34, 160, 90, 0.28);
+}
+
+.wr-fb-badge--warn {
+  background: rgba(214, 158, 46, 0.14);
+  color: #9a6b09;
+  border: 1px solid rgba(214, 158, 46, 0.30);
+}
+
+.wr-fb-badge--muted {
+  background: rgba(120, 134, 156, 0.12);
+  color: #5a6678;
+  border: 1px solid rgba(120, 134, 156, 0.26);
 }

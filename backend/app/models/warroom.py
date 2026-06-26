@@ -28,6 +28,9 @@ class DepartmentAction(BaseModel):
     department: str
     department_label: str
     battle_goal: str
+    problem: str = ""  # 现象/症状（卡片「问题是什么」）；旧方案 JSON 无此字段，默认空
+    internal_evidence: list[str] = Field(default_factory=list)  # 本项目自有事实（客户自述/上传）
+    external_evidence: list[str] = Field(default_factory=list)  # 外部证据（行业基准/检索）
     priority: Urgency
     action_title: str
     action_detail: str

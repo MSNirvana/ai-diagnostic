@@ -9,10 +9,11 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.jwt import require_admin
 from app.db.database import get_session
 from app.db.models import LLMConfig
 
-router = APIRouter(prefix="/admin/llm-configs")
+router = APIRouter(prefix="/admin/llm-configs", dependencies=[Depends(require_admin)])
 
 
 def _mask(key: str) -> str:

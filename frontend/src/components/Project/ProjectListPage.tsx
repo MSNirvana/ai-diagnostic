@@ -87,7 +87,7 @@ export function ProjectListPage() {
 
   return (
     <AppShell
-      eyebrow="Command Desk"
+      eyebrow="项目中枢"
       title="AI咨询"
       description="先把问题说清楚，再沉淀到项目和作战室。"
       actions={
@@ -102,7 +102,7 @@ export function ProjectListPage() {
 
       <section className="command-center">
         <div className="command-center__copy">
-          <span className="proj-panel-kicker">Projects</span>
+          <span className="proj-panel-kicker">项目</span>
           <h2>先选择一个咨询项目。</h2>
           <p>每个项目都有独立的问题入口、资料沉淀、顾问审核和作战室。进入项目后再描述本次要解决的经营问题。</p>
           <div className="command-center__actions">
@@ -125,7 +125,7 @@ export function ProjectListPage() {
       {creating && (
         <section className="proj-create-panel">
           <div>
-            <span className="proj-panel-kicker">New Project</span>
+            <span className="proj-panel-kicker">新建项目</span>
             <h2>新建项目</h2>
             <p>建议用项目名、品牌名或业务线命名，后续诊断、资料、作战室都会归到这里。</p>
           </div>
@@ -151,7 +151,7 @@ export function ProjectListPage() {
       <section className="portfolio-board">
         <div className="portfolio-board__head">
           <div>
-            <span className="proj-panel-kicker">Projects</span>
+            <span className="proj-panel-kicker">项目</span>
             <h2>项目工作台</h2>
           </div>
           <div className="portfolio-board__tools">
@@ -179,7 +179,7 @@ export function ProjectListPage() {
             onClick={() => navigate(`/projects/${featuredVisibleProject.id}`)}
           >
             <div className="portfolio-spotlight__copy">
-              <span className="proj-panel-kicker">Recent</span>
+              <span className="proj-panel-kicker">最近</span>
               <h3>{featuredVisibleProject.name}</h3>
               <p>最近更新，适合从这里继续推进。</p>
               <strong>更新于 {fmt(featuredVisibleProject.updated_at)}</strong>

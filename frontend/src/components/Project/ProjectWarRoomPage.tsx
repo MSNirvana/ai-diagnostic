@@ -10,7 +10,11 @@ import {
   getProjectWarRoom,
   listDataSupplementRequests,
   listWarRoomFeedback,
+  rediagnoseProjectDomain,
+  getTransformationPlan,
+  generateTransformationDomain,
   submitWarRoomFeedback,
+  uploadSessionFile,
   viewSessionFile,
 } from "../../api/client";
 import type {
@@ -22,18 +26,21 @@ import type {
   ProjectBrainstormBrief,
   ProjectDetail,
   ProjectSessionBrief,
+  UploadedFileOut,
   WarRoomFeedbackCreate,
   WarRoomFeedbackEvent,
   WarRoomUrgency,
   WarRoomPlan,
+  DomainTransformation,
 } from "../../types";
 import { ProjectWorkspaceShell } from "./ProjectWorkspaceShell";
+import { TransformationDetail } from "./TransformationDetail";
 import { WarRoomIterations } from "../WarRoom/WarRoomPage";
-import { cleanDisplayText, cleanSentenceText, ensureChineseSentence } from "../../utils/displayText";
+import { cleanDisplayText, cleanSentenceText, ensureChineseSentence, extractSourceTitleLink, splitTextWithLinks } from "../../utils/displayText";
 import { formatPercent, priorityClass } from "../WarRoom/warRoomViewModel";
 import "./ProjectDetailPage.css";
 
-type WarRoomSection = "overview" | "recommendations" | "iterations";
+type WarRoomSection = "overview" | "iterations";
 type WarRoomBlockedState = "pending_review" | "rejected" | null;
 type RecommendationSource = "action" | "decision";
 type WarRoomProjectSnapshot = Pick<ProjectDetail, "id" | "name" | "status"> & {
@@ -49,6 +56,7 @@ interface ConsultingRecommendation {
   priority: WarRoomUrgency;
   index: number;
   title: string;
+  essence: string;
   problem: string;
   conclusion: string;
   externalData: string[];
@@ -76,25 +84,18 @@ const SECTIONS: SectionConfig[] = [
     order: "01",
   },
   {
-    key: "recommendations",
-    title: "咨询建议",
-    description: "一条建议一个完整咨询页，按重要程度排序。",
-    navLabel: "咨询建议",
-    order: "02",
-  },
-  {
     key: "iterations",
     title: "诊断迭代",
     description: "记录每次诊断、动作、反馈和时间变化。",
     navLabel: "迭代历史",
-    order: "03",
+    order: "02",
   },
 ];
 
 const SECTION_MAP = new Map(SECTIONS.map((section) => [section.key, section]));
 
 function isWarRoomSection(value: string | undefined): value is WarRoomSection {
-  if (value === "review" || value === "decisions" || value === "actions" || value === "data" || value === "evidence") return false;
+  if (value === "review" || value === "decisions" || value === "actions" || value === "data" || value === "evidence" || value === "recommendations") return false;
   return Boolean(value && SECTION_MAP.has(value as WarRoomSection));
 }
 
@@ -105,7 +106,6 @@ function sectionPath(projectId: string, section: WarRoomSection) {
 
 function navBadge(plan: WarRoomPlan, key: WarRoomSection): string {
   if (key === "overview") return "当前";
-  if (key === "recommendations") return String(buildConsultingRecommendations(plan).length);
   return String(plan.iterations?.length ?? 0);
 }
 
@@ -138,47 +138,85 @@ function evidenceForDepartment(plan: WarRoomPlan, department?: string): string[]
   return (matches.length ? matches : plan.evidence_summary).slice(0, 3);
 }
 
-function riskForDepartment(plan: WarRoomPlan, department?: string): string[] {
-  const action = department ? plan.department_actions.find((item) => item.department === department) : undefined;
-  const label = action?.department_label ?? "";
-  const matches = plan.risk_summary.filter((item) => label && item.includes(label));
-  return (matches.length ? matches : plan.risk_summary).slice(0, 3);
+// 证据来源含这些词 = 本项目自有事实（内部）；否则视为可公开溯源的外部证据。
+// 与后端 composer._INTERNAL_SOURCE_MARKERS 对齐，用于旧方案 JSON 的前端兜底拆分。
+const INTERNAL_EVIDENCE_MARKERS = ["客户自述", "客户上传", "上传", "自述", "问答"];
+
+function isInternalEvidence(text: string): boolean {
+  return INTERNAL_EVIDENCE_MARKERS.some((marker) => text.includes(marker));
+}
+
+function firstClause(value: unknown, maxLength = 28): string {
+  const text = cleanDisplayText(value, "");
+  if (!text) return "";
+  const chunk = text.split(/[，。；：:、]/)[0]?.trim() || text;
+  return chunk.length > maxLength ? `${chunk.slice(0, maxLength)}…` : chunk;
+}
+
+// 「问题是什么」=现象一句话：去掉末尾的（来源）后限长，保证读起来是句子。
+function problemStatement(value: unknown, fallback: string, maxLength = 54): string {
+  const raw = cleanDisplayText(value, "").replace(/（[^）]*）\s*$/u, "").trim();
+  if (!raw) return ensureChineseSentence(fallback);
+  return ensureChineseSentence(raw.length > maxLength ? `${raw.slice(0, maxLength)}…` : raw);
+}
+
+// 内/外证据：优先用后端结构化字段（新诊断）；为空则从 deptEvidence 按来源兜底拆（旧快照）。
+function pickEvidence(structured: string[] | undefined, fallback: string[], wantInternal: boolean): string[] {
+  const source = structured && structured.length
+    ? structured
+    : fallback.filter((item) => isInternalEvidence(item) === wantInternal);
+  return source.map((item) => cleanSentenceText(item, "")).filter(Boolean).slice(0, 4);
 }
 
 function buildConsultingRecommendations(plan: WarRoomPlan): ConsultingRecommendation[] {
-  const actionRecommendations = plan.department_actions.map((action, index): ConsultingRecommendation => ({
-    id: `action:${action.id}`,
-    source: "action",
-    priority: action.priority,
-    index,
-    title: recommendationTitle(action, "咨询建议"),
-    problem: cleanSentenceText(action.battle_goal, "当前问题需要进一步明确。"),
-    conclusion: cleanSentenceText(action.action_detail || action.acceptance_rule, "建议先按保守路径推进，并在补齐数据后重新判断。"),
-    externalData: evidenceForDepartment(plan, action.department),
-    internalData: [
-      ...action.metrics.map((metric) => cleanDisplayText(`${metric.name}：${metric.current ? `${metric.current} → ` : ""}${metric.target}`)),
-      cleanDisplayText(action.acceptance_rule, "下次提交执行记录和指标变化。"),
-      ...riskForDepartment(plan, action.department),
-    ].filter(Boolean).slice(0, 4),
-    dataGaps: action.required_data.length ? action.required_data : plan.data_gaps,
-    action,
-    confidence: action.confidence ?? plan.confidence,
-  }));
+  const actionRecommendations = plan.department_actions.map((action, index): ConsultingRecommendation => {
+    const deptEvidence = evidenceForDepartment(plan, action.department);
+    const internalData = pickEvidence(action.internal_evidence, deptEvidence, true);
+    const externalData = pickEvidence(action.external_evidence, deptEvidence, false);
+    // 02 结论 = battle_goal（=诊断判断），单一来源、只出现一次
+    const conclusion = cleanSentenceText(action.battle_goal, "建议先按保守路径推进，并在补齐数据后重新判断。");
+    // 01 问题 = 大脑给的 problem（现象）；旧数据兜底：首条内部事实 ‖ 结论
+    const brainProblem = (action.problem || "").trim();
+    const fellBackToFact = !brainProblem && internalData.length > 0;
+    const problem = problemStatement(
+      brainProblem || internalData[0] || conclusion,
+      "当前问题需要进一步明确。",
+    );
+    // 若问题兜底自首条内部事实，04 不再重复它（避免「重复」），但保证 04 不被掏空
+    const internalForDisplay = fellBackToFact && internalData.length > 1 ? internalData.slice(1) : internalData;
+    return {
+      id: `action:${action.id}`,
+      source: "action",
+      priority: action.priority,
+      index,
+      title: recommendationTitle(action, "咨询建议"),
+      essence: firstClause(conclusion, 28),
+      problem,
+      conclusion,
+      externalData,
+      internalData: internalForDisplay,
+      dataGaps: action.required_data.length ? action.required_data : plan.data_gaps,
+      action,
+      confidence: action.confidence ?? plan.confidence,
+    };
+  });
 
   const actionTitles = new Set(actionRecommendations.map((item) => item.title));
   const decisionRecommendations = plan.decision_items
     .map((decision, index): ConsultingRecommendation => {
       const title = recommendationTitle(decision.title || decision.detail, "咨询建议");
+      const conclusion = cleanSentenceText(`建议确认：${title}`, "建议先明确是否采纳该事项。");
       return {
         id: `decision:${index}`,
         source: "decision",
         priority: decision.urgency,
         index,
         title,
-        problem: cleanSentenceText(decision.detail, "这个事项需要老板确认后才能继续推进。"),
-        conclusion: cleanSentenceText(`建议确认：${title}`, "建议先明确是否采纳该事项。"),
-        externalData: plan.evidence_summary.slice(0, 3),
-        internalData: plan.risk_summary.slice(0, 3).map((item) => cleanSentenceText(item, "")),
+        essence: firstClause(decision.detail, 28),
+        problem: problemStatement(decision.detail, "这个事项需要老板确认后才能继续推进。"),
+        conclusion,
+        externalData: pickEvidence(undefined, plan.evidence_summary, false),
+        internalData: pickEvidence(undefined, plan.evidence_summary, true),
         dataGaps: plan.data_gaps,
         decisionDetail: decision.detail,
         confidence: plan.confidence,
@@ -191,7 +229,7 @@ function buildConsultingRecommendations(plan: WarRoomPlan): ConsultingRecommenda
 }
 
 function recommendationPath(projectId: string, recommendationId?: string) {
-  const base = sectionPath(projectId, "recommendations");
+  const base = sectionPath(projectId, "overview");
   return recommendationId ? `${base}?recommendation=${encodeURIComponent(recommendationId)}` : base;
 }
 
@@ -404,7 +442,7 @@ export function ProjectWarRoomPage() {
   const activeSection: WarRoomSection = isWarRoomSection(section) ? section : "overview";
   useEffect(() => {
     if (section && !isWarRoomSection(section) && projectId) {
-      const target = section === "review" ? "iterations" : "recommendations";
+      const target = section === "review" ? "iterations" : "overview";
       navigate(sectionPath(projectId, target), { replace: true, preventScrollReset: true });
     }
   }, [navigate, projectId, section]);
@@ -537,6 +575,7 @@ export function ProjectWarRoomPage() {
           <ProjectWarRoom
             plan={plan}
             projectId={projectId}
+            feedbackSessionId={project?.records?.find((record) => record.id === plan.record_id)?.session_id ?? null}
             feedbackEvents={feedbackEvents}
             onSubmitFeedback={async (body) => {
               const saved = await submitWarRoomFeedback(projectId, body);
@@ -549,6 +588,10 @@ export function ProjectWarRoomPage() {
               preventScrollReset: true,
               state: { projectSnapshot: shellProject },
             })}
+            onRediagnoseDomain={async (domainKey) => {
+              const newPlan = await rediagnoseProjectDomain(projectId, domainKey);
+              setPlan(newPlan);
+            }}
           />
         )}
       </section>
@@ -591,17 +634,21 @@ function WarRoomReviewState({
 function ProjectWarRoom({
   plan,
   projectId,
+  feedbackSessionId,
   feedbackEvents,
   onSubmitFeedback,
   activeSection,
   onNavigate,
+  onRediagnoseDomain,
 }: {
   plan: WarRoomPlan;
   projectId: string;
+  feedbackSessionId: string | null;
   feedbackEvents: WarRoomFeedbackEvent[];
   onSubmitFeedback: (body: WarRoomFeedbackCreate) => Promise<WarRoomFeedbackEvent>;
   activeSection: WarRoomSection;
   onNavigate: (path: string) => void;
+  onRediagnoseDomain: (domainKey: string) => Promise<void>;
 }) {
   return (
     <section className="war-room project-war-room" aria-label="项目作战室">
@@ -614,10 +661,12 @@ function ProjectWarRoom({
       <WarRoomSectionContent
         plan={plan}
         projectId={projectId}
+        feedbackSessionId={feedbackSessionId}
         section={activeSection}
         feedbackEvents={feedbackEvents}
         onSubmitFeedback={onSubmitFeedback}
         onNavigate={onNavigate}
+        onRediagnoseDomain={onRediagnoseDomain}
       />
     </section>
   );
@@ -653,24 +702,14 @@ function WarRoomSubnav({
 
 function WarRoomOverview({
   plan,
-  projectId,
-  onNavigate,
 }: {
   plan: WarRoomPlan;
-  projectId: string;
-  onNavigate: (path: string) => void;
 }) {
-  const recommendations = buildConsultingRecommendations(plan);
-  const topRecommendation = recommendations[0];
   const versionNumber = plan.iteration_count ?? plan.iterations?.length ?? 1;
-  const latestChange = plan.iterations?.[0]?.changes?.[0]
-    ? cleanSentenceText(plan.iterations[0].changes[0], "本轮诊断已更新项目判断。")
-    : "本轮诊断已更新项目判断。";
   const statusCards = [
     { icon: "●", label: "项目状态", value: "已生成作战室", detail: `当前第 ${versionNumber} 版` },
     { icon: "◆", label: "资料状态", value: plan.data_gaps.length ? `${plan.data_gaps.length} 项待补` : "资料可支撑本轮判断", detail: plan.data_gaps.length ? "建议先补齐再加码" : "可进入建议执行" },
     { icon: "▲", label: "咨询把握度", value: formatPercent(plan.confidence), detail: plan.confidence < 0.5 ? "把握不足，需补数据" : plan.confidence < 0.75 ? "中等把握，谨慎推进" : "把握较高，可按建议推进" },
-    { icon: "■", label: "咨询建议", value: `${recommendations.length} 条`, detail: topRecommendation ? `优先看：${topRecommendation.title}` : "暂无建议" },
   ];
 
   return (
@@ -678,7 +717,7 @@ function WarRoomOverview({
       <div className="boss-room__hero">
         <div className="boss-room__main">
           <span className="boss-room__eyebrow">项目总览</span>
-          <h2>{topRecommendation?.title || compactTitle(plan.objective, "本轮项目判断已生成", 34)}</h2>
+          <h2>{compactTitle(plan.objective, "本轮项目判断已生成", 34)}</h2>
           <p>{cleanSentenceText(plan.summary, "这里汇总项目状态、资料缺口、咨询建议和迭代变化。")}</p>
           <div className="boss-room__notice-row">
             {plan.accumulation_note && <span className="boss-room__notice boss-room__notice--good">{cleanDisplayText(plan.accumulation_note, "")}</span>}
@@ -695,80 +734,45 @@ function WarRoomOverview({
           ))}
         </aside>
       </div>
-
-      <div className="boss-room__recommendations" aria-label="关键咨询建议">
-        <div className="boss-room__section-head">
-          <div>
-            <span>关键咨询建议</span>
-            <h3>优先处理这几件事</h3>
-          </div>
-          <button type="button" onClick={() => onNavigate(recommendationPath(projectId, firstRecommendationId(plan)))}>查看全部建议</button>
-        </div>
-        <div className="boss-room__flow">
-          {recommendations.slice(0, 3).map((item, index) => (
-            <RecommendationPreviewCard
-              key={item.id}
-              recommendation={item}
-              index={index}
-              onOpen={() => onNavigate(recommendationPath(projectId, item.id))}
-            />
-          ))}
-          <article className="boss-room-card">
-            <span>最新变化</span>
-            <h3>第 {versionNumber} 版作战室</h3>
-            <p>{latestChange}</p>
-            <button type="button" onClick={() => onNavigate(sectionPath(projectId, "iterations"))}>看迭代历史</button>
-          </article>
-        </div>
-      </div>
     </section>
-  );
-}
-
-function RecommendationPreviewCard({
-  recommendation,
-  index,
-  onOpen,
-}: {
-  recommendation: ConsultingRecommendation;
-  index: number;
-  onOpen: () => void;
-}) {
-  return (
-    <article className={index === 0 ? "boss-room-card boss-room-card--lead" : "boss-room-card"}>
-      <span>建议 {String(index + 1).padStart(2, "0")} · {consultingPriorityLabel(recommendation.priority)}</span>
-      <h3>{recommendation.title}</h3>
-      <p>{recommendation.problem}</p>
-      <button type="button" onClick={onOpen}>查看建议</button>
-    </article>
   );
 }
 
 function WarRoomSectionContent({
   plan,
   projectId,
+  feedbackSessionId,
   section,
   feedbackEvents,
   onSubmitFeedback,
   onNavigate,
+  onRediagnoseDomain,
 }: {
   plan: WarRoomPlan;
   projectId: string;
+  feedbackSessionId: string | null;
   section: WarRoomSection;
   feedbackEvents: WarRoomFeedbackEvent[];
   onSubmitFeedback: (body: WarRoomFeedbackCreate) => Promise<WarRoomFeedbackEvent>;
   onNavigate: (path: string) => void;
+  onRediagnoseDomain: (domainKey: string) => Promise<void>;
 }) {
-  if (section === "overview") return <WarRoomOverview plan={plan} projectId={projectId} onNavigate={onNavigate} />;
-  if (section === "recommendations") return (
-    <ConsultingRecommendationsPanel
-      projectId={projectId}
-      plan={plan}
-      feedbackEvents={feedbackEvents}
-      onSubmitFeedback={onSubmitFeedback}
-      onNavigate={onNavigate}
-    />
-  );
+  if (section === "overview") {
+    return (
+      <div className="war-room-detail-stack">
+        <WarRoomOverview plan={plan} />
+        <ConsultingRecommendationsPanel
+          projectId={projectId}
+          feedbackSessionId={feedbackSessionId}
+          plan={plan}
+          feedbackEvents={feedbackEvents}
+          onSubmitFeedback={onSubmitFeedback}
+          onNavigate={onNavigate}
+          onRediagnoseDomain={onRediagnoseDomain}
+        />
+      </div>
+    );
+  }
   return (
     <div className="war-room-detail-stack">
       <WarRoomIterations plan={plan} />
@@ -776,23 +780,61 @@ function WarRoomSectionContent({
   );
 }
 
+const WR_FB_ADOPT_LABEL: Record<string, string> = { adopted: "已采纳", deferred: "暂缓", rejected: "不采纳", pending: "" };
+const WR_FB_RESULT_LABEL: Record<string, string> = { effective: "有效", no_change: "无变化", new_issue: "有新问题", insufficient_data: "数据不足", none: "" };
+
+function latestCardFeedback(
+  events: WarRoomFeedbackEvent[],
+  card: ConsultingRecommendation,
+): WarRoomFeedbackEvent | undefined {
+  return events
+    .filter((event) => event.card_id === card.id || event.card_title === card.title)
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+}
+
+function cardFeedbackBadge(
+  event?: WarRoomFeedbackEvent,
+): { label: string; tone: "good" | "warn" | "muted" } | null {
+  if (!event) return null;
+  const adopt = WR_FB_ADOPT_LABEL[event.adoption_status] ?? "";
+  const result = WR_FB_RESULT_LABEL[event.feedback_result] ?? "";
+  const label = [adopt, result].filter(Boolean).join("·");
+  if (!label) return null;
+  let tone: "good" | "warn" | "muted" = "muted";
+  if (event.feedback_result === "effective") tone = "good";
+  else if (event.feedback_result === "no_change" || event.feedback_result === "new_issue") tone = "warn";
+  else if (event.adoption_status === "adopted") tone = "good";
+  return { label, tone };
+}
+
 function ConsultingRecommendationsPanel({
   projectId,
+  feedbackSessionId,
   plan,
   feedbackEvents,
   onSubmitFeedback,
   onNavigate,
+  onRediagnoseDomain,
 }: {
   projectId: string;
+  feedbackSessionId: string | null;
   plan: WarRoomPlan;
   feedbackEvents: WarRoomFeedbackEvent[];
   onSubmitFeedback: (body: WarRoomFeedbackCreate) => Promise<WarRoomFeedbackEvent>;
   onNavigate: (path: string) => void;
+  onRediagnoseDomain: (domainKey: string) => Promise<void>;
 }) {
   const recommendations = buildConsultingRecommendations(plan);
   const params = new URLSearchParams(window.location.search);
   const selectedId = params.get("recommendation") || recommendations[0]?.id || "";
   const selected = recommendations.find((item) => item.id === selectedId) ?? recommendations[0];
+  // 每个问题的 AI 改造(module → DomainTransformation)。404 视为"还没生成",不报错。
+  const [transformItems, setTransformItems] = useState<Record<string, DomainTransformation>>({});
+  useEffect(() => {
+    getTransformationPlan(projectId)
+      .then((p) => setTransformItems(p.items ?? {}))
+      .catch(() => setTransformItems({}));
+  }, [projectId]);
   const recommendationsByPriority = new Map<WarRoomUrgency, ConsultingRecommendation[]>(
     CONSULTING_PRIORITY_GROUPS.map((group) => [
       group.key,
@@ -842,7 +884,9 @@ function ConsultingRecommendationsPanel({
                   <p className="consulting-priority-group__empty">暂无建议</p>
                 ) : (
                   <div className="consulting-priority-group__items">
-                    {items.map((item, index) => (
+                    {items.map((item, index) => {
+                      const badge = cardFeedbackBadge(latestCardFeedback(feedbackEvents, item));
+                      return (
                       <button
                         type="button"
                         key={item.id}
@@ -850,9 +894,11 @@ function ConsultingRecommendationsPanel({
                         onClick={() => onNavigate(recommendationPath(projectId, item.id))}
                       >
                         <small>{String(index + 1).padStart(2, "0")}</small>
-                        <span>{item.title}</span>
+                        <span className="consulting-recommendation-tab__title">{item.title}</span>
+                        {badge && <span className={`wr-fb-badge wr-fb-badge--${badge.tone}`}>{badge.label}</span>}
                       </button>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </section>
@@ -862,10 +908,17 @@ function ConsultingRecommendationsPanel({
       </aside>
       <RecommendationDetail
         projectId={projectId}
+        feedbackSessionId={feedbackSessionId}
         plan={plan}
         recommendation={selected}
         feedbackEvents={feedbackEvents}
         onSubmitFeedback={onSubmitFeedback}
+        onRediagnoseDomain={onRediagnoseDomain}
+        transformation={selected.action ? transformItems[selected.action.department] : undefined}
+        onGenerateTransformation={async (module) => {
+          const next = await generateTransformationDomain(projectId, module);
+          setTransformItems(next.items ?? {});
+        }}
       />
     </section>
   );
@@ -873,30 +926,93 @@ function ConsultingRecommendationsPanel({
 
 function RecommendationDetail({
   projectId,
+  feedbackSessionId,
   plan,
   recommendation,
   feedbackEvents,
   onSubmitFeedback,
+  onRediagnoseDomain,
+  transformation,
+  onGenerateTransformation,
 }: {
   projectId: string;
+  feedbackSessionId: string | null;
   plan: WarRoomPlan;
   recommendation: ConsultingRecommendation;
   feedbackEvents: WarRoomFeedbackEvent[];
   onSubmitFeedback: (body: WarRoomFeedbackCreate) => Promise<WarRoomFeedbackEvent>;
+  onRediagnoseDomain: (domainKey: string) => Promise<void>;
+  transformation?: DomainTransformation;
+  onGenerateTransformation: (module: string) => Promise<void>;
 }) {
+  const navigate = useNavigate();
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [rediagnosing, setRediagnosing] = useState(false);
+  const [rediagnoseError, setRediagnoseError] = useState<string | null>(null);
+  const [transforming, setTransforming] = useState(false);
+  const [transformError, setTransformError] = useState<string | null>(null);
   const relatedFeedback = feedbackEvents
     .filter((event) => event.card_id === recommendation.id || event.card_title === recommendation.title)
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   const action = recommendation.action;
 
+  async function handleGenerateTransformation() {
+    const module = action?.department;
+    if (!module) return;
+    setTransforming(true);
+    setTransformError(null);
+    try {
+      await onGenerateTransformation(module);
+    } catch (e) {
+      setTransformError(e instanceof Error ? e.message : "生成改造方案失败，请重试");
+    } finally {
+      setTransforming(false);
+    }
+  }
+
+  function openRediagnoseConversation() {
+    const dept = action?.department_label || recommendation.title;
+    navigate(`/projects/${projectId}`, {
+      preventScrollReset: true,
+      state: {
+        newConversation: true,
+        initialPrompt: `我对「${recommendation.title}」这条建议有质疑，请针对${dept}域重新诊断，并解释你的判断依据。`,
+      },
+    });
+  }
+
+  async function handleRediagnose() {
+    const domainKey = action?.department;
+    if (!domainKey) { openRediagnoseConversation(); return; }
+    setRediagnosing(true);
+    setRediagnoseError(null);
+    try {
+      await onRediagnoseDomain(domainKey);
+    } catch (e) {
+      setRediagnoseError(e instanceof Error ? e.message : "重新诊断失败，请稍后重试");
+    } finally {
+      setRediagnosing(false);
+    }
+  }
+
   return (
     <article className="recommendation-detail">
       <header className="recommendation-detail__hero">
         <div>
-          <span className={priorityClass(recommendation.priority)}>{consultingPriorityLabel(recommendation.priority)}</span>
+          <div className="recommendation-detail__tags">
+            <span className={priorityClass(recommendation.priority)}>{consultingPriorityLabel(recommendation.priority)}</span>
+            {(() => {
+              const badge = cardFeedbackBadge(relatedFeedback[0]);
+              return badge ? <span className={`wr-fb-badge wr-fb-badge--${badge.tone}`}>{badge.label}</span> : null;
+            })()}
+          </div>
           <h2>{recommendation.title}</h2>
-          <p>{recommendation.conclusion}</p>
+          <p>{recommendation.essence || recommendation.conclusion}</p>
+          <div className="recommendation-detail__actions">
+            <button type="button" className="recommendation-rediagnose-link" onClick={openRediagnoseConversation}>
+              质疑此建议，去对话
+            </button>
+          </div>
         </div>
         <aside>
           <span>咨询把握度</span>
@@ -906,51 +1022,108 @@ function RecommendationDetail({
       </header>
 
       <div className="recommendation-framework">
-        <section className="recommendation-block recommendation-block--problem">
-          <span>01</span>
-          <h3>问题是什么？</h3>
-          <p>{recommendation.problem}</p>
+        <section className="recommendation-cluster">
+          <div className="recommendation-cluster__head">
+            <span>01-04</span>
+            <strong>诊断主线</strong>
+          </div>
+          <div className="recommendation-cluster__grid">
+            <section className="recommendation-mini-card recommendation-mini-card--problem">
+              <span>01</span>
+              <h3>问题是什么？</h3>
+              <p>{recommendation.problem}</p>
+            </section>
+            <section className="recommendation-mini-card recommendation-mini-card--conclusion">
+              <span>02</span>
+              <h3>结论是什么？</h3>
+              <p>{recommendation.conclusion}</p>
+            </section>
+            <section className="recommendation-mini-card recommendation-mini-card--evidence">
+              <span>03</span>
+              <h3>外部数据与来源证明</h3>
+              <EvidenceList items={recommendation.externalData} empty="本轮未引用外部证据；行业基准、竞品、政策等公开数据由系统自动检索，无需你提供。" />
+            </section>
+            <section className="recommendation-mini-card recommendation-mini-card--evidence">
+              <span>04</span>
+              <h3>内部数据与项目依据</h3>
+              <EvidenceList items={recommendation.internalData} empty="本轮暂无可引用的内部经营事实，建议在下方补齐业务口径数据。" />
+            </section>
+          </div>
         </section>
-        <section className="recommendation-block recommendation-block--conclusion">
-          <span>02</span>
-          <h3>结论是什么？</h3>
-          <p>{recommendation.conclusion}</p>
-        </section>
-        <section className="recommendation-block">
-          <span>03</span>
-          <h3>外部数据与来源证明</h3>
-          <EvidenceList items={recommendation.externalData} empty="当前缺少足够外部证据，建议补充行业、竞品、政策或公开评价数据。" />
-        </section>
-        <section className="recommendation-block">
-          <span>04</span>
-          <h3>内部数据与项目依据</h3>
-          <EvidenceList items={recommendation.internalData} empty="当前缺少明确内部经营数据，建议先补齐业务口径。" />
-        </section>
-        <section className="recommendation-block recommendation-block--wide">
+        <section className="recommendation-block recommendation-block--wide recommendation-block--data">
           <span>05</span>
-          <h3>数据缺口与补充路径</h3>
+          <h3>数据缺口与补充</h3>
           <InlineDataNeeds projectId={projectId} plan={plan} gaps={recommendation.dataGaps} />
+          {action?.department && (
+            <div className="recommendation-rediagnose-bar">
+              <p>补充数据后，可用新信息重新诊断此域（不影响其他建议）。</p>
+              <div className="recommendation-rediagnose-bar__actions">
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => void handleRediagnose()}
+                  disabled={rediagnosing}
+                >
+                  {rediagnosing ? "重新诊断中…" : "用新数据重新诊断此域"}
+                </button>
+              </div>
+              {rediagnoseError && <p className="recommendation-rediagnose-bar__error">{rediagnoseError}</p>}
+            </div>
+          )}
         </section>
-        <section className="recommendation-block recommendation-block--wide">
+        <section className="recommendation-block recommendation-block--wide recommendation-block--action">
           <span>06</span>
           <h3>行动建议</h3>
           {action ? (
             <div className="recommendation-action">
-              <div><span>具体动作</span><strong>{cleanSentenceText(action.action_title, "待明确具体动作。")}</strong></div>
+              <div className="recommendation-action__detail"><span>具体动作</span><strong>{cleanSentenceText(action.action_detail || action.action_title, "待明确具体动作。")}</strong></div>
               <div><span>负责人</span><strong>{action.owner_role || "待确认"}</strong></div>
               <div><span>启动窗口</span><strong>{action.start_window || "待确认"}</strong></div>
               <div><span>验收标准</span><strong>{cleanSentenceText(action.acceptance_rule, "下次提交执行记录和指标变化。")}</strong></div>
+              {action.metrics.filter((metric) => metric && metric.name).map((metric) => (
+                <div key={metric.name}>
+                  <span>{cleanDisplayText(metric.name, "关键指标")}</span>
+                  <strong>{metric.current ? `${metric.current} → ` : ""}{cleanDisplayText(metric.target, "下次复盘可量化")}</strong>
+                </div>
+              ))}
               {action.risk_note && <p>{cleanSentenceText(action.risk_note, "")}</p>}
             </div>
           ) : (
             <p>{cleanSentenceText(recommendation.decisionDetail, "建议先确认是否采纳该方向，再拆解负责人和时间表。")}</p>
           )}
         </section>
-        <section className="recommendation-block recommendation-block--wide">
+        <section className="recommendation-block recommendation-block--wide recommendation-block--transform">
           <span>07</span>
+          <h3>这个问题的 AI 改造</h3>
+          {action?.department ? (
+            transformation && transformation.generated !== false ? (
+              <TransformationDetail item={transformation} />
+            ) : (
+              <div className="recommendation-transform-empty">
+                <p>用 AI 把这个问题对应的环节重做一遍——给出改造前后对比 + 30 天落地路径。</p>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => void handleGenerateTransformation()}
+                  disabled={transforming}
+                >
+                  {transforming ? "生成中…（约需 10-30 秒）" : transformation ? "重新生成改造方案" : "为这个问题生成 AI 改造方案"}
+                </button>
+                {transformError && <p className="recommendation-transform-empty__error">{transformError}</p>}
+              </div>
+            )
+          ) : (
+            <p className="recommendation-empty">该建议暂不支持单独的 AI 改造。</p>
+          )}
+        </section>
+        <section className="recommendation-block recommendation-block--wide recommendation-block--feedback">
+          <span>08</span>
           <h3>反馈进展与迭代数据</h3>
           <div className="recommendation-feedback">
-            <button type="button" onClick={() => setFeedbackOpen(true)}>记录反馈进展</button>
+            <button type="button" className="recommendation-feedback__button" onClick={() => setFeedbackOpen(true)}>
+              <span>记录反馈进展</span>
+              <em>记录执行后的真实变化</em>
+            </button>
             {relatedFeedback.length === 0 ? (
               <p>暂无反馈。执行后的真实变化会进入下一轮诊断迭代。</p>
             ) : (
@@ -960,6 +1133,7 @@ function RecommendationDetail({
                     <strong>{feedbackStatusLabel(event.adoption_status)} · {feedbackResultLabel(event.feedback_result)}</strong>
                     <span>{new Date(event.created_at).toLocaleString("zh-CN")}</span>
                     {event.note && <p>{cleanSentenceText(event.note, "")}</p>}
+                    {event.attachments.length > 0 && <small>附件：{event.attachments.length} 个</small>}
                   </li>
                 ))}
               </ul>
@@ -971,6 +1145,7 @@ function RecommendationDetail({
         <RecommendationFeedbackDialog
           plan={plan}
           recommendation={recommendation}
+          sessionId={feedbackSessionId}
           onClose={() => setFeedbackOpen(false)}
           onSubmit={onSubmitFeedback}
         />
@@ -985,10 +1160,33 @@ function EvidenceList({ items, empty }: { items: string[]; empty: string }) {
   return (
     <ul className="recommendation-evidence-list">
       {cleanItems.map((item) => (
-        <li key={item}>{item}</li>
+        <li key={item}>{renderLinkedText(item)}</li>
       ))}
     </ul>
   );
+}
+
+function renderLinkedText(value: string) {
+  const sourceLink = extractSourceTitleLink(value);
+  if (sourceLink) {
+    return (
+      <a href={sourceLink.href} target="_blank" rel="noreferrer">
+        {sourceLink.title}
+      </a>
+    );
+  }
+  const parts = splitTextWithLinks(value);
+  if (parts.length === 0) return value;
+  return parts.map((part, index) => {
+    if (part.type === "link" && part.href) {
+      return (
+        <a key={`${part.href}-${index}`} href={part.href} target="_blank" rel="noreferrer">
+          {part.text}
+        </a>
+      );
+    }
+    return <span key={`${index}`}>{part.text}</span>;
+  });
 }
 
 function feedbackStatusLabel(value: string) {
@@ -1009,11 +1207,13 @@ function feedbackResultLabel(value: string) {
 function RecommendationFeedbackDialog({
   plan,
   recommendation,
+  sessionId,
   onClose,
   onSubmit,
 }: {
   plan: WarRoomPlan;
   recommendation: ConsultingRecommendation;
+  sessionId?: string | null;
   onClose: () => void;
   onSubmit: (body: WarRoomFeedbackCreate) => Promise<WarRoomFeedbackEvent>;
 }) {
@@ -1021,8 +1221,28 @@ function RecommendationFeedbackDialog({
   const [result, setResult] = useState<WarRoomFeedbackCreate["feedback_result"]>("effective");
   const [owner, setOwner] = useState(recommendation.action?.owner_role ?? "");
   const [note, setNote] = useState("");
+  const [selectedFiles, setSelectedFiles] = useState<UploadedFileOut[]>([]);
+  const [uploadingFileName, setUploadingFileName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  async function handleFilesChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.currentTarget.files ?? []);
+    event.currentTarget.value = "";
+    if (!sessionId || files.length === 0 || uploadingFileName) return;
+    setError(null);
+    for (const file of files.slice(0, Math.max(0, 5 - selectedFiles.length))) {
+      setUploadingFileName(file.name);
+      try {
+        const saved = await uploadSessionFile(sessionId, "war_room_feedback", "attachments", file);
+        setSelectedFiles((prev) => [...prev, saved]);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "附件上传失败");
+      } finally {
+        setUploadingFileName("");
+      }
+    }
+  }
 
   async function submit() {
     setSubmitting(true);
@@ -1038,7 +1258,7 @@ function RecommendationFeedbackDialog({
         feedback_result: result,
         owner,
         note,
-        attachments: [],
+        attachments: selectedFiles.map((file) => file.id),
       });
       onClose();
     } catch (e) {
@@ -1119,6 +1339,29 @@ function RecommendationFeedbackDialog({
                 rows={4}
               />
             </label>
+            <label className="decision-feedback-dialog__upload">
+              <span>补充资料（可选）</span>
+              <div className="decision-feedback-dialog__upload-box">
+                <input type="file" multiple onChange={(e) => void handleFilesChange(e)} disabled={!sessionId || Boolean(uploadingFileName)} />
+                <div className="decision-feedback-dialog__upload-copy">
+                  <strong>点击选择文件</strong>
+                  <em>{sessionId ? "支持多文件上传，便于补充现场材料。" : "请先保存会话后再上传。"}</em>
+                </div>
+              </div>
+            </label>
+            {(selectedFiles.length > 0 || uploadingFileName) && (
+              <div className="decision-feedback-dialog__files">
+                {selectedFiles.map((file) => (
+                  <div key={file.id} className="decision-feedback-dialog__file-item">
+                    <span>{file.original_name}</span>
+                    <button type="button" onClick={() => setSelectedFiles((prev) => prev.filter((item) => item.id !== file.id))}>
+                      移除
+                    </button>
+                  </div>
+                ))}
+                {uploadingFileName && <p className="decision-feedback-dialog__uploading">正在上传 {uploadingFileName}…</p>}
+              </div>
+            )}
           </div>
           {error && <p className="decision-feedback-dialog__error">{error}</p>}
         </div>

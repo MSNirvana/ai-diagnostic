@@ -53,7 +53,7 @@ export function EvidenceRiskPanel({ evidence, risks, dataGaps }: EvidenceRiskPan
   return (
     <section className="war-panel">
       <div className="war-panel__heading">
-        <span>Evidence & Risk</span>
+        <span>证据与风险</span>
         <h3>校验证据与风险</h3>
       </div>
       <div className="evidence-grid">

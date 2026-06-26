@@ -122,7 +122,7 @@ export function HistoryPage() {
 
   return (
     <AppShell
-      eyebrow="交付档案"
+      eyebrow="项目归档"
       title="交付档案"
       description="先看已交付、审核中和被打回的内容，再回项目工作台继续推进。"
       actions={
@@ -141,7 +141,7 @@ export function HistoryPage() {
           </button>
           <section className="history-panel">
             <div className="history-panel__head">
-              <span>Problem Positioning</span>
+              <span>问题定位</span>
               <h2>{displaySessionTitle(sessionDetail)}</h2>
             </div>
           <div className="history-chat">
@@ -178,7 +178,7 @@ export function HistoryPage() {
           </button>
           <section className="history-panel">
             <div className="history-panel__head">
-              <span>Diagnostic Deliverable</span>
+              <span>诊断交付</span>
               <h2>诊断交付详情</h2>
               <p>交付时间：{fmt(detail.created_at)}</p>
             </div>
@@ -217,7 +217,7 @@ export function HistoryPage() {
         <>
           <section className="history-panel">
             <div className="history-panel__head">
-              <span>Project Archives</span>
+              <span>项目归档</span>
               <h2>按项目归档的交付记录</h2>
               <p>每个项目独立归档问题定位、顾问审核、正式交付和打回补充记录，方便从项目阶段继续推进。</p>
             </div>

@@ -177,6 +177,7 @@ def test_deep_diligence_full_delivery_flow(db_session, monkeypatch):
         json={
             "session_id": sid,
             "project_id": pid,
+            "request_review": True,   # 测审核交付链路：显式请复核（审核现为可选默认不选）
             "problem_map": {
                 "company_name": "华火新能源",
                 "industry": "新能源厨电",
@@ -281,7 +282,7 @@ async def _fake_system_research(session, *, job_id, project_id, questionnaire, c
     return ResearchBrief(queries=[ResearchQuery(module="market", query=item.query)], evidence=[item])
 
 
-async def _fake_supplemental_research(session, *, job_id, project_id, research_questions, client=None):
+async def _fake_supplemental_research(session, *, job_id, project_id, research_questions, questionnaire=None, client=None):
     from app.research.store import save_research_evidence
 
     item = ResearchEvidenceItem(

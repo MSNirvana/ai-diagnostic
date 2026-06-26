@@ -3,7 +3,7 @@ import json
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import DiagnosisRecord, Project, ProjectMemoryEntry
+from app.db.models import DiagnosisRecord, Project, ProjectMemoryEntry, WarRoomFeedbackEvent
 from app.models.questionnaire import Questionnaire
 from app.models.result import ModuleResult, TriageSummary
 from app.models.warroom import WarRoomIteration, WarRoomPlan
@@ -13,6 +13,49 @@ from app.warroom.normalizer import normalize_war_room_plan
 
 
 MAX_PROJECT_ITERATIONS = 12
+
+_ADOPT_CN = {"adopted": "已采纳", "deferred": "暂缓", "rejected": "不采纳", "pending": "待定"}
+_RESULT_CN = {
+    "effective": "有效", "no_change": "无明显变化", "new_issue": "出现新问题",
+    "insufficient_data": "数据不足", "none": "未知",
+}
+
+
+async def build_feedback_digest(
+    session: AsyncSession | None,
+    project_id: str | None,
+    *,
+    limit: int = 12,
+) -> str:
+    """把项目历次作战室反馈汇成「上一轮试了什么、结果如何」的一段上下文，喂给下一轮诊断。
+
+    让重诊断带着真实执行结果：无效的别重复、无变化的域重做约束定位、有新问题纳入判断。
+    无反馈 / 无 project_id / 取数失败 → 返回空串，绝不阻断诊断。
+    """
+    if session is None or not project_id:
+        return ""
+    try:
+        rows = list((await session.scalars(
+            select(WarRoomFeedbackEvent)
+            .where(WarRoomFeedbackEvent.project_id == project_id)
+            .order_by(WarRoomFeedbackEvent.created_at.desc())
+            .limit(limit)
+        )).all())
+    except Exception:  # noqa: BLE001 — 反馈取数失败不阻断诊断
+        return ""
+    if not rows:
+        return ""
+    lines: list[str] = []
+    for row in rows:
+        adopt = _ADOPT_CN.get(row.adoption_status, row.adoption_status or "")
+        result = _RESULT_CN.get(row.feedback_result, row.feedback_result or "")
+        title = (row.card_title or "").strip()[:40]
+        line = f"- 「{title}」：{adopt}，结果{result}"
+        note = (row.note or "").strip()
+        if note:
+            line += f"（现场：{note[:60]}）"
+        lines.append(line)
+    return "【上一轮作战室动作的真实执行反馈】（据此调整本轮判断，别重复无效动作）：\n" + "\n".join(lines)
 
 
 async def get_or_build_war_room_plan(

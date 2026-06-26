@@ -98,16 +98,39 @@ def render_evidence_for_prompt(rows: list[ResearchEvidence], *, module: str = ""
         row for row in rows
         if not module or row.module in ("", module)
     ]
-    return [
-        {
-            "module": row.module,
-            "title": row.title,
-            "url": row.url,
-            "snippet": row.snippet[:900],
-            "source_type": row.source_type,
-            "credibility": row.credibility,
-            "query": row.query,
-            "retrieved_at": row.retrieved_at.isoformat(),
-        }
-        for row in relevant[:30]
-    ]
+    rendered: list[dict[str, object]] = []
+    for row in relevant[:30]:
+        raw = _parse_raw_json(row.raw_json)
+        rendered.append(
+            {
+                "module": row.module,
+                "title": row.title,
+                "url": row.url,
+                "snippet": row.snippet[:900],
+                "source_type": row.source_type,
+                "credibility": row.credibility,
+                "query": row.query,
+                "retrieved_at": row.retrieved_at.isoformat(),
+                "relevance_score": raw.get("relevance_score", 0),
+                "relevance_reason": raw.get("relevance_reason", ""),
+                "relevance_bucket": raw.get("relevance_bucket", ""),
+            }
+        )
+    rendered.sort(
+        key=lambda item: (
+            float(item.get("relevance_score", 0) or 0),
+            float(item.get("credibility", 0) or 0),
+        ),
+        reverse=True,
+    )
+    return rendered
+
+
+def _parse_raw_json(raw_json: str) -> dict:
+    if not raw_json:
+        return {}
+    try:
+        payload = json.loads(raw_json)
+    except Exception:  # noqa: BLE001
+        return {}
+    return payload if isinstance(payload, dict) else {}

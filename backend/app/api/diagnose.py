@@ -22,11 +22,14 @@ from app.research.store import attach_evidence_to_record
 from app.warroom.composer import compose_war_room_plan
 from app.warroom.enhancer import enhance_war_room_plan
 from app.cases.archiver import archive_case
-from app.warroom.history import apply_project_war_room_iteration
+from app.warroom.history import (
+    apply_project_war_room_iteration,
+    get_or_build_project_war_room_plan,
+)
 from app.data.uploads import parse_uploaded_file, render_file_summary
 from app.auth.jwt import get_optional_user
 from app.db.database import get_session
-from app.db.models import User, DiagnosisRecord, DiagnosisFeedback, DiagnosisSession, UploadedFile
+from app.db.models import User, DiagnosisRecord, DiagnosisFeedback, DiagnosisSession, Project, UploadedFile
 from sqlalchemy import select
 
 router = APIRouter()
@@ -90,7 +93,8 @@ async def _save_history(
         profile_json=profile_json,
         session_id=sid,
         project_id=questionnaire.project_id,
-        review_status="pending_review",            # 伪异步：机器诊断完成即待审核
+        # 审核可选：默认 approved（诊断完成即出给老板看，零等待）；勾选请顾问复核才进 pending_review。
+        review_status="pending_review" if questionnaire.request_review else "approved",
         primary_module=triage.primary_module or "",  # 用于审核分派
     )
     war_room_plan.record_id = record.id
@@ -171,7 +175,7 @@ async def diagnose(
         outcome.triage,
         outcome.skill_version_ids,
     )
-    war_room_plan = await enhance_war_room_plan(war_room_plan, outcome.results, llm)
+    war_room_plan = await enhance_war_room_plan(war_room_plan, outcome.results, llm, session)
     record_id, war_room_plan = await _save_history(
         session,
         user,
@@ -192,8 +196,11 @@ async def diagnose(
         skill_version_ids=outcome.skill_version_ids,
         triage=outcome.triage,
         war_room_plan=war_room_plan,
-        # 登录用户走审核流（pending_review）；匿名无记录，直接视为已出（无审核）
-        review_status="pending_review" if record_id else "anonymous",
+        # 审核可选默认不选：请了复核→pending_review；否则登录用户即 approved（立即可见）；匿名无记录→anonymous
+        review_status=(
+            "pending_review" if (record_id and questionnaire.request_review)
+            else "approved" if record_id else "anonymous"
+        ),
     )
 
 
@@ -247,7 +254,7 @@ async def diagnose_with_upload(
         outcome.triage,
         outcome.skill_version_ids,
     )
-    war_room_plan = await enhance_war_room_plan(war_room_plan, outcome.results, llm)
+    war_room_plan = await enhance_war_room_plan(war_room_plan, outcome.results, llm, session)
     record_id, war_room_plan = await _save_history(
         session,
         user,
@@ -268,8 +275,11 @@ async def diagnose_with_upload(
         skill_version_ids=outcome.skill_version_ids,
         triage=outcome.triage,
         war_room_plan=war_room_plan,
-        # 登录用户走审核流（pending_review）；匿名无记录，直接视为已出（无审核）
-        review_status="pending_review" if record_id else "anonymous",
+        # 审核可选默认不选：请了复核→pending_review；否则登录用户即 approved（立即可见）；匿名无记录→anonymous
+        review_status=(
+            "pending_review" if (record_id and questionnaire.request_review)
+            else "approved" if record_id else "anonymous"
+        ),
     )
 
 
@@ -307,3 +317,36 @@ async def submit_feedback(
     await append_feedback_memory(session, record=record, feedback=feedback)
     await session.commit()
     return {"ok": True}
+
+
+@router.post("/diagnose/{record_id}/request-review")
+async def request_consultant_review(
+    record_id: str,
+    user: User | None = Depends(get_optional_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, str]:
+    """老板在「诊断完成、立即可见」的结果上主动请顾问复核，把该记录送进审核队列。
+
+    审核默认不选、诊断即出；这是事后可选的人工复核入口（对应「诊断→审核(可选)→作战室」）。
+    送审后该记录回到 pending_review：老板侧项目作战室按"仅已通过记录"重建——本条暂时隐藏，
+    待顾问通过再现。幂等：已在审核中直接返回当前状态。
+    """
+    if user is None:
+        raise HTTPException(status_code=401, detail="请先登录")
+    record = await session.get(DiagnosisRecord, record_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="诊断记录不存在")
+    if record.user_id != user.id:
+        raise HTTPException(status_code=403, detail="无权操作该诊断记录")
+    if record.review_status != "pending_review":
+        record.review_status = "pending_review"
+        record.reviewed_by = None
+        record.reviewed_at = None
+        session.add(record)
+        await session.commit()
+        if record.project_id:
+            project = await session.get(Project, record.project_id)
+            if project is not None:
+                # 重算项目作战室：本条未通过则从已通过集合里移除（无已通过记录时自动隐藏）。
+                await get_or_build_project_war_room_plan(session, project)
+    return {"record_id": record_id, "review_status": record.review_status}

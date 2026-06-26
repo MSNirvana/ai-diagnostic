@@ -69,3 +69,25 @@ async def get_optional_user(
     if not authorization:
         return None
     return await get_current_user(authorization, session)
+
+
+def admin_email_set() -> set[str]:
+    """ADMIN_EMAILS 环境变量（逗号分隔，小写）；'*' = 所有人都是管理员。"""
+    raw = os.environ.get("ADMIN_EMAILS", "")
+    return {e.strip().lower() for e in raw.split(",") if e.strip()}
+
+
+def is_admin_email(email: str) -> bool:
+    emails = admin_email_set()
+    return "*" in emails or email.strip().lower() in emails
+
+
+async def require_admin(user: User = Depends(get_current_user)) -> User:
+    """运营后台门：仅 is_admin 用户可过；其余 403。
+
+    兜底：即便 is_admin 列还没回填，只要邮箱命中 ADMIN_EMAILS 也放行，
+    避免新库/新进程时间窗里把自己锁在外面。
+    """
+    if user.is_admin or is_admin_email(user.email):
+        return user
+    raise HTTPException(status_code=403, detail="需要管理员权限")

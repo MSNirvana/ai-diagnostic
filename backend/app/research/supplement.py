@@ -6,8 +6,12 @@ from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.questionnaire import Questionnaire
+
+from .engine import _filter_relevant_evidence
 from .models import ResearchEvidenceItem, ResearchQuery
 from .perplexity import PerplexityResearchClient
+from .query_planner import build_research_scope, rewrite_query_for_scope
 from .store import save_research_evidence
 
 
@@ -50,13 +54,18 @@ async def run_expert_supplemental_research(
     job_id: str,
     project_id: str | None,
     research_questions: list[ResearchQuery],
+    questionnaire: Questionnaire | None = None,
     client: PerplexityResearchClient | None = None,
 ):
     client = client or PerplexityResearchClient()
-    if not client.enabled or not research_questions:
+    scope = await build_research_scope(questionnaire, session) if questionnaire is not None else None
+    prepared_questions = _prepare_research_questions(research_questions, scope)
+    if not client.enabled or not prepared_questions:
         return []
 
-    evidence = await _run_queries(client, research_questions)
+    evidence = await _run_queries(client, prepared_questions)
+    if scope is not None:
+        evidence = _filter_relevant_evidence(evidence, scope)
     evidence = _dedupe_evidence(evidence)
     return await save_research_evidence(
         session,
@@ -65,6 +74,21 @@ async def run_expert_supplemental_research(
         items=evidence,
         source_stage=SUPPLEMENTAL_STAGE,
     )
+
+
+def _prepare_research_questions(research_questions: list[ResearchQuery], scope) -> list[ResearchQuery]:
+    if scope is None:
+        return research_questions
+    out: list[ResearchQuery] = []
+    seen: set[tuple[str, str]] = set()
+    for question in research_questions:
+        query = rewrite_query_for_scope(question.query, question.module, scope)
+        key = (question.module, query)
+        if not query or key in seen:
+            continue
+        seen.add(key)
+        out.append(question.model_copy(update={"query": query}))
+    return out[:_max_questions()]
 
 
 async def _run_queries(

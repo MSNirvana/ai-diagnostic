@@ -107,8 +107,8 @@ def compose_war_room_plan(
     # A：只有 red（确信有判断）的域进作战室出部门卡；其余多是「无数据无法判断」的 defer，
     #    不出卡，避免一摊 10 张「上传XX数据」的无关作业。没有 red 时兜底取最严重的 1-2 个，防空作战室。
     findings = [r for r in ordered_results if r.signal == "red"] or ordered_results[:2]
-    # C：待补数据只收主战场相关（findings）的，封顶 5 条；不再把所有域的缺数据堆成几十项。
-    data_gaps = _dedupe_data_requests(findings)[:5]
+    # C：只收 findings 里「必需的内部私有数据」，封顶 3 条；可选/公开数据（竞品、行业基准等）交给搜索，不堆给老板。
+    data_gaps = [gap for gap in _dedupe_data_requests(findings) if gap.required][:3]
     actions = _department_actions(findings, primary, secondary)
 
     return WarRoomPlan(
@@ -177,13 +177,13 @@ def _summary(
     secondary_label = skill_label(secondary)
     primary_result = _find_result(results, primary)
     # E：取结论第一句、不再外套「」（结论本身常带「」，外套会嵌套成病句），并控长度。
-    core = _one_line(primary_result.conclusion) if primary_result else "核心经营瓶颈"
+    core = _one_line(primary_result.conclusion, limit=34) if primary_result else "核心经营瓶颈"
     if secondary:
-        summary = f"本轮先打{primary_label}：{core}。{secondary_label}只做支撑，不铺开多线。"
+        summary = f"先打{primary_label}：{core}。{secondary_label}只做支撑。"
     else:
-        summary = f"本轮先打{primary_label}：{core}，把判断落到负责人、时间窗和验收。"
+        summary = f"先打{primary_label}：{core}。"
     if has_data_gap:
-        summary += "关键数据未齐，先按保守方案推进、补数后再加码。"
+        summary += "数据待补，先出保守版。"
     return summary
 
 
@@ -215,7 +215,12 @@ def _split_action(text: str) -> tuple[str, str]:
             head = head.strip()
             if 2 <= len(head) <= 30:
                 return head, rest.strip()
-    head = t if len(t) <= 24 else t[:24].rstrip("，,、") + "…"
+    # 无冒号：在第一个分句边界（，。；）切，避免硬截出半个词（如「价值主…」）
+    for sep in ("，", "。", "；", ",", ";", " "):
+        i = t.find(sep)
+        if 4 <= i <= 30:
+            return t[:i].strip(), t[i + 1:].strip() or t
+    head = t if len(t) <= 22 else t[:22].rstrip("，,、") + "…"
     return head, t
 
 
@@ -303,6 +308,8 @@ def _department_actions(
             result.evidence_package.confidence_reason if result.evidence_package is not None else ""
         )
         required_data = _dedupe_data_requests([result])
+        internal_ev, external_ev = _SPLIT_EVIDENCE(result)
+        problem = _problem_for(result, internal_ev)
         # B：把一长句动作拆成「短标题 + 详情」，长文只放在 action_detail 出现一次；
         #    decision_items / priority_board 复用短 action_title，不再三处复制整段。
         head, detail_lead = _split_action(result.actions[0] if result.actions else "")
@@ -319,13 +326,16 @@ def _department_actions(
                 department=result.module,
                 department_label=skill_label(result.module),
                 battle_goal=_clean_boss_text(result.conclusion, "明确本轮要解决的经营问题"),
+                problem=problem,
+                internal_evidence=internal_ev,
+                external_evidence=external_ev,
                 priority=priority,
                 action_title=action_title,
                 action_detail=action_detail,
                 owner_role=OWNER_ROLES.get(result.module, "业务负责人"),
                 start_window=start_window,
                 dependency=_dependency_note(result.module, primary, secondary),
-                acceptance_rule=f"{start_window}后，能提供「{action_title}」的执行记录和指标变化。",
+                acceptance_rule=f"{start_window}后，能给出该动作的执行记录和关键指标变化。",
                 required_data=required_data,
                 metrics=[_metric_for(result.module)],
                 risk_note=_clean_boss_text(_risk_note(result, required_data, confidence), ""),
@@ -522,6 +532,60 @@ def _clean_boss_text(value: object, fallback: str = "") -> str:
     return text
 
 
+# 证据来源里命中这些词 = 本项目自有事实（内部）；否则视为可公开溯源的外部证据。
+_INTERNAL_SOURCE_MARKERS = ("客户自述", "客户上传", "上传", "自述", "问答")
+
+
+def _is_internal_source(source: str) -> bool:
+    return any(marker in source for marker in _INTERNAL_SOURCE_MARKERS)
+
+
+def _split_evidence(result: ModuleResult) -> tuple[list[str], list[str]]:
+    """把一个域的证据按来源拆成（内部=本项目自有事实, 外部=基准/检索）。
+
+    内部=客户自述/上传等本项目私有事实（卡片「内部数据与项目依据」）；
+    外部=行业基准、外部检索等可公开溯源的证据（卡片「外部数据与来源证明」，带来源）。
+    各列封顶 3 条，文案走 _clean_boss_text。
+    """
+    internal: list[str] = []
+    external: list[str] = []
+    for ev in result.evidence:
+        text = _clean_boss_text(ev.text, "")
+        if not text:
+            continue
+        source = str(ev.source or "")
+        if _is_internal_source(source):
+            internal.append(text)
+        else:
+            src = _clean_boss_text(source, "")
+            external.append(f"{text}（{src}）" if src else text)
+    if result.evidence_package:
+        for benchmark in result.evidence_package.benchmarks:
+            name = _clean_boss_text(benchmark.name, "外部基准")
+            value = _clean_boss_text(benchmark.value, "")
+            if value:
+                external.append(f"{name}：{value}")
+    return internal[:3], external[:3]
+
+
+def _problem_for(result: ModuleResult, internal_ev: list[str]) -> str:
+    """卡片「问题是什么」=现象/症状。优先用大脑给的 problem；旧/缺失则兜底派生。
+
+    兜底铁律：绝不退回 conclusion（那是判断，会重蹈「问题里塞判断」的错位）——
+    先用最强的内部事实当现象，再用 drilldown 首个数据点；都没有才退结论首句。
+    """
+    problem = _clean_boss_text(result.problem, "")
+    if problem:
+        return _one_line(problem, limit=48)
+    if internal_ev:
+        return _one_line(internal_ev[0], limit=48)
+    if result.drilldown and result.drilldown.data_points:
+        point = _clean_boss_text(result.drilldown.data_points[0].text, "")
+        if point:
+            return _one_line(point, limit=48)
+    return _one_line(result.conclusion, limit=48)
+
+
 def _dedupe_data_requests(results: list[ModuleResult]) -> list[DataRequest]:
     collected: dict[str, DataRequest] = {}
     for result in results:
@@ -564,3 +628,6 @@ def _find_result(results: list[ModuleResult], module: str) -> ModuleResult | Non
         if result.module == module:
             return result
     return None
+
+
+_SPLIT_EVIDENCE = _split_evidence

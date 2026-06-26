@@ -33,7 +33,7 @@ export function WarRoomHeader({ plan, showActiveVersion = false, meetingFocus }:
             <span className="war-room__active-version">当前生效版本 · {versionLabel}</span>
           </div>
         ) : (
-          <span className="war-room__eyebrow">老板作战室</span>
+            <span className="war-room__eyebrow">老板作战室</span>
         )}
         <h2>{headline}</h2>
         <p className="war-room__objective">{formatObjective(plan.objective)}</p>

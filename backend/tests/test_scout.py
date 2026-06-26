@@ -75,3 +75,19 @@ async def test_diagnose_all_runs_scout_angles():
     assert "market" in mods            # 关键词路由的
     assert "cash_runway" in mods       # 调度脑子补的已有域
     assert "adhoc_品牌口碑" in mods     # 调度脑子补的注册表外新角度
+
+
+async def test_authoritative_routing_drops_empty_unendorsed_modules():
+    # 权威路由：用户真填了数据的域必跑；空壳 + scout 没采纳的域不跑（省算力、不污染）。
+    q = Questionnaire(
+        answers=[
+            ModuleAnswer(module="market", facts={"行业": "SaaS"}, pains=["获客难"]),  # 有数据
+            ModuleAnswer(module="ops"),  # 空壳（旧问卷生成但用户没填）
+        ],
+        problem_map=_PROBLEM,
+    )
+    llm = ScoutLLM([{"key": "market", "label": "市场与客户", "known": True, "reason": "x"}])  # 只采纳 market，不采纳 ops
+    outcome = await diagnose_all(q, llm, session=None)
+    mods = {r.module for r in outcome.results}
+    assert "market" in mods       # 有数据 → 必跑
+    assert "ops" not in mods      # 空壳 + scout 没采纳 → 不跑

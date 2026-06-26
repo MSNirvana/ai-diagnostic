@@ -2,10 +2,11 @@ import { type ChangeEvent, type FormEvent, type ReactNode, useEffect, useMemo, u
 import { useLocation, useNavigate } from "react-router-dom";
 import { deleteBrainstormSession, deleteSession, updateBrainstormSession, updateSession } from "../../api/client";
 import { useAuth } from "../../auth/useAuth";
+import { useIsAdmin } from "../../auth/useIsAdmin";
 import type { ProjectBrainstormBrief, ProjectDetail, ProjectSessionBrief } from "../../types";
 import "./ProjectWorkspaceShell.css";
 
-type ProjectWorkspaceSection = "new" | "archive" | "warroom";
+type ProjectWorkspaceSection = "new" | "archive" | "warroom" | "transform";
 
 interface ProjectWorkspaceShellProps {
   project: Pick<ProjectDetail, "id" | "name" | "status"> & { sessions?: ProjectSessionBrief[]; brainstorm_sessions?: ProjectBrainstormBrief[] };
@@ -58,6 +59,10 @@ function projectLogoStorageKey(projectId: string) {
   return `ruice:project-logo:${projectId}`;
 }
 
+function projectSidebarStorageKey() {
+  return "ruice:project-sidebar-collapsed";
+}
+
 function defaultProjectLogo(name: string) {
   const trimmed = name.trim();
   if (!trimmed) return "睿";
@@ -76,6 +81,15 @@ function readProjectLogo(projectId: string) {
   }
 }
 
+function readSidebarCollapsed() {
+  try {
+    if (typeof window.localStorage?.getItem !== "function") return false;
+    return window.localStorage.getItem(projectSidebarStorageKey()) === "1";
+  } catch {
+    return false;
+  }
+}
+
 export function ProjectWorkspaceShell({
   project,
   activeSection,
@@ -90,6 +104,7 @@ export function ProjectWorkspaceShell({
   const navigate = useNavigate();
   const location = useLocation();
   const { logout } = useAuth();
+  const isAdmin = useIsAdmin();
   const [sessions, setSessions] = useState<ProjectSessionBrief[]>(() => sortSessions(project.sessions ?? []));
   const [brainstorms, setBrainstorms] = useState<ProjectBrainstormBrief[]>(() => sortBrainstorms(project.brainstorm_sessions ?? []));
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -106,6 +121,7 @@ export function ProjectWorkspaceShell({
   const [historyMode, setHistoryMode] = useState<"conversation" | "brainstorm">("conversation");
   const defaultLogo = defaultProjectLogo(project.name);
   const [projectLogo, setProjectLogo] = useState(() => readProjectLogo(project.id));
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed);
   const logoInputRef = useRef<HTMLInputElement | null>(null);
   const sessionSignature = useMemo(
     () => (project.sessions ?? []).map((s) => `${s.id}:${s.title}:${s.updated_at}:${s.is_pinned ? 1 : 0}`).join("|"),
@@ -136,6 +152,16 @@ export function ProjectWorkspaceShell({
   useEffect(() => {
     setProjectLogo(readProjectLogo(project.id));
   }, [project.id, project.name]);
+
+  useEffect(() => {
+    try {
+      if (typeof window.localStorage?.setItem === "function") {
+        window.localStorage.setItem(projectSidebarStorageKey(), sidebarCollapsed ? "1" : "0");
+      }
+    } catch {
+      // Sidebar collapse state is optional; ignore storage failures.
+    }
+  }, [sidebarCollapsed]);
 
   useEffect(() => {
     if (!openMenuId && !openBrainstormMenuId) return;
@@ -175,6 +201,16 @@ export function ProjectWorkspaceShell({
     logoInputRef.current?.click();
   };
 
+  const toggleSidebarCollapsed = () => {
+    setOpenMenuId(null);
+    setOpenBrainstormMenuId(null);
+    setRenameSessionId(null);
+    setRenameBrainstormId(null);
+    setDeleteConfirmId(null);
+    setDeleteBrainstormConfirmId(null);
+    setSidebarCollapsed((current) => !current);
+  };
+
   const changeProjectLogo = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.currentTarget.files?.[0];
     event.currentTarget.value = "";
@@ -196,7 +232,15 @@ export function ProjectWorkspaceShell({
   };
 
   const openNewConversation = () => {
-    navigateStable(`/projects/${project.id}`);
+    navigate(`/projects/${project.id}`, {
+      replace: false,
+      preventScrollReset: true,
+      state: {
+        projectSnapshot,
+        newConversation: true,
+        resumeSessionId: undefined,
+      },
+    });
     onNewConversation?.();
   };
 
@@ -600,8 +644,20 @@ export function ProjectWorkspaceShell({
   );
 
   return (
-    <div className="project-workspace-shell">
-      <aside className="project-workspace-sidebar" aria-label={`${project.name} 项目导航`}>
+    <div className={sidebarCollapsed ? "project-workspace-shell is-sidebar-collapsed" : "project-workspace-shell"}>
+      <aside className={sidebarCollapsed ? "project-workspace-sidebar is-collapsed" : "project-workspace-sidebar"} aria-label={`${project.name} 项目导航`}>
+        <div className="project-workspace-sidebar__toggle-row">
+          <button
+            type="button"
+            className="project-workspace-sidebar__toggle"
+            onClick={toggleSidebarCollapsed}
+            aria-label={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
+            title={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
+          >
+            <span className="project-workspace-sidebar__toggle-icon" aria-hidden="true">{sidebarCollapsed ? "›" : "‹"}</span>
+            <span className="project-workspace-sidebar__toggle-label">{sidebarCollapsed ? "展开" : "收起"}</span>
+          </button>
+        </div>
         <div className="project-workspace-brand">
           <div className="project-workspace-project-card">
             <input
@@ -638,72 +694,86 @@ export function ProjectWorkspaceShell({
               type="button"
               className={activeSection === "new" ? "project-workspace-menu__item is-active" : "project-workspace-menu__item"}
               onClick={openNewConversation}
+              aria-label="新对话"
+              title="新对话"
             >
               <span className="project-workspace-menu__icon" aria-hidden="true">+</span>
-              <span>新对话</span>
+              {!sidebarCollapsed ? <span>新对话</span> : null}
             </button>
             <button
               type="button"
               className={activeSection === "archive" ? "project-workspace-menu__item is-active" : "project-workspace-menu__item"}
               onClick={openArchive}
+              aria-label="项目档案"
+              title="项目档案"
             >
               <span className="project-workspace-menu__icon" aria-hidden="true">□</span>
-              <span>项目档案</span>
+              {!sidebarCollapsed ? <span>项目档案</span> : null}
             </button>
             <button
               type="button"
               className={activeSection === "warroom" ? "project-workspace-menu__item is-active" : "project-workspace-menu__item"}
               onClick={openWarRoom}
+              aria-label="作战室"
+              title="作战室"
             >
               <span className="project-workspace-menu__icon" aria-hidden="true">⚑</span>
-              <span>作战室</span>
+              {!sidebarCollapsed ? <span>作战室</span> : null}
             </button>
           </div>
 
-          <div className="project-workspace-menu__group project-workspace-menu__group--separated">
-            <button
-              type="button"
-              className="project-workspace-menu__item"
-              onClick={() => navigate("/admin")}
-            >
-              <span className="project-workspace-menu__icon" aria-hidden="true">◇</span>
-              <span>后台管理</span>
-            </button>
-          </div>
+          {isAdmin && (
+            <div className="project-workspace-menu__group project-workspace-menu__group--separated">
+              <button
+                type="button"
+                className="project-workspace-menu__item"
+                onClick={() => navigate("/admin")}
+                aria-label="后台管理"
+                title="后台管理"
+              >
+                <span className="project-workspace-menu__icon" aria-hidden="true">◇</span>
+                {!sidebarCollapsed ? <span>后台管理</span> : null}
+              </button>
+            </div>
+          )}
         </nav>
 
-        <section className="project-workspace-history" aria-label="项目记录">
-          <div className="project-workspace-history-tabs" role="tablist" aria-label="项目记录类型">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={historyMode === "conversation"}
-              className={historyMode === "conversation" ? "project-workspace-history-tabs__item is-active" : "project-workspace-history-tabs__item"}
-              onClick={() => switchHistoryMode("conversation")}
-            >
-              <span>对话记录</span>
-              <strong>{visibleSessions.length}</strong>
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={historyMode === "brainstorm"}
-              className={historyMode === "brainstorm" ? "project-workspace-history-tabs__item is-active" : "project-workspace-history-tabs__item"}
-              onClick={() => switchHistoryMode("brainstorm")}
-            >
-              <span>风暴记录</span>
-              <strong>{visibleBrainstorms.length}</strong>
-            </button>
-          </div>
-          {historyMode === "conversation" ? conversationHistoryList : brainstormHistoryList}
-        </section>
+        {!sidebarCollapsed && (
+          <section className="project-workspace-history" aria-label="项目记录">
+            <div className="project-workspace-history-tabs" role="tablist" aria-label="项目记录类型">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={historyMode === "conversation"}
+                className={historyMode === "conversation" ? "project-workspace-history-tabs__item is-active" : "project-workspace-history-tabs__item"}
+                onClick={() => switchHistoryMode("conversation")}
+              >
+                <span>对话记录</span>
+                <strong>{visibleSessions.length}</strong>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={historyMode === "brainstorm"}
+                className={historyMode === "brainstorm" ? "project-workspace-history-tabs__item is-active" : "project-workspace-history-tabs__item"}
+                onClick={() => switchHistoryMode("brainstorm")}
+              >
+                <span>风暴记录</span>
+                <strong>{visibleBrainstorms.length}</strong>
+              </button>
+            </div>
+            {historyMode === "conversation" ? conversationHistoryList : brainstormHistoryList}
+          </section>
+        )}
 
         <div className="project-workspace-footer">
-          <button type="button" onClick={() => navigate("/projects")}>
-            返回项目列表
+          <button type="button" onClick={() => navigate("/projects")} aria-label="返回项目列表" title="返回项目列表">
+            <span className="project-workspace-footer__icon" aria-hidden="true">←</span>
+            {!sidebarCollapsed ? <span>返回项目列表</span> : null}
           </button>
-          <button type="button" onClick={handleLogout}>
-            退出
+          <button type="button" onClick={handleLogout} aria-label="退出" title="退出">
+            <span className="project-workspace-footer__icon" aria-hidden="true">⎋</span>
+            {!sidebarCollapsed ? <span>退出</span> : null}
           </button>
         </div>
       </aside>

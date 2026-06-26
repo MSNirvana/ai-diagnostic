@@ -15,7 +15,9 @@ class AnthropicClient(LLMClient):
     async def complete(self, system: str, prompt: str) -> str:
         resp = await self._client.messages.create(
             model=self._model,
-            max_tokens=4096,
+            # 16384:富结构化输出(如 AI 改造方案的多主题+对比表+分周路径)4096 会被截断
+            # 导致 JSON 不完整、解析失败而降级;调高上限,实际用量由模型按需决定。
+            max_tokens=16384,
             system=system,
             messages=[{"role": "user", "content": prompt}],
         )

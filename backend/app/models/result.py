@@ -54,6 +54,7 @@ class EvidencePackage(BaseModel):
 class ModuleResult(BaseModel):
     module: str
     signal: Literal["red", "yellow", "green"]
+    problem: str = ""  # 现象/症状（大白话），与 conclusion 判断区分；旧记录无此字段，默认空
     conclusion: str
     evidence: list[Evidence] = Field(max_length=3)
     actions: list[str] = Field(min_length=1)

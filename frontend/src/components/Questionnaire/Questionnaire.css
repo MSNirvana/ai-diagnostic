@@ -404,10 +404,12 @@
   position: relative;
   display: flex;
   align-items: center;
+  gap: 8px;
 }
 
 .field__input {
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
   min-height: 42px;
   padding: 10px 13px;
   border: 1px solid rgba(151, 164, 184, 0.24);
@@ -420,8 +422,38 @@
   transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
 
-.field__input-wrap--with-upload .field__input {
-  padding-right: 48px;
+/* 「暂时没有」跳过：让没资料的字段也能明确标记并往下走 */
+.field__skip {
+  flex: none;
+  white-space: nowrap;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid rgba(151, 164, 184, 0.3);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--ink-soft);
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.field__skip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.field__skip--on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(14, 74, 125, 0.08);
+}
+
+.field__input--skipped {
+  border-style: dashed;
+  background: rgba(151, 164, 184, 0.1);
+  color: var(--ink-soft);
 }
 
 .field__input::placeholder {
@@ -436,30 +468,27 @@
 }
 
 .field__upload-plus {
-  position: absolute;
-  right: 8px;
-  top: 50%;
+  flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 36px;
+  height: 42px;
   border: 0;
-  border-radius: 999px;
+  border-radius: 12px;
   background: rgba(14, 74, 125, 0.08);
   color: var(--accent);
   cursor: pointer;
   font-size: 1.15rem;
   font-weight: 700;
   line-height: 1;
-  transform: translateY(-50%);
   transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
 }
 
 .field__upload-plus:hover {
   background: var(--accent);
   color: #fff;
-  transform: translateY(-50%) scale(1.04);
+  transform: scale(1.04);
 }
 
 /* ---------- Pains choices ---------- */

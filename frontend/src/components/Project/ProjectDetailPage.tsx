@@ -1,4 +1,4 @@
-import { type ChangeEvent, useEffect, useRef, useState } from "react";
+import { type ChangeEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { addArchiveModule, confirmArchiveFileExtraction, createDiagnosisJob, deleteSessionFile, downloadSessionFile, extractArchiveFile, fetchRecord, getBrainstormSession, getDiagnosisJob, getLatestDiagnosisJobForSession, getProject, getProjectEvidence, getSessionFileBlob, hideArchiveModule, patchProject, sendBrainstormMessage, startSession, uploadSessionFile, viewSessionFile } from "../../api/client";
@@ -103,9 +103,10 @@ function buildInlineDiagnosisStages(status: string, currentStep: string): Inline
   ];
 }
 
-function InfoTip({ content }: { content: string }) {
+function InfoTip({ content }: { content: ReactNode }) {
+  const ariaLabel = typeof content === "string" ? content : "查看来源";
   return (
-    <span className="pd-info-tip" tabIndex={0} aria-label={content}>
+    <span className="pd-info-tip" tabIndex={0} aria-label={ariaLabel}>
       <span className="pd-info-tip__trigger" aria-hidden="true">?</span>
       <span className="pd-info-tip__bubble" role="tooltip">{content}</span>
     </span>
@@ -332,31 +333,96 @@ function renderMetricText(value: string) {
   });
 }
 
-function renderArchiveSource(sourceLabels: string[], prefix = "来源") {
-  return sourceLabels.length > 0 ? <small>{prefix}：{sourceLabels.join("、")}</small> : null;
+function parseArchiveLinkEntries(value: string) {
+  return splitArchiveValue(value)
+    .map((item) => {
+      const pieces = item.split(/\s+/);
+      const urlText = pieces.find(isUrlLike);
+      if (!urlText) return null;
+      const label = item.replace(urlText, "").trim() || urlText.replace(/^https?:\/\//i, "");
+      return {
+        label,
+        url: normalizeArchiveUrl(urlText),
+        secondary: urlText.replace(/^https?:\/\//i, ""),
+      };
+    })
+    .filter((item): item is { label: string; url: string; secondary: string } => Boolean(item));
+}
+
+function extractArchiveSourceLink(value: string) {
+  const clean = value.trim();
+  if (!clean) return null;
+  const match = clean.match(/https?:\/\/[^\s，,；;]+|(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/[^\s，,；;]*)?/i);
+  if (!match) return null;
+  const rawUrl = match[0];
+  const label = clean.replace(rawUrl, "").replace(/^[来源：:\-\s]+/, "").trim() || rawUrl.replace(/^https?:\/\//i, "");
+  return {
+    label,
+    url: normalizeArchiveUrl(rawUrl),
+    secondary: rawUrl.replace(/^https?:\/\//i, ""),
+  };
+}
+
+function renderArchiveSourceTip(fact: ProfileField) {
+  const sourceLabels = fact.source_labels?.filter(Boolean) ?? [];
+  const explicitLinks = sourceLabels
+    .map((item) => extractArchiveSourceLink(item))
+    .filter((item): item is { label: string; url: string; secondary: string } => Boolean(item));
+  const valueLinks = fact.display?.type === "link_list" ? parseArchiveLinkEntries(fact.value) : [];
+  const linksByUrl = new Map<string, { label: string; url: string; secondary: string }>();
+  [...explicitLinks, ...valueLinks].forEach((item) => {
+    if (!linksByUrl.has(item.url)) linksByUrl.set(item.url, item);
+  });
+  const links = [...linksByUrl.values()].slice(0, 4);
+  const hasFileSource = sourceLabels.some((item) => /上传|资料|文档|附件|报告|表格|文件|截图|pdf|docx|xlsx|ppt/i.test(item));
+  const tags = hasFileSource ? ["上传资料"] : [];
+
+  if (links.length === 0 && tags.length === 0) return null;
+
+  return (
+    <InfoTip
+      content={(
+        <span className="archive-source-tip">
+          {tags.length > 0 && (
+            <span className="archive-source-tip__group">
+              {tags.map((tag) => (
+                <span key={tag} className="archive-source-tip__tag">{tag}</span>
+              ))}
+            </span>
+          )}
+          {links.length > 0 && (
+            <span className="archive-source-tip__group archive-source-tip__group--links">
+              {links.map((item) => (
+                <a key={item.url} href={item.url} target="_blank" rel="noreferrer">
+                  <strong>{item.label}</strong>
+                  <em>{item.secondary}</em>
+                </a>
+              ))}
+            </span>
+          )}
+        </span>
+      )}
+    />
+  );
 }
 
 function renderArchiveFactValue(fact: ProfileField) {
   const displayType = fact.display?.type ?? "text";
   const parts = splitArchiveValue(fact.value);
-  const sourceLabels = fact.source_labels?.filter(Boolean) ?? [];
 
   if (displayType === "link_list") {
-    const links = parts.length > 0 ? parts : [fact.value];
+    const links = parseArchiveLinkEntries(fact.value);
+    if (links.length === 0) return <p>{fact.value}</p>;
     return (
       <div className="project-archive-fact-links">
         {links.map((item, index) => {
-          const pieces = item.split(/\s+/);
-          const urlText = pieces.find(isUrlLike) ?? item;
-          const label = item.replace(urlText, "").trim() || urlText.replace(/^https?:\/\//i, "");
           return (
-            <a key={`${item}-${index}`} href={normalizeArchiveUrl(urlText)} target="_blank" rel="noreferrer">
-              <span>{label}</span>
-              <em>{urlText.replace(/^https?:\/\//i, "")}</em>
+            <a key={`${item.url}-${index}`} href={item.url} target="_blank" rel="noreferrer">
+              <span>{item.label}</span>
+              <em>{item.secondary}</em>
             </a>
           );
         })}
-        {renderArchiveSource(sourceLabels, "来源字段")}
       </div>
     );
   }
@@ -366,7 +432,6 @@ function renderArchiveFactValue(fact: ProfileField) {
       <div className="project-archive-fact-metric">
         <p>{renderMetricText(fact.value)}</p>
         {fact.display?.unit && <em>{fact.display.unit}</em>}
-        {renderArchiveSource(sourceLabels)}
       </div>
     );
   }
@@ -403,7 +468,6 @@ function renderArchiveFactValue(fact: ProfileField) {
   return (
     <p>
       {fact.value}
-      {renderArchiveSource(sourceLabels)}
     </p>
   );
 }
@@ -742,6 +806,7 @@ export function ProjectDetailPage() {
       state: {
         projectSnapshot: project,
         newConversation: false,
+        resumeSessionId: undefined,
         rejectedRecordId: navState.rejectedRecordId,
         initialPrompt: navState.initialPrompt,
       },
@@ -1345,40 +1410,47 @@ export function ProjectDetailPage() {
   };
   const inlineDiagnosisReady = inlineDiagnosis ? SUCCESS_DIAGNOSIS_JOB_STATUSES.has(inlineDiagnosis.status) : false;
   const inlineDiagnosisInReview = inlineDiagnosis ? REVIEW_DIAGNOSIS_JOB_STATUSES.has(inlineDiagnosis.status) : false;
+  // 审核态以记录的 review_status 为准（跨刷新可靠），不只看 job 状态。
+  const inlineDiagnosisRecord = inlineDiagnosis?.recordId
+    ? project.records.find((r) => r.id === inlineDiagnosis.recordId)
+    : undefined;
+  const inlineReviewPending = inlineDiagnosisRecord?.review_status === "pending_review";
+  const inlineReady = inlineDiagnosisReady && !inlineReviewPending;
+  const inlineInReview = inlineDiagnosisInReview || inlineReviewPending;
   const inlineDiagnosisStages = inlineDiagnosis ? buildInlineDiagnosisStages(inlineDiagnosis.status, inlineDiagnosis.currentStep) : [];
   const inlineDiagnosisNotice = inlineDiagnosis ? (
-    <div className={inlineDiagnosisReady ? "project-diagnosis-inline-status is-ready" : inlineDiagnosis.status === "failed" ? "project-diagnosis-inline-status is-error" : inlineDiagnosisInReview ? "project-diagnosis-inline-status is-review" : "project-diagnosis-inline-status"}>
+    <div className={inlineReady ? "project-diagnosis-inline-status is-ready" : inlineDiagnosis.status === "failed" ? "project-diagnosis-inline-status is-error" : inlineInReview ? "project-diagnosis-inline-status is-review" : "project-diagnosis-inline-status"}>
       <div className="project-diagnosis-inline-status__copy">
         <span>
-          {inlineDiagnosisReady
+          {inlineReady
             ? "正式作战室已生成，可以查看交付。"
             : inlineDiagnosis.status === "failed"
               ? `诊断方案生成失败：${inlineDiagnosis.error || "请稍后重试"}`
-              : inlineDiagnosisInReview
-                ? "资料与证据已整理完成，顾问正在深度判断中。"
+              : inlineInReview
+                ? "已提交顾问复核，顾问正在深度判断中。"
                 : "正在基于你的问题定制诊断方案…（这需要几分钟）"}
         </span>
         <small className={rediagnoseNotice ? "project-diagnosis-inline-status__notice" : undefined}>
-          {rediagnoseNotice ?? (inlineDiagnosisReady
-            ? "如果你还想继续追问，可以直接在当前会话里补充。"
-            : inlineDiagnosisInReview
-              ? "你可以继续对话，系统会继续保留问题地图并更新资料。"
+          {rediagnoseNotice ?? (inlineReady
+            ? "已可直接查看作战室。"
+            : inlineInReview
+              ? "顾问通过后作战室会自动更新；其间你也可以继续对话补充资料。"
               : "你可以继续输入，系统会先把资料采集和外部核验跑完。")}
         </small>
       </div>
-      {(inlineDiagnosisReady || inlineDiagnosisInReview) && (
+      {(inlineReady || inlineInReview) && (
         <div className="project-diagnosis-inline-status__actions">
           <button
             type="button"
             onClick={() => {
-              if (inlineDiagnosisReady) {
+              if (inlineReady) {
                 navigate(`/projects/${project.id}/war-room`);
               } else {
                 openInlineDataCollection();
               }
             }}
           >
-            {inlineDiagnosisReady ? "查看作战室" : "查看进度"}
+            {inlineReady ? "查看作战室" : "查看进度"}
           </button>
           <button
             type="button"
@@ -1390,7 +1462,7 @@ export function ProjectDetailPage() {
           </button>
         </div>
       )}
-      {!inlineDiagnosisReady && !inlineDiagnosisInReview && (
+      {!inlineReady && !inlineInReview && (
         <div className="project-diagnosis-inline-status__stages" aria-label="诊断流程">
           {inlineDiagnosisStages.map((stage) => (
             <span key={stage.key} className={stage.active ? "is-active" : ""}>
@@ -1723,7 +1795,10 @@ export function ProjectDetailPage() {
                               <div className="project-archive-domain-card__facts">
                                 {module.preview.map((fact) => (
                                   <div key={fact.label} className="project-archive-domain-card__fact">
-                                    <span>{fact.label}</span>
+                                    <div className="project-archive-domain-card__fact-label">
+                                      <span>{fact.label}</span>
+                                      {renderArchiveSourceTip(fact)}
+                                    </div>
                                     {renderArchiveFactValue(fact)}
                                   </div>
                                 ))}
@@ -1738,7 +1813,10 @@ export function ProjectDetailPage() {
                                 <div className="project-archive-domain-card__extra">
                                   {module.remainder.map((fact) => (
                                     <div key={fact.label} className="project-archive-domain-card__fact project-archive-domain-card__fact--extra">
-                                      <span>{fact.label}</span>
+                                      <div className="project-archive-domain-card__fact-label">
+                                        <span>{fact.label}</span>
+                                        {renderArchiveSourceTip(fact)}
+                                      </div>
                                       {renderArchiveFactValue(fact)}
                                     </div>
                                   ))}

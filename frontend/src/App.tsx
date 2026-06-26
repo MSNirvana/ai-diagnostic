@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate, useLocation, useParams } from "react-router-dom";
 import { LoginPage } from "./components/Auth/LoginPage";
 import { ProtectedRoute } from "./components/Auth/ProtectedRoute";
+import { AdminRoute } from "./components/Auth/AdminRoute";
 import { ProjectListPage } from "./components/Project/ProjectListPage";
 import { ProjectDetailPage } from "./components/Project/ProjectDetailPage";
 import { ProjectWarRoomPage } from "./components/Project/ProjectWarRoomPage";
@@ -124,9 +125,9 @@ export default function App() {
       <Route
         path="/admin"
         element={
-          <ProtectedRoute>
+          <AdminRoute>
             <AdminPage />
-          </ProtectedRoute>
+          </AdminRoute>
         }
       />
     </Routes>

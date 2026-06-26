@@ -87,7 +87,7 @@ export function DecisionBoard({
     <section className="war-panel war-panel--decision">
       <div className="war-panel__heading">
         <div>
-          <span>Decision Board</span>
+          <span>决策板</span>
           <h3>先拍板的事项</h3>
         </div>
         <strong className="war-panel__count">{displayCount} 项</strong>

@@ -562,6 +562,25 @@ describe("ProjectDetailPage memory timeline", () => {
     expect(within(modeTabs).queryByText("头脑风暴")).toBeNull();
   });
 
+  it("opens a true new conversation instead of restoring the previous session", async () => {
+    render(
+      <MemoryRouter initialEntries={["/projects/proj-1"]}>
+        <Routes>
+          <Route path="/projects/:id" element={<ProjectDetailPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const historyRegion = await screen.findByRole("region", { name: "项目记录" });
+    fireEvent.click(within(historyRegion).getAllByRole("button", { name: /获客成本过高/ })[0]);
+    expect(await screen.findByText("你好，我是你的诊断顾问。")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /新对话/ }));
+
+    await waitFor(() => expect(screen.getByText("今天，你想解决什么？")).toBeTruthy());
+    expect(screen.queryByText("你好，我是你的诊断顾问。")).toBeNull();
+  });
+
   it("adds the current chat to the sidebar conversation history as soon as it starts", async () => {
     render(
       <MemoryRouter initialEntries={["/projects/proj-1"]}>
@@ -1170,6 +1189,27 @@ describe("ProjectDetailPage memory timeline", () => {
       configurable: true,
       value: originalFileReader,
     });
+  });
+
+  it("collapses the project sidebar into an icon rail and persists the state", async () => {
+    render(
+      <MemoryRouter initialEntries={["/projects/proj-1?page=archive&section=modules"]}>
+        <Routes>
+          <Route path="/projects/:id" element={<ProjectDetailPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const collapseButton = await screen.findByRole("button", { name: "收起侧栏" });
+    fireEvent.click(collapseButton);
+
+    const sidebar = screen.getByLabelText("星麦直播 项目导航");
+    expect(sidebar.className).toContain("is-collapsed");
+    expect(window.localStorage.getItem("ruice:project-sidebar-collapsed")).toBe("1");
+    expect(within(sidebar).queryByText("对话记录")).toBeNull();
+    expect(within(sidebar).queryByText("风暴记录")).toBeNull();
+    expect(within(sidebar).queryByText("项目档案")).toBeNull();
+    expect(screen.getByRole("button", { name: "展开侧栏" })).toBeTruthy();
   });
 
   it("hides an enabled archive domain without deleting archive data", async () => {

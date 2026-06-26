@@ -9,33 +9,37 @@ import {
   createLLMConfig,
   deleteLLMConfig,
   patchLLMConfig,
-  fetchL1Stats,
   fetchL2Stats,
-  fetchL3Stats,
   fetchL4Stats,
   fetchReviewQueue,
   fetchReviewDetail,
   submitReview,
+  fetchCaseProductGroups,
+  fetchCaseProjectDetail,
+  fetchCaseInsights,
 } from "../../api/client";
 import type {
   SkillRegistryItem,
   SkillVersionOut,
   LLMConfigOut,
-  L1Stats,
   L2Stats,
-  L3Stats,
   L4Stats,
   ReviewQueueItem,
   ReviewDetail,
   ModuleResult,
   ResearchEvidenceOut,
+  CaseProductGroups,
+  CaseProjectDetail,
+  CaseInsights,
+  CaseDistItem,
+  CaseProjectFilters,
 } from "../../types";
-import { cleanDisplayText, cleanSentenceText, displayModuleLabel, formatEvidenceSource } from "../../utils/displayText";
+import { cleanDisplayText, cleanSentenceText, dataRequirementLabel, displayModuleLabel, formatEvidenceSource } from "../../utils/displayText";
 import { AppShell } from "../Layout/AppShell";
 import { EvidencePackPanel } from "../Evidence/EvidencePackPanel";
 import "./AdminPage.css";
 
-type Tab = "skills" | "models" | "review" | "l1" | "l2" | "l3" | "l4";
+type Tab = "skills" | "models" | "review" | "cases" | "health";
 
 type SkillGroupKey = "intake" | "questionnaire" | "engine" | "core" | "professional" | "capability" | "delivery" | "assistant" | "other";
 type SkillFilterKey = SkillGroupKey | "all";
@@ -93,7 +97,7 @@ export function AdminPage() {
 
   return (
     <AppShell
-      eyebrow="Operating Console"
+      eyebrow="运营后台"
       title="后台管理"
       description="维护专家方法库、模型通道与版本留痕，让前台交付稳定、可追溯、可持续优化。"
       actions={
@@ -107,20 +111,16 @@ export function AdminPage() {
           <button type="button" className={tab === "review" ? "admin-tab admin-tab--on" : "admin-tab"} onClick={() => setTab("review")}>审核队列</button>
           <button type="button" className={tab === "skills" ? "admin-tab admin-tab--on" : "admin-tab"} onClick={() => setTab("skills")}>专家方法库</button>
           <button type="button" className={tab === "models" ? "admin-tab admin-tab--on" : "admin-tab"} onClick={() => setTab("models")}>模型通道</button>
+          <button type="button" className={tab === "cases" ? "admin-tab admin-tab--on" : "admin-tab"} onClick={() => setTab("cases")}>案例库</button>
           <span className="admin-tab-divider" />
-          <button type="button" className={tab === "l1" ? "admin-tab admin-tab--on" : "admin-tab"} onClick={() => setTab("l1")}>L1 Skill 生产</button>
-          <button type="button" className={tab === "l2" ? "admin-tab admin-tab--on" : "admin-tab"} onClick={() => setTab("l2")}>L2 Router 健康</button>
-          <button type="button" className={tab === "l3" ? "admin-tab admin-tab--on" : "admin-tab"} onClick={() => setTab("l3")}>L3 案例飞轮</button>
-          <button type="button" className={tab === "l4" ? "admin-tab admin-tab--on" : "admin-tab"} onClick={() => setTab("l4")}>L4 Composer</button>
+          <button type="button" className={tab === "health" ? "admin-tab admin-tab--on" : "admin-tab"} onClick={() => setTab("health")}>系统健康</button>
         </div>
 
         {tab === "review" && <ReviewTab />}
         {tab === "skills" && <SkillsTab />}
         {tab === "models" && <ModelsTab />}
-        {tab === "l1" && <L1Tab />}
-        {tab === "l2" && <L2Tab />}
-        {tab === "l3" && <L3Tab />}
-        {tab === "l4" && <L4Tab />}
+        {tab === "cases" && <CaseLibraryTab />}
+        {tab === "health" && <SystemHealthTab />}
       </section>
     </AppShell>
   );
@@ -254,7 +254,7 @@ function SkillsTab() {
       <div className="admin-list">
         <div className="admin-library-head">
           <div>
-            <span>Skill Network</span>
+            <span>Skill 网络</span>
             <h3>专家 Skill 网络</h3>
           </div>
           <strong>{totalSkills}</strong>
@@ -367,7 +367,7 @@ function SkillsTab() {
       <div className="admin-editor">
         {!activeModule ? (
           <div className="admin-empty">
-            <span>Skill Network</span>
+              <span>Skill 网络</span>
             <h3>选择一个 Skill</h3>
             <p>查看触发场景、数据需求、升级策略和版本历史。新增版本会留痕并可回滚。</p>
           </div>
@@ -602,7 +602,7 @@ function ModelsTab() {
     <div className="admin-models">
       <div className="admin-config-form">
         <div className="admin-editor__head">
-          <span>Model Routing</span>
+          <span>模型路由</span>
           <h3 className="admin-editor__title">新增模型通道</h3>
         </div>
         <p className="admin-muted">优先级数字越小越靠前；主通道失败时自动切换到备用通道。</p>
@@ -1085,70 +1085,29 @@ function ReviewResultCard({ result, index }: { result: ModuleResult; index: numb
   );
 }
 
-// ── L1 Skill 生产线 ──────────────────────────────────────────────────────────
+// ── 系统健康 ────────────────────────────────────────────────────────────────
+// 两块内部体检信号：路由召回 / 交付质量。（案例沉淀已并入「案例库 → 洞察」。）
+// 后端采集管线一直在跑，这里只是把数据摆出来给运营看，便于调优——不影响前台交付。
 
-function L1Tab() {
-  const [stats, setStats] = useState<L1Stats | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  useEffect(() => { fetchL1Stats().then(setStats).catch(e => setErr(String(e))); }, []);
-
-  if (err) return <div className="admin-empty">加载失败：{err}</div>;
-  if (!stats) return <div className="admin-empty">加载中…</div>;
-
-  const VERDICT_LABEL: Record<string, string> = { pass: "✅ 通过", redo: "🔄 重做", fail: "❌ 失败", unknown: "—" };
-  const STATUS_LABEL: Record<string, string> = {
-    pending_human: "⏳ 待人审",
-    approved: "✅ 已上线",
-    rejected: "❌ 已拒绝",
-    not_ready: "🔴 未就绪",
-    no_eval: "—",
-  };
-
+function SystemHealthTab() {
   return (
-    <div className="loop-tab">
-      <h3 className="loop-tab__title">Skill 生产线状态</h3>
-      <div className="loop-stats-row">
-        <div className="loop-stat"><span className="loop-stat__num">{stats.total_configs}</span><span className="loop-stat__label">配置文件总数</span></div>
-        <div className="loop-stat loop-stat--warn"><span className="loop-stat__num">{stats.pending_review}</span><span className="loop-stat__label">待人审候选</span></div>
-        <div className="loop-stat loop-stat--ok"><span className="loop-stat__num">{stats.approved}</span><span className="loop-stat__label">已上线</span></div>
-        <div className="loop-stat loop-stat--err"><span className="loop-stat__num">{stats.failed}</span><span className="loop-stat__label">机器淘汰</span></div>
-      </div>
-      <h4 className="loop-tab__subtitle">候选详情</h4>
-      {stats.candidates.length === 0
-        ? <p className="admin-empty">暂无评测记录——先运行 /factory 生产候选</p>
-        : (
-          <table className="loop-table">
-            <thead>
-              <tr><th>Skill</th><th>机器判定</th><th>L1</th><th>L2通过率</th><th>信号准确率</th><th>异常</th><th>人审状态</th><th>人审备注</th></tr>
-            </thead>
-            <tbody>
-              {stats.candidates.map(c => (
-                <tr key={c.key} className={c.verdict === "fail" ? "loop-table__row--err" : c.review_status === "pending_human" ? "loop-table__row--warn" : ""}>
-                  <td><code>{c.key}</code><br /><small>{c.label ?? ""}</small></td>
-                  <td>{VERDICT_LABEL[c.verdict] ?? c.verdict}</td>
-                  <td>{c.l1_passed ? "✅" : "❌"}</td>
-                  <td>{(c.l2_rate * 100).toFixed(0)}%</td>
-                  <td>{(c.signal_accuracy * 100).toFixed(0)}%</td>
-                  <td>{c.error_count > 0 ? <span className="badge-err">{c.error_count}</span> : "—"}</td>
-                  <td>{STATUS_LABEL[c.review_status] ?? c.review_status}</td>
-                  <td><small>{c.review_notes ?? "—"}</small></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+    <div className="loop-health">
+      <p className="loop-tab__desc loop-health__intro">
+        系统在每次诊断后自动采集这两类信号，供运营调优路由与观察交付口碑。纯只读，不影响前台交付。案例沉淀分析见「案例库 → 洞察」。
+      </p>
+      <RoutingHealthSection />
+      <DeliveryQualitySection />
     </div>
   );
 }
 
-// ── L2 Router 健康 ────────────────────────────────────────────────────────────
-
-function L2Tab() {
+// 路由召回健康（每次诊断收口自动记录召回决策）
+function RoutingHealthSection() {
   const [stats, setStats] = useState<L2Stats | null>(null);
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => { fetchL2Stats().then(setStats).catch(e => setErr(String(e))); }, []);
 
-  if (err) return <div className="admin-empty">加载失败：{err}</div>;
+  if (err) return <div className="admin-empty">路由健康加载失败：{err}</div>;
   if (!stats) return <div className="admin-empty">加载中…</div>;
 
   const fpRate = (stats.keyword_false_positive_rate * 100).toFixed(0);
@@ -1156,8 +1115,8 @@ function L2Tab() {
 
   return (
     <div className="loop-tab">
-      <h3 className="loop-tab__title">Router 召回健康</h3>
-      <p className="loop-tab__desc">收集器在每次诊断后自动记录召回决策。样本攒够 50 条后可离线重训关键词权重。</p>
+      <h3 className="loop-tab__title">路由召回健康</h3>
+      <p className="loop-tab__desc">大脑每次诊断都会记录"选了哪些诊断域"。样本攒够后可离线复盘漏召回与误召回，校准关键词权重。</p>
       <div className="loop-stats-row">
         <div className="loop-stat"><span className="loop-stat__num">{stats.total_samples}</span><span className="loop-stat__label">样本总数</span></div>
         <div className={`loop-stat ${parseFloat(missRate) > 10 ? "loop-stat--err" : "loop-stat--ok"}`}>
@@ -1171,9 +1130,9 @@ function L2Tab() {
       {stats.recent_missed.length > 0 && (
         <div className="loop-alert">⚠️ 近期漏召回模块：{stats.recent_missed.join("、")}</div>
       )}
-      <h4 className="loop-tab__subtitle">各 Skill 召回频次</h4>
+      <h4 className="loop-tab__subtitle">各诊断域召回频次</h4>
       <table className="loop-table">
-        <thead><tr><th>Skill</th><th>召回次数</th><th>来源分布</th></tr></thead>
+        <thead><tr><th>诊断域</th><th>召回次数</th><th>来源分布</th></tr></thead>
         <tbody>
           {stats.skill_recall_frequency.map(s => (
             <tr key={s.module}>
@@ -1192,79 +1151,19 @@ function L2Tab() {
   );
 }
 
-// ── L3 案例飞轮 ───────────────────────────────────────────────────────────────
-
-function L3Tab() {
-  const [stats, setStats] = useState<L3Stats | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  useEffect(() => { fetchL3Stats().then(setStats).catch(e => setErr(String(e))); }, []);
-
-  if (err) return <div className="admin-empty">加载失败：{err}</div>;
-  if (!stats) return <div className="admin-empty">加载中…</div>;
-
-  return (
-    <div className="loop-tab">
-      <h3 className="loop-tab__title">案例飞轮资产</h3>
-      <p className="loop-tab__desc">每次诊断完成后自动脱敏归档。案例越多，系统对各行业理解越深——这是真护城河。</p>
-      <div className="loop-stats-row">
-        <div className="loop-stat"><span className="loop-stat__num">{stats.total_cases}</span><span className="loop-stat__label">脱敏案例总数</span></div>
-        <div className="loop-stat"><span className="loop-stat__num">{stats.industry_distribution.length}</span><span className="loop-stat__label">覆盖行业数</span></div>
-      </div>
-      <div className="loop-two-col">
-        <div>
-          <h4 className="loop-tab__subtitle">行业分布</h4>
-          {stats.industry_distribution.length === 0
-            ? <p className="admin-empty">暂无案例</p>
-            : (
-              <table className="loop-table">
-                <thead><tr><th>行业</th><th>案例数</th></tr></thead>
-                <tbody>
-                  {stats.industry_distribution.map(d => (
-                    <tr key={d.industry}><td>{d.industry}</td><td>{d.count}</td></tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-        </div>
-        <div>
-          <h4 className="loop-tab__subtitle">最近归档</h4>
-          {stats.recent_cases.length === 0
-            ? <p className="admin-empty">暂无归档</p>
-            : (
-              <table className="loop-table">
-                <thead><tr><th>行业</th><th>业务描述</th><th>召回 Skill</th><th>归档时间</th></tr></thead>
-                <tbody>
-                  {stats.recent_cases.map(c => (
-                    <tr key={c.id}>
-                      <td>{c.industry}</td>
-                      <td><small>{c.company_profile || "—"}</small></td>
-                      <td><small>{c.skills_used.join("、") || "—"}</small></td>
-                      <td><small>{c.created_at.slice(0, 16)}</small></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── L4 Composer 质量 ─────────────────────────────────────────────────────────
-
-function L4Tab() {
+// 交付质量（诊断交付量 + 老板对结论的评分反馈）
+function DeliveryQualitySection() {
   const [stats, setStats] = useState<L4Stats | null>(null);
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => { fetchL4Stats().then(setStats).catch(e => setErr(String(e))); }, []);
 
-  if (err) return <div className="admin-empty">加载失败：{err}</div>;
+  if (err) return <div className="admin-empty">交付质量加载失败：{err}</div>;
   if (!stats) return <div className="admin-empty">加载中…</div>;
 
   return (
     <div className="loop-tab">
-      <h3 className="loop-tab__title">Composer / 作战方案质量</h3>
-      <p className="loop-tab__desc">Composer 三层架构（骨架→LLM叙事改写→critic回退）的运行指标与用户反馈。</p>
+      <h3 className="loop-tab__title">交付质量</h3>
+      <p className="loop-tab__desc">作战室交付量与老板对结论的评分反馈。叙事改写若产出套话/编造，会回退到确定性原值。</p>
       <div className="loop-stats-row">
         <div className="loop-stat"><span className="loop-stat__num">{stats.total_diagnoses}</span><span className="loop-stat__label">总诊断次数</span></div>
         <div className="loop-stat"><span className="loop-stat__num">{stats.recent_feedback_count}</span><span className="loop-stat__label">近期反馈数</span></div>
@@ -1280,6 +1179,278 @@ function L4Tab() {
       {stats.recent_feedback_count === 0 && (
         <p className="admin-empty">暂无反馈——用户完成诊断并评分后这里会出现数据。</p>
       )}
+    </div>
+  );
+}
+
+// ── 案例库 ────────────────────────────────────────────────────────────────────
+// 台账=真实项目（跨用户，看有哪些项目/卡在哪）；洞察=脱敏聚合（反哺平台）。
+
+const CASE_SIGNAL_LABEL: Record<string, string> = { red: "🔴 高危", yellow: "🟡 关注", green: "🟢 健康", "": "—" };
+const DELIVERY_LABEL: Record<string, string> = {
+  approved: "已交付", pending_review: "审核中", rejected: "已打回", draft: "草稿", empty: "未出报告",
+};
+
+function CaseLibraryTab() {
+  const [view, setView] = useState<"ledger" | "insights">("ledger");
+  return (
+    <div className="case-lib">
+      <div className="case-lib__switch" role="tablist" aria-label="案例库视图">
+        <button type="button" role="tab" className={view === "ledger" ? "is-on" : ""} onClick={() => setView("ledger")}>项目台账</button>
+        <button type="button" role="tab" className={view === "insights" ? "is-on" : ""} onClick={() => setView("insights")}>案例洞察</button>
+      </div>
+      {view === "ledger" ? <LedgerView /> : <InsightsView />}
+    </div>
+  );
+}
+
+function LedgerView() {
+  const [data, setData] = useState<CaseProductGroups | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [filters, setFilters] = useState<CaseProjectFilters>({});
+  const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [detail, setDetail] = useState<CaseProjectDetail | null>(null);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    setData(null);
+    setErr(null);
+    fetchCaseProductGroups({ ...filters, q: deferredQuery || undefined })
+      .then(setData)
+      .catch((e) => setErr(String(e)));
+  }, [filters, deferredQuery]);
+
+  function open(id: string) {
+    setSelected(id);
+    setDetail(null);
+    fetchCaseProjectDetail(id).then(setDetail).catch((e) => setErr(String(e)));
+  }
+
+  if (err) return <div className="admin-empty">案例库加载失败：{err}</div>;
+
+  const groups = data?.groups ?? [];
+
+  return (
+    <div className="case-ledger">
+      <div className="case-ledger__toolbar">
+        <input
+          className="case-ledger__search"
+          placeholder="搜项目名 / 核心问题…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        <select
+          value={filters.industry ?? ""}
+          onChange={(e) => setFilters((f) => ({ ...f, industry: e.target.value || undefined }))}
+        >
+          <option value="">全部行业</option>
+          {(data?.industries ?? []).map((ind) => <option key={ind} value={ind}>{ind}</option>)}
+        </select>
+        <select
+          value={filters.signal ?? ""}
+          onChange={(e) => setFilters((f) => ({ ...f, signal: e.target.value || undefined }))}
+        >
+          <option value="">全部信号</option>
+          <option value="red">🔴 高危</option>
+          <option value="yellow">🟡 关注</option>
+          <option value="green">🟢 健康</option>
+        </select>
+        <select
+          value={filters.delivery_state ?? ""}
+          onChange={(e) => setFilters((f) => ({ ...f, delivery_state: e.target.value || undefined }))}
+        >
+          <option value="">全部交付态</option>
+          <option value="approved">已交付</option>
+          <option value="pending_review">审核中</option>
+          <option value="rejected">已打回</option>
+          <option value="empty">未出报告</option>
+        </select>
+        <select
+          value={filters.status ?? ""}
+          onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value || undefined }))}
+        >
+          <option value="">在用项目</option>
+          <option value="archived">已归档</option>
+          <option value="all">全部含归档</option>
+        </select>
+        <span className="case-ledger__count">{data ? `${data.total} 个项目` : "加载中…"}</span>
+      </div>
+
+      <div className="review-layout">
+        <aside className="case-ledger__list">
+          {data === null
+            ? <p className="admin-empty">加载中…</p>
+            : groups.length === 0
+              ? <p className="admin-empty">没有符合条件的项目</p>
+              : groups.map((g) => (
+                <div className="case-group" key={g.product}>
+                  <button
+                    type="button"
+                    className="case-group__head"
+                    onClick={() => setCollapsed((c) => ({ ...c, [g.product]: !c[g.product] }))}
+                  >
+                    <span className="case-group__chevron">{collapsed[g.product] ? "▸" : "▾"}</span>
+                    <span className="case-group__name">{g.product}</span>
+                    <span className="case-group__count">{g.count}</span>
+                  </button>
+                  {!collapsed[g.product] && g.modules.map((mg) => (
+                    <div className="case-subgroup" key={mg.module || "_none"}>
+                      <div className="case-subgroup__head">
+                        <span>{mg.module ? displayModuleLabel(mg.module) : "未诊断"}</span>
+                        <span className="case-subgroup__count">{mg.count}</span>
+                      </div>
+                      {mg.projects.map((it) => (
+                        <button
+                          type="button"
+                          key={it.id}
+                          className={`case-row ${selected === it.id ? "case-row--on" : ""}`}
+                          onClick={() => open(it.id)}
+                        >
+                          <span className={`case-row__dot case-row__dot--${it.latest_signal || "none"}`} aria-hidden="true" />
+                          <span className="case-row__name">{it.name}</span>
+                          <span className="case-row__meta">
+                            {DELIVERY_LABEL[it.delivery_state] ?? it.delivery_state}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              ))}
+        </aside>
+
+        <section className="case-ledger__detail">
+          {!selected
+            ? <p className="admin-empty">从左侧选一个项目查看详情</p>
+            : detail === null
+              ? <p className="admin-empty">加载中…</p>
+              : <CaseDetail detail={detail} />}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function CaseDetail({ detail }: { detail: CaseProjectDetail }) {
+  return (
+    <div className="case-detail">
+      <div className="case-detail__head">
+        <h3>{detail.name}</h3>
+        <span className="case-detail__sub">{detail.user_email} · {detail.industry || "未填行业"} · {detail.status === "archived" ? "已归档" : "在用"}</span>
+      </div>
+
+      <div className="case-detail__profile">
+        {detail.main_business && <div><span>主营业务</span><b>{detail.main_business}</b></div>}
+        {detail.core_problem && <div><span>核心问题</span><b>{detail.core_problem}</b></div>}
+        {detail.goal && <div><span>目标</span><b>{detail.goal}</b></div>}
+        <div><span>诊断次数</span><b>{detail.records.length}</b></div>
+        <div><span>外部证据</span><b>{detail.evidence_count} 条</b></div>
+        {detail.feedback.count > 0 && (
+          <div><span>反馈</span><b>{detail.feedback.avg_rating ?? "—"} 分 · 有用率 {detail.feedback.useful_rate !== null ? `${Math.round(detail.feedback.useful_rate * 100)}%` : "—"}</b></div>
+        )}
+      </div>
+
+      {(detail.war_room_summary || detail.war_room_objective) && (
+        <div className="case-detail__warroom">
+          <h4 className="loop-tab__subtitle">作战室摘要</h4>
+          {detail.war_room_objective && <p><b>目标：</b>{cleanSentenceText(detail.war_room_objective)}</p>}
+          {detail.war_room_summary && <p>{cleanSentenceText(detail.war_room_summary)}</p>}
+        </div>
+      )}
+
+      <h4 className="loop-tab__subtitle">诊断记录</h4>
+      {detail.records.length === 0
+        ? <p className="admin-empty">暂无诊断</p>
+        : detail.records.map((rec) => (
+          <div className="case-rec" key={rec.id}>
+            <div className="case-rec__head">
+              <span>{rec.created_at.slice(0, 16)}</span>
+              <span className="case-rec__status">{rec.review_status === "approved" ? "已交付" : rec.review_status === "pending_review" ? "审核中" : rec.review_status === "rejected" ? "已打回" : rec.review_status}</span>
+            </div>
+            {rec.signals.map((s) => (
+              <div className={`case-sig case-sig--${s.signal || "none"}`} key={s.module}>
+                <span className="case-sig__mod">{CASE_SIGNAL_LABEL[s.signal] ?? "—"} {displayModuleLabel(s.module)}</span>
+                <span className="case-sig__concl">{cleanSentenceText(s.conclusion)}</span>
+              </div>
+            ))}
+            {rec.consultant_notes.length > 0 && (
+              <ul className="case-rec__notes">
+                {rec.consultant_notes.map((n, i) => <li key={i}>顾问：{n}</li>)}
+              </ul>
+            )}
+          </div>
+        ))}
+    </div>
+  );
+}
+
+function InsightsView() {
+  const [ins, setIns] = useState<CaseInsights | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => { fetchCaseInsights().then(setIns).catch((e) => setErr(String(e))); }, []);
+
+  if (err) return <div className="admin-empty">案例洞察加载失败：{err}</div>;
+  if (!ins) return <div className="admin-empty">加载中…</div>;
+  if (ins.total_cases === 0) return <div className="admin-empty">暂无脱敏案例——用户完成诊断后这里会自动沉淀。</div>;
+
+  return (
+    <div className="case-insights">
+      <p className="loop-tab__desc">基于 {ins.total_cases} 个脱敏案例聚合（项目名已抹除、金额已模糊）。看需求结构与诊断质量，反哺该深耕哪些行业、优先升级哪块大脑。</p>
+
+      <h4 className="loop-tab__subtitle">需求结构</h4>
+      <div className="case-insights__grid">
+        <BarBlock title="行业分布" items={ins.industry_dist} />
+        <BarBlock title="主战场（诊断域）分布" items={ins.module_dist.map((d) => ({ label: displayModuleLabel(d.label), count: d.count }))} />
+        <BarBlock title="场景分布" items={ins.scenario_dist} />
+      </div>
+
+      <h4 className="loop-tab__subtitle">诊断质量</h4>
+      <div className="case-insights__grid">
+        <BarBlock title="信号分布" items={ins.signal_dist.map((d) => ({ label: CASE_SIGNAL_LABEL[d.label] ?? d.label, count: d.count }))} accent="var(--signal-red)" />
+        <div className="case-bars-block">
+          <h5>各域平均信心（低 = 优先升级）</h5>
+          {ins.avg_confidence_per_module.length === 0
+            ? <p className="admin-empty">暂无信心数据</p>
+            : (
+              <div className="case-bars">
+                {ins.avg_confidence_per_module.map((m) => (
+                  <div className="case-bar" key={m.module}>
+                    <span className="case-bar__label">{displayModuleLabel(m.module)}</span>
+                    <span className="case-bar__track"><span className="case-bar__fill" style={{ width: `${m.avg_confidence * 100}%` }} /></span>
+                    <span className="case-bar__num">{m.avg_confidence.toFixed(2)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+        </div>
+        <BarBlock title="最常缺的关键数据（反哺问卷）" items={ins.data_gaps_top.map((d) => ({ label: dataRequirementLabel(d.label), count: d.count }))} />
+      </div>
+    </div>
+  );
+}
+
+function BarBlock({ title, items, accent }: { title: string; items: CaseDistItem[]; accent?: string }) {
+  const max = Math.max(1, ...items.map((i) => i.count));
+  return (
+    <div className="case-bars-block">
+      <h5>{title}</h5>
+      {items.length === 0
+        ? <p className="admin-empty">暂无数据</p>
+        : (
+          <div className="case-bars">
+            {items.map((it) => (
+              <div className="case-bar" key={it.label}>
+                <span className="case-bar__label">{it.label}</span>
+                <span className="case-bar__track">
+                  <span className="case-bar__fill" style={{ width: `${(it.count / max) * 100}%`, background: accent }} />
+                </span>
+                <span className="case-bar__num">{it.count}</span>
+              </div>
+            ))}
+          </div>
+        )}
     </div>
   );
 }

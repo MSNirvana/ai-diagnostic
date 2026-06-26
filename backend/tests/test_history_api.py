@@ -32,7 +32,10 @@ def _register(email: str) -> str:
 def _diagnose(token: str) -> None:
     client.post(
         "/diagnose",
-        json={"answers": [{"module": "market", "facts": {"a": "b"}, "pains": ["x"]}]},
+        json={
+            "answers": [{"module": "market", "facts": {"a": "b"}, "pains": ["x"]}],
+            "request_review": True,   # 测审核门路径：显式请复核（审核现为可选默认不选）
+        },
         headers={"Authorization": f"Bearer {token}"},
     )
 

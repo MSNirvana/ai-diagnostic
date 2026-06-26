@@ -20,7 +20,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.database import get_session
 from app.db.models import CaseAsset, DiagnosisRecord, DiagnosisFeedback, RoutingSample
 
-router = APIRouter(prefix="/admin/loops")
+from app.auth.jwt import require_admin
+
+router = APIRouter(prefix="/admin/loops", dependencies=[Depends(require_admin)])
 
 CONFIGS_DIR = Path(__file__).parent.parent / "skills" / "configs"
 

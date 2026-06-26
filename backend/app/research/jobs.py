@@ -70,6 +70,7 @@ async def run_deep_diligence_job(
                     job_id=job.id,
                     project_id=job.project_id,
                     research_questions=research_questions,
+                    questionnaire=questionnaire,
                 )
                 evidence_rows = await list_job_evidence(session, job.id, limit=200)
                 research_evidence = render_evidence_for_prompt(evidence_rows)
@@ -88,7 +89,7 @@ async def run_deep_diligence_job(
                 outcome.triage,
                 outcome.skill_version_ids,
             )
-            war_room_plan = await enhance_war_room_plan(war_room_plan, outcome.results, llm)
+            war_room_plan = await enhance_war_room_plan(war_room_plan, outcome.results, llm, session)
             record_id, war_room_plan = await _save_job_history(
                 session,
                 job,
@@ -112,8 +113,13 @@ async def run_deep_diligence_job(
             await archive_case(session, questionnaire, outcome.results, outcome.triage, record_id)
 
             job.record_id = record_id
-            job.status = "pending_review" if record_id else "anonymous_complete"
-            job.current_step = "顾问审核中" if record_id else "诊断完成"
+            # 审核可选（默认不选）：默认诊断完成即出（completed，前端直接展示）；勾选请顾问复核才进 pending_review。
+            if record_id and questionnaire.request_review:
+                job.status, job.current_step = "pending_review", "顾问审核中"
+            elif record_id:
+                job.status, job.current_step = "completed", "诊断完成"
+            else:
+                job.status, job.current_step = "anonymous_complete", "诊断完成"
             job.progress = 1
             job.result_summary_json = json.dumps(
                 {
