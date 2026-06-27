@@ -127,7 +127,14 @@ restart_backend() {
   echo "[5/6] Restarting backend service..."
   local pip_cmd="true"
   if [[ "${SKIP_BACKEND_PIP:-0}" != "1" ]]; then
-    pip_cmd="cd '$REMOTE_APP_DIR/backend' && .venv/bin/pip install -e \".[dev]\" >/tmp/ai_diagnostic_pip.log 2>&1"
+    pip_cmd="cd '$REMOTE_APP_DIR/backend' \
+      && if [ -x .venv/bin/pip ]; then \
+        .venv/bin/pip install -e \".[dev]\" >/tmp/ai_diagnostic_pip.log 2>&1; \
+      elif .venv/bin/python -m pip --version >/dev/null 2>&1; then \
+        .venv/bin/python -m pip install -e \".[dev]\" >/tmp/ai_diagnostic_pip.log 2>&1; \
+      else \
+        echo '  - Remote venv pip not found; skipping backend pip install'; \
+      fi"
   fi
 
   sshpass -e ssh "$REMOTE_USER@$REMOTE_HOST" "
