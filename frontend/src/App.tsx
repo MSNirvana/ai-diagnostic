@@ -1,4 +1,6 @@
-import { Routes, Route, Navigate, useLocation, useParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Routes, Route, Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
+import { listProjects } from "./api/client";
 import { LoginPage } from "./components/Auth/LoginPage";
 import { ProtectedRoute } from "./components/Auth/ProtectedRoute";
 import { AdminRoute } from "./components/Auth/AdminRoute";
@@ -26,6 +28,51 @@ function ProjectDiagnoseRedirect() {
         newConversation: true,
       }}
     />
+  );
+}
+
+function HomeEntryPage() {
+  const navigate = useNavigate();
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    listProjects()
+      .then((projects) => {
+        if (!active) return;
+        const recentProject = [...projects]
+          .filter((project) => project.status !== "archived" && project.status !== "deleted")
+          .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0];
+        navigate(recentProject ? `/projects/${recentProject.id}` : "/projects", { replace: true });
+      })
+      .catch((e) => {
+        if (!active) return;
+        setError(e instanceof Error ? e.message : "项目加载失败");
+      });
+    return () => {
+      active = false;
+    };
+  }, [navigate]);
+
+  if (error) {
+    return (
+      <div className="home-entry-state">
+        <img src="/brand-logo.png" alt="" />
+        <h1>构造视界</h1>
+        <p>{error}</p>
+        <button type="button" onClick={() => navigate("/projects", { replace: true })}>
+          打开项目列表
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="home-entry-state">
+      <img src="/brand-logo.png" alt="" />
+      <h1>构造视界</h1>
+      <p>正在打开你的最近项目…</p>
+    </div>
   );
 }
 
@@ -78,7 +125,7 @@ export default function App() {
         path="/"
         element={
           <ProtectedRoute>
-            <Navigate to="/projects" replace />
+            <HomeEntryPage />
           </ProtectedRoute>
         }
       />

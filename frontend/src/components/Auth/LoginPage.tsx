@@ -16,7 +16,7 @@ export function LoginPage() {
   const returnTo = useMemo(() => {
     const from = (location.state as { from?: { pathname?: string; search?: string } } | null)?.from;
     if (from?.pathname) return `${from.pathname}${from.search ?? ""}`;
-    return "/projects";
+    return "/";
   }, [location.state]);
 
   if (isAuthenticated) {
@@ -68,19 +68,54 @@ export function LoginPage() {
   };
 
   return (
-    <div className="auth-wrap">
-      <div className="auth-backdrop" aria-hidden="true" />
+    <div className="auth-wrap auth-wrap--home">
+      <div className="auth-backdrop" aria-hidden="true">
+        <aside className="auth-home-sidebar">
+          <div className="auth-home-brand">
+            <span className="auth-home-logo">
+              <img src="/brand-logo.png" alt="" />
+            </span>
+            <div>
+              <small>构造视界项目</small>
+              <strong>经营增长诊断</strong>
+            </div>
+          </div>
+          <div className="auth-home-menu">
+            <span>＋ 新对话</span>
+            <span>□ 项目档案</span>
+            <span>⚑ 作战室</span>
+          </div>
+          <div className="auth-home-history">
+            <strong>对话记录</strong>
+            <span>渠道增长问题诊断</span>
+            <span>用户转化漏斗复盘</span>
+            <span>AI 改造路径推演</span>
+          </div>
+          <div className="auth-home-footer">项目列表</div>
+        </aside>
+        <section className="auth-home-main">
+          <h2>今天，你想解决什么？</h2>
+          <div className="auth-home-switch">
+            <span>AI咨询</span>
+            <span>头脑风暴</span>
+          </div>
+          <div className="auth-home-input">
+            <span>＋</span>
+            <em>输入消息...</em>
+            <strong>↑</strong>
+          </div>
+        </section>
+      </div>
       <div className="auth-card" role="dialog" aria-modal="true" aria-labelledby="auth-title">
-        <a
+        <button
           className="auth-close"
-          href="https://build.ggoo.ai"
-          target="_blank"
-          rel="noreferrer"
+          type="button"
+          onClick={() => navigate("/")}
           aria-label="关闭并打开构造视界官网"
           title="打开构造视界官网"
         >
           ×
-        </a>
+        </button>
         <div className="auth-logo" aria-hidden="true">
           <img src="/brand-logo.png" alt="" />
         </div>
