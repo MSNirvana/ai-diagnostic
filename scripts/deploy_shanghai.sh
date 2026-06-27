@@ -97,6 +97,8 @@ sync_backend() {
   ssh-keyscan -T 5 -t ed25519 "$REMOTE_HOST" 2>/dev/null >> "$HOME/.ssh/known_hosts" || true
   sshpass -e rsync -az ${RSYNC_DELETE_FLAG} \
     --exclude '.git' \
+    --exclude '.env' \
+    --exclude 'backend/.env' \
     --exclude 'backend/.venv' \
     --exclude 'backend/.pytest_cache' \
     --exclude 'frontend/node_modules' \
@@ -158,4 +160,3 @@ sync_backend
 sync_frontend
 restart_backend
 verify_remote
-
