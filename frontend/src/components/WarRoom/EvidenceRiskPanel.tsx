@@ -35,8 +35,13 @@ function DataGapItem({ gap }: { gap: DataRequest }) {
         <span className="data-gap-item__label">{gap.label}</span>
         {owner && <span className="data-gap-item__owner">通常由 {owner} 提供</span>}
       </div>
-      <button type="button" className="data-gap-item__copy" onClick={copyAsk}>
-        {copied ? "已复制 ✓" : "复制请求发给负责人"}
+      <button
+        type="button"
+        className={copied ? "data-gap-item__copy is-copied" : "data-gap-item__copy"}
+        onClick={copyAsk}
+      >
+        <span aria-hidden="true">{copied ? "✓" : "↗"}</span>
+        {copied ? "已复制" : "复制补资料链接"}
       </button>
     </div>
   );

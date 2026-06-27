@@ -20,6 +20,7 @@ from app.config import get_llm_client
 from app.auth.jwt import get_current_user, get_optional_user
 from app.db.models import BrainstormSession, IdeaCard, Project, ProjectMemoryEntry, User
 from app.llm.base import LLMClient
+from app.llm.fallback import FallbackLLMError
 from app.models.conversation import (
     ChatRequest,
     ChatMessage,
@@ -405,7 +406,10 @@ async def run_chat_turn(
     if data is None:
         detail = LLM_UNAVAILABLE_MESSAGE
         if last_error:
-            detail = f"{detail}（错误类型：{last_error.__class__.__name__}）"
+            if isinstance(last_error, FallbackLLMError):
+                detail = f"{detail}（已尝试通道：{'; '.join(last_error.failures)}）"
+            else:
+                detail = f"{detail}（错误类型：{last_error.__class__.__name__}）"
         raise HTTPException(
             status_code=503,
             detail=detail,
@@ -487,9 +491,14 @@ async def free_chat(
     try:
         message = (await llm.complete(system=system, prompt=prompt)).strip()
     except Exception as exc:
+        detail = (
+            f"{LLM_UNAVAILABLE_MESSAGE}（已尝试通道：{'; '.join(exc.failures)}）"
+            if isinstance(exc, FallbackLLMError)
+            else f"{LLM_UNAVAILABLE_MESSAGE}（错误类型：{exc.__class__.__name__}）"
+        )
         raise HTTPException(
             status_code=503,
-            detail=f"{LLM_UNAVAILABLE_MESSAGE}（错误类型：{exc.__class__.__name__}）",
+            detail=detail,
         ) from exc
     message = message or "我在，说一个你想风暴的点子，我们先把它拆开看看。"
     brainstorm_session_id = await _persist_brainstorm_turn(

@@ -12,6 +12,7 @@ from app.models.warroom import (
     WarRoomPlan,
 )
 from app.skills.skill_network import skill_label
+from app.warroom.research_enrichment import looks_like_placeholder_evidence
 
 OWNER_ROLES = {
     "market": "市场负责人",
@@ -563,8 +564,9 @@ def _split_evidence(result: ModuleResult) -> tuple[list[str], list[str]]:
         for benchmark in result.evidence_package.benchmarks:
             name = _clean_boss_text(benchmark.name, "外部基准")
             value = _clean_boss_text(benchmark.value, "")
-            if value:
-                external.append(f"{name}：{value}")
+            rendered = f"{name}：{value}" if value else ""
+            if rendered and not looks_like_placeholder_evidence(rendered):
+                external.append(rendered)
     return internal[:3], external[:3]
 
 

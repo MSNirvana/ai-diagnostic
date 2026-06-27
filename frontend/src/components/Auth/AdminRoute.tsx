@@ -1,4 +1,4 @@
-import { Navigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 import type { ReactNode } from "react";
 import { useAuth } from "../../auth/useAuth";
 import { useIsAdmin } from "../../auth/useIsAdmin";
@@ -8,8 +8,9 @@ import { useIsAdmin } from "../../auth/useIsAdmin";
 export function AdminRoute({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useAuth();
   const isAdmin = useIsAdmin();
+  const location = useLocation();
 
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (!isAuthenticated) return <Navigate to="/login" replace state={{ from: location }} />;
   if (isAdmin === null) {
     return <div style={{ padding: 40, color: "var(--ink-soft)" }}>校验权限中…</div>;
   }

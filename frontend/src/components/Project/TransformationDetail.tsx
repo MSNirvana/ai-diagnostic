@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import type { DomainTransformation } from "../../types";
 import { cleanDisplayText, cleanSentenceText } from "../../utils/displayText";
 import "./ProjectTransformationPage.css";
@@ -10,6 +10,12 @@ import "./ProjectTransformationPage.css";
 export function TransformationDetail({ item }: { item: DomainTransformation }) {
   const [open, setOpen] = useState(false);
   const canExpand = item.stages.length > 0 || Boolean(item.prereq_risk);
+  const rows = item.before_after.map((row, index) => ({
+    id: `${row.dimension}-${index}`,
+    dimension: cleanDisplayText(row.dimension, `改造维度 ${index + 1}`),
+    before: cleanSentenceText(row.before, "当前还没有稳定做法，需要先把基础动作和口径梳理清楚。"),
+    after: cleanSentenceText(row.after, "先把这个环节重做成可自动运行、可持续复盘的 AI 原生机制。"),
+  }));
 
   return (
     <article className="transform-theme transform-theme--embedded">
@@ -29,14 +35,15 @@ export function TransformationDetail({ item }: { item: DomainTransformation }) {
               <strong>把当前做法重做成 AI 原生打法</strong>
             </div>
             <div className="transform-ba">
+              <div className="transform-ba__col-head transform-ba__col-head--dim">维度</div>
               <div className="transform-ba__col-head transform-ba__col-head--before">现在</div>
               <div className="transform-ba__col-head transform-ba__col-head--after">AI 改造后</div>
-              {item.before_after.map((row, i) => (
-                <div className="transform-ba__row" key={`${row.dimension}-${i}`}>
-                  <div className="transform-ba__dim">{cleanDisplayText(row.dimension, "")}</div>
-                  <div className="transform-ba__before">{cleanSentenceText(row.before, "")}</div>
-                  <div className="transform-ba__after">{cleanSentenceText(row.after, "")}</div>
-                </div>
+              {rows.map((row) => (
+                <Fragment key={row.id}>
+                  <div className="transform-ba__cell transform-ba__cell--dim">{row.dimension}</div>
+                  <p className="transform-ba__cell transform-ba__cell--before">{row.before}</p>
+                  <p className="transform-ba__cell transform-ba__cell--after">{row.after}</p>
+                </Fragment>
               ))}
             </div>
           </section>

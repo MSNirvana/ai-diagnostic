@@ -1,7 +1,7 @@
 import { type ChangeEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { addArchiveModule, confirmArchiveFileExtraction, createDiagnosisJob, deleteSessionFile, downloadSessionFile, extractArchiveFile, fetchRecord, getBrainstormSession, getDiagnosisJob, getLatestDiagnosisJobForSession, getProject, getProjectEvidence, getSessionFileBlob, hideArchiveModule, patchProject, sendBrainstormMessage, startSession, uploadSessionFile, viewSessionFile } from "../../api/client";
+import { addArchiveModule, confirmArchiveFileExtraction, createDiagnosisJob, deleteSessionFile, downloadSessionFile, extractArchiveFile, fetchRecord, getBrainstormSession, getDiagnosisJob, getLatestDiagnosisJobForSession, getProject, getProjectEvidence, getSessionFileBlob, hideArchiveModule, listBrainstormSessions, patchProject, sendBrainstormMessage, startSession, uploadSessionFile, viewSessionFile } from "../../api/client";
 import { EvidencePackPanel } from "../Evidence/EvidencePackPanel";
 import { Questionnaire } from "../Questionnaire/Questionnaire";
 import type { ProjectChatMode, UploadedChatFile } from "../Questionnaire/ChatStep";
@@ -1268,6 +1268,11 @@ export function ProjectDetailPage() {
               : [item, ...(current.brainstorm_sessions ?? [])],
           };
         });
+        listBrainstormSessions(project.id)
+          .then((items) => {
+            setProject((current) => current ? { ...current, brainstorm_sessions: items } : current);
+          })
+          .catch(() => {});
         if (!brainstormIdFromQuery) {
           justSavedBrainstormIdRef.current = savedBrainstormId;
           navigate(`/projects/${project.id}?page=brainstorm&brainstormId=${savedBrainstormId}`, {

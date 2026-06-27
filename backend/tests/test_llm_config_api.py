@@ -1,5 +1,6 @@
 """LLM 配置 CRUD 端点测试（含 key 脱敏）。"""
 from fastapi.testclient import TestClient
+from unittest.mock import AsyncMock, patch
 
 from app.main import app
 
@@ -20,6 +21,8 @@ def test_create_list_config_masks_key(db_session):
     rows = client.get("/admin/llm-configs/").json()
     assert len(rows) == 1
     assert rows[0]["name"] == "主力"
+    assert rows[0]["runtime_status"] == "unknown"
+    assert rows[0]["cooldown_remaining_seconds"] == 0
 
 
 def test_patch_config(db_session):
@@ -77,3 +80,22 @@ def test_db_config_drives_get_llm_client(db_session):
     llm = asyncio.get_event_loop().run_until_complete(build())
     # 两条配置 → 包成 FallbackLLMClient
     assert isinstance(llm, FallbackLLMClient)
+
+
+def test_probe_config_returns_runtime_result(db_session):
+    cid = client.post("/admin/llm-configs/", json={
+        "name": "探针", "provider": "openai", "model": "gpt-5.5", "api_key": "k1234",
+        "base_url": "https://api.example.com", "priority": 0,
+    }).json()["id"]
+
+    fake_client = AsyncMock()
+    fake_client.complete = AsyncMock(return_value="OK")
+
+    with patch("app.api.admin_llm.make_llm_client", return_value=fake_client):
+        resp = client.post(f"/admin/llm-configs/{cid}/probe")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert "连通成功" in body["message"]
+    assert body["config"]["id"] == cid

@@ -21,12 +21,28 @@
     linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(240, 247, 252, 0.76));
 }
 
-.public-supplement__hero span,
+.public-supplement__hero > span,
+.public-supplement__card > .public-supplement__brand,
 .public-supplement__section-title span {
   color: var(--accent);
   font-size: 0.76rem;
   font-weight: 900;
   letter-spacing: 0.12em;
+}
+
+.public-supplement__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.public-supplement__brand img {
+  width: 26px;
+  height: 26px;
+  border-radius: 9px;
+  background: #fff;
+  object-fit: contain;
+  box-shadow: 0 8px 18px rgba(18, 21, 26, 0.08);
 }
 
 .public-supplement__hero h1,

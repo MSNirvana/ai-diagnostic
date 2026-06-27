@@ -1524,7 +1524,15 @@ function InlineDataNeeds({
                   <span>{item.typical_owner ? `通常找 ${item.typical_owner}` : "负责人待确认"}</span>
                   <h4>{cleanDisplayText(item.label, "待补资料")}</h4>
                 </div>
-                <button type="button" onClick={() => void copyRequest(item)} disabled={busyKey === item.key}>
+                <button
+                  type="button"
+                  className={copiedKey === item.key ? "data-needs-card__copy is-copied" : "data-needs-card__copy"}
+                  onClick={() => void copyRequest(item)}
+                  disabled={busyKey === item.key}
+                >
+                  <span aria-hidden="true">
+                    {busyKey === item.key ? "…" : copiedKey === item.key ? "✓" : "↗"}
+                  </span>
                   {busyKey === item.key ? "生成中..." : copiedKey === item.key ? "已复制链接" : "复制补资料链接"}
                 </button>
               </div>

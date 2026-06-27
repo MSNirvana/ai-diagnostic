@@ -14,7 +14,7 @@
 .command-center,
 .proj-create-panel,
 .portfolio-board {
-  border: 1px solid rgba(151, 164, 184, 0.22);
+  border: 1px solid rgba(18, 21, 26, 0.08);
   border-radius: var(--radius-xl);
   background: var(--surface-glass);
   box-shadow: var(--shadow);
@@ -28,8 +28,8 @@
   padding: clamp(24px, 4vw, 42px);
   overflow: hidden;
   background:
-    radial-gradient(circle at 92% 0%, rgba(179, 139, 77, 0.14), transparent 28%),
-    linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(236, 246, 252, 0.82));
+    radial-gradient(circle at 92% 0%, rgba(116, 179, 132, 0.15), transparent 26%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(247, 242, 233, 0.88));
 }
 
 .command-center__copy {
@@ -69,10 +69,10 @@
   width: 100%;
   margin: 0 auto;
   padding: 10px;
-  border: 1px solid rgba(14, 74, 125, 0.24);
+  border: 1px solid rgba(var(--accent-rgb), 0.18);
   border-radius: 26px;
   background: rgba(255, 255, 255, 0.88);
-  box-shadow: 0 18px 48px rgba(14, 74, 125, 0.1);
+  box-shadow: 0 18px 48px rgba(18, 21, 26, 0.08);
 }
 
 .command-input textarea {
@@ -117,7 +117,7 @@
   display: grid;
   gap: 5px;
   min-height: 82px;
-  border: 1px solid rgba(151, 164, 184, 0.22);
+  border: 1px solid rgba(18, 21, 26, 0.08);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.74);
   color: var(--ink);
@@ -128,7 +128,7 @@
 }
 
 .command-card:hover {
-  border-color: rgba(14, 74, 125, 0.36);
+  border-color: rgba(var(--accent-rgb), 0.22);
   background: #fff;
   box-shadow: var(--shadow-sm);
   transform: translateY(-2px);
@@ -180,7 +180,7 @@
   flex: 1;
   min-width: 0;
   padding: 12px 15px;
-  border: 1px solid rgba(151, 164, 184, 0.28);
+  border: 1px solid rgba(18, 21, 26, 0.1);
   border-radius: 999px;
   background: var(--surface-raised);
   color: var(--ink);
@@ -225,7 +225,7 @@
   flex-shrink: 0;
   gap: 6px;
   padding: 5px;
-  border: 1px solid rgba(151, 164, 184, 0.2);
+  border: 1px solid rgba(18, 21, 26, 0.08);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.66);
 }
@@ -257,11 +257,11 @@
   width: 100%;
   margin-bottom: 14px;
   overflow: hidden;
-  border: 1px solid rgba(14, 74, 125, 0.2);
+  border: 1px solid rgba(var(--accent-rgb), 0.12);
   border-radius: 24px;
   background:
-    radial-gradient(circle at 90% 0%, rgba(179, 139, 77, 0.16), transparent 28%),
-    linear-gradient(135deg, rgba(230, 242, 252, 0.88), rgba(255, 255, 255, 0.92));
+    radial-gradient(circle at 90% 0%, rgba(116, 179, 132, 0.16), transparent 24%),
+    linear-gradient(135deg, rgba(250, 247, 241, 0.96), rgba(255, 255, 255, 0.92));
   box-shadow: var(--shadow-sm);
   color: var(--ink);
   cursor: pointer;
@@ -271,7 +271,7 @@
 }
 
 .portfolio-spotlight:hover {
-  border-color: rgba(14, 74, 125, 0.34);
+  border-color: rgba(var(--accent-rgb), 0.2);
   box-shadow: var(--shadow);
   transform: translateY(-2px);
 }
@@ -335,12 +335,12 @@
   justify-content: center;
   min-height: 40px;
   border-radius: 999px;
-  background: linear-gradient(135deg, var(--accent), #1b6e9b);
+  background: linear-gradient(135deg, #173f29, var(--accent), var(--accent-glow));
   color: #fff;
   font-size: 0.88rem;
   font-weight: 900;
   padding: 0 18px;
-  box-shadow: 0 14px 28px rgba(14, 74, 125, 0.16);
+  box-shadow: 0 14px 28px rgba(var(--accent-rgb), 0.18);
 }
 
 .proj-list {
@@ -355,9 +355,9 @@
   align-items: center;
   width: 100%;
   min-height: 74px;
-  border: 1px solid rgba(151, 164, 184, 0.2);
+  border: 1px solid rgba(18, 21, 26, 0.08);
   border-radius: 20px;
-  background: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.76);
   color: var(--ink);
   padding: 13px 16px;
   text-align: left;

@@ -125,7 +125,7 @@ def _benchmark_refs(module: str, benchmark: dict) -> list[BenchmarkReference]:
     return [
         BenchmarkReference(
             name=f"{module} 外部基准",
-            source="AI Diagnostic benchmark stub" if _benchmark_quality(benchmark) == "placeholder" else "外部基准数据",
+            source="构造视界基准占位数据" if _benchmark_quality(benchmark) == "placeholder" else "外部基准数据",
             value=rendered,
         )
     ]

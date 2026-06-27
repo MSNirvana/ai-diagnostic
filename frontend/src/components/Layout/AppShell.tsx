@@ -7,15 +7,21 @@ interface AppShellProps {
   title?: string;
   description?: string;
   actions?: ReactNode;
+  showBrandMark?: boolean;
 }
 
-export function AppShell({ children, eyebrow, title, description, actions }: AppShellProps) {
+export function AppShell({ children, eyebrow, title, description, actions, showBrandMark = true }: AppShellProps) {
   return (
     <div className="app-shell">
       <div className="app-shell__content">
         {(title || description || actions) && (
           <section className="page-hero">
             <div>
+              {showBrandMark && (
+                <span className="page-hero__brand" aria-hidden="true">
+                  <img src="/brand-logo.png" alt="" />
+                </span>
+              )}
               {eyebrow && <span className="page-hero__eyebrow">{eyebrow}</span>}
               {title && <h1>{title}</h1>}
               {description && <p>{description}</p>}

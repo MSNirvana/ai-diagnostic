@@ -57,7 +57,10 @@ export function PublicSupplementPage() {
     return (
       <main className="public-supplement">
         <section className="public-supplement__card public-supplement__empty">
-          <span>睿策视界</span>
+          <span className="public-supplement__brand">
+            <img src="/brand-logo.png" alt="" />
+            构造视界
+          </span>
           <h1>补资料链接不可用</h1>
           <p>{error || "这个链接不存在或已经失效，请联系项目负责人重新发送。"}</p>
         </section>
@@ -68,7 +71,10 @@ export function PublicSupplementPage() {
   return (
     <main className="public-supplement">
       <section className="public-supplement__hero">
-        <span>睿策视界 · 资料补充</span>
+        <span className="public-supplement__brand">
+          <img src="/brand-logo.png" alt="" />
+          构造视界 · 资料补充
+        </span>
         <h1>{request.label}</h1>
         <p>{request.reason || "请补充与这个事项相关的资料或说明。"}</p>
         <div className="public-supplement__meta">

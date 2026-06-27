@@ -1,71 +1,95 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useMemo, useState } from "react";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { login as apiLogin, register as apiRegister } from "../../api/client";
 import { useAuth } from "../../auth/useAuth";
 import "./LoginPage.css";
 
-type Mode = "login" | "register";
-
 export function LoginPage() {
   const navigate = useNavigate();
-  const { login } = useAuth();
-  const [mode, setMode] = useState<Mode>("login");
+  const location = useLocation();
+  const { login, isAuthenticated } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const returnTo = useMemo(() => {
+    const from = (location.state as { from?: { pathname?: string; search?: string } } | null)?.from;
+    if (from?.pathname) return `${from.pathname}${from.search ?? ""}`;
+    return "/projects";
+  }, [location.state]);
 
-  const switchMode = (m: Mode) => {
-    setMode(m);
-    setError(null);
-  };
+  if (isAuthenticated) {
+    return <Navigate to={returnTo} replace />;
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (mode === "register" && password.length < 6) {
+    setStatus(null);
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) {
+      setError("请输入邮箱");
+      return;
+    }
+    if (password.length < 6) {
       setError("密码至少 6 位");
       return;
     }
     setLoading(true);
     try {
-      const token =
-        mode === "login"
-          ? await apiLogin(email, password)
-          : await apiRegister(email, password);
+      setStatus("正在登录...");
+      const token = await apiLogin(normalizedEmail, password);
       login(token);
-      navigate("/projects");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "操作失败");
+      navigate(returnTo, { replace: true });
+    } catch (loginError) {
+      const message = loginError instanceof Error ? loginError.message : "登录失败";
+      if (!message.includes("邮箱或密码错误")) {
+        setError(message);
+        return;
+      }
+      try {
+        setStatus("首次使用中，正在自动创建账号...");
+        const token = await apiRegister(normalizedEmail, password);
+        login(token);
+        navigate(returnTo, { replace: true });
+      } catch (registerError) {
+        const registerMessage = registerError instanceof Error ? registerError.message : "注册失败";
+        if (registerMessage.includes("该邮箱已注册")) {
+          setError("该邮箱已存在，请检查密码后重试。");
+        } else {
+          setError(registerMessage);
+        }
+      }
     } finally {
+      setStatus(null);
       setLoading(false);
     }
   };
 
   return (
     <div className="auth-wrap">
-      <div className="auth-card">
-        <div className="auth-logo">RC</div>
-        <h1 className="auth-title">睿策视界</h1>
-        <p className="auth-subtitle">以项目为核心沉淀诊断、证据与复诊记忆</p>
-
-        <div className="auth-tabs">
-          <button
-            type="button"
-            className={`auth-tab ${mode === "login" ? "is-active" : ""}`}
-            onClick={() => switchMode("login")}
-          >
-            登录
-          </button>
-          <button
-            type="button"
-            className={`auth-tab ${mode === "register" ? "is-active" : ""}`}
-            onClick={() => switchMode("register")}
-          >
-            注册
-          </button>
+      <div className="auth-backdrop" aria-hidden="true" />
+      <div className="auth-card" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+        <a
+          className="auth-close"
+          href="https://build.ggoo.ai"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="关闭并打开构造视界官网"
+          title="打开构造视界官网"
+        >
+          ×
+        </a>
+        <div className="auth-logo" aria-hidden="true">
+          <img src="/brand-logo.png" alt="" />
         </div>
-
+        <h1 className="auth-title" id="auth-title">构造视界</h1>
+        <p className="auth-subtitle">一个账号，进入项目、作战室与长期档案。</p>
+        <div className="auth-banner">
+          <span className="auth-banner__icon" aria-hidden="true">✦</span>
+          <span>邮箱登录 / 注册一体化，首次使用会自动创建账号</span>
+        </div>
         <form className="auth-form" onSubmit={handleSubmit}>
           <label className="auth-label">
             邮箱
@@ -75,6 +99,7 @@ export function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="email"
+              placeholder="name@company.com"
               required
             />
           </label>
@@ -85,16 +110,16 @@ export function LoginPage() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              autoComplete={mode === "login" ? "current-password" : "new-password"}
+              autoComplete="current-password"
+              placeholder="至少 6 位"
               required
             />
           </label>
-          {mode === "register" && (
-            <p className="auth-hint">密码至少 6 位</p>
-          )}
+          <p className="auth-hint">如果这是新邮箱，提交后会直接完成注册并登录。</p>
+          {status && <p className="auth-status">{status}</p>}
           {error && <p className="auth-error">{error}</p>}
           <button className="auth-submit" type="submit" disabled={loading}>
-            {loading ? "处理中…" : mode === "login" ? "登录" : "注册"}
+            {loading ? "处理中…" : "登录 / 注册"}
           </button>
         </form>
       </div>

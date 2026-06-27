@@ -639,6 +639,12 @@ export interface LLMConfigOut {
   base_url: string;
   priority: number;
   is_active: boolean;
+  runtime_status: string;
+  cooldown_remaining_seconds: number;
+  last_error: string;
+  last_error_type: string;
+  failure_count: number;
+  success_count: number;
 }
 
 export interface UploadedFileOut {

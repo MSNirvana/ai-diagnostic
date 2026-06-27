@@ -9,6 +9,7 @@ import {
   createLLMConfig,
   deleteLLMConfig,
   patchLLMConfig,
+  probeLLMConfig,
   fetchL2Stats,
   fetchL4Stats,
   fetchReviewQueue,
@@ -504,6 +505,7 @@ function ModelsTab() {
   const [configs, setConfigs] = useState<LLMConfigOut[] | null>(null);
   const [form, setForm] = useState({ name: "", provider: "anthropic", model: "", api_key: "", base_url: "", priority: 0 });
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [probingId, setProbingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({
     name: "",
     provider: "anthropic",
@@ -539,9 +541,38 @@ function ModelsTab() {
     load();
   };
 
+  const probe = async (config: LLMConfigOut) => {
+    setProbingId(config.id);
+    try {
+      const result = await probeLLMConfig(config.id);
+      setMsg(`${config.name}：${result.message}`);
+      setConfigs((current) => current?.map((item) => item.id === config.id ? result.config : item) ?? null);
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "测试失败");
+    } finally {
+      setProbingId(null);
+    }
+  };
+
   const toggle = async (c: LLMConfigOut) => {
     await patchLLMConfig(c.id, { is_active: !c.is_active });
     load();
+  };
+
+  const channelStatusLabel = (config: LLMConfigOut) => {
+    if (!config.is_active) return "已停用";
+    if (config.runtime_status === "healthy") return "可用";
+    if (config.runtime_status === "cooldown") return `冷却中 ${config.cooldown_remaining_seconds}s`;
+    if (config.runtime_status === "degraded") return "最近失败";
+    return "待验证";
+  };
+
+  const channelStatusClass = (config: LLMConfigOut) => {
+    if (!config.is_active) return "admin-config__status admin-config__status--off";
+    if (config.runtime_status === "healthy") return "admin-config__status admin-config__status--healthy";
+    if (config.runtime_status === "cooldown") return "admin-config__status admin-config__status--cooldown";
+    if (config.runtime_status === "degraded") return "admin-config__status admin-config__status--degraded";
+    return "admin-config__status admin-config__status--unknown";
   };
 
   const startEdit = (c: LLMConfigOut) => {
@@ -697,12 +728,23 @@ function ModelsTab() {
                     {c.name} <em className="admin-config__pri">优先级 {c.priority}</em>
                     {!c.is_active && <em className="admin-config__off">已停用</em>}
                   </span>
+                  <span className={channelStatusClass(c)}>{channelStatusLabel(c)}</span>
                   <span className="admin-config__meta">
                     {c.provider} · {c.model} · {c.api_key_masked}
                     {c.base_url ? ` · ${c.base_url}` : ""}
                   </span>
+                  {(c.last_error || c.failure_count > 0 || c.success_count > 0) && (
+                    <span className="admin-config__runtime">
+                      {c.last_error
+                        ? `最近错误：${c.last_error_type || "Error"} · ${c.last_error}`
+                        : `成功 ${c.success_count} 次 · 失败 ${c.failure_count} 次`}
+                    </span>
+                  )}
                 </div>
                 <div className="admin-config__actions">
+                  <button type="button" className="admin-mini" onClick={() => probe(c)} disabled={probingId === c.id}>
+                    {probingId === c.id ? "测试中…" : "测试"}
+                  </button>
                   <button type="button" className="admin-mini" onClick={() => startEdit(c)}>
                     编辑
                   </button>

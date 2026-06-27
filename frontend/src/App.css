@@ -1,7 +1,7 @@
 .state-note {
   margin: 0 0 18px;
   padding: 14px 16px;
-  border: 1px solid rgba(14, 74, 125, 0.14);
+  border: 1px solid rgba(var(--accent-rgb), 0.12);
   border-radius: var(--radius);
   background: rgba(255, 255, 255, 0.76);
   color: var(--ink-soft);
@@ -53,7 +53,7 @@
 .result-view-switch__active {
   background: var(--accent) !important;
   color: #fff !important;
-  box-shadow: 0 10px 22px rgba(14, 74, 125, 0.18);
+  box-shadow: 0 10px 22px rgba(var(--accent-rgb), 0.18);
 }
 
 @media (max-width: 720px) {

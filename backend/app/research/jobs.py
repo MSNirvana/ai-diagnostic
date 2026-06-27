@@ -16,6 +16,7 @@ from app.memory.archive_refiner import refine_questionnaire_archive
 from app.orchestrator.dispatcher import diagnose_all
 from app.warroom.composer import compose_war_room_plan
 from app.warroom.enhancer import enhance_war_room_plan
+from app.warroom.research_enrichment import enrich_record_war_room_plan_with_research
 from app.api.diagnose import _link_session, _merge_stored_files
 
 from . import engine, supplement
@@ -101,6 +102,13 @@ async def run_deep_diligence_job(
             if record_id:
                 await attach_evidence_to_record(session, job_id=job.id, record_id=record_id)
                 evidence_rows = await list_job_evidence(session, job.id, limit=200)
+                enriched_plan = await enrich_record_war_room_plan_with_research(
+                    session,
+                    record_id=record_id,
+                    research_rows=evidence_rows,
+                )
+                if enriched_plan is not None:
+                    war_room_plan = enriched_plan
             await refine_questionnaire_archive(
                 session,
                 project_id=questionnaire.project_id,
@@ -160,10 +168,24 @@ async def _update_job(
 async def _mark_failed(session: AsyncSession, job: DiagnosisJob, exc: Exception) -> None:
     job.status = "failed"
     job.current_step = "任务失败"
-    job.error = f"{exc.__class__.__name__}: {exc}"
+    job.error = _user_facing_job_error(exc)
     job.updated_at = utc_now()
     session.add(job)
     await session.commit()
+
+
+def _user_facing_job_error(exc: Exception) -> str:
+    message = str(exc).replace("\n", " ").strip()
+    lowered = message.lower()
+    if "fallbackllmerror" in lowered or "模型通道暂时不可用" in message:
+        return "当前模型通道暂时不可用，请在后台测试并切换到可用通道后重试。"
+    if "blocked" in lowered or "permissiondeniederror" in lowered:
+        return "当前模型通道被网关拦截，请在后台测试该通道或切换备用通道。"
+    if "service temporarily unavailable" in lowered or "[503]" in lowered:
+        return "当前模型服务暂时不可用，请稍后重试或切换备用通道。"
+    if "timeout" in lowered:
+        return "当前模型通道响应超时，请稍后重试或切换备用通道。"
+    return "诊断方案生成失败，请稍后重试。"
 
 
 async def _mark_research_unavailable(session: AsyncSession, job: DiagnosisJob, research_brief) -> None:

@@ -8,7 +8,7 @@
   width: fit-content;
   gap: 6px;
   padding: 6px;
-  border: 1px solid rgba(151, 164, 184, 0.24);
+  border: 1px solid rgba(18, 21, 26, 0.08);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.72);
   box-shadow: var(--shadow-sm);
@@ -28,14 +28,14 @@
 }
 
 .admin-tab:hover {
-  background: rgba(14, 74, 125, 0.07);
+  background: rgba(var(--accent-rgb), 0.07);
   color: var(--accent);
 }
 
 .admin-tab--on {
-  background: linear-gradient(135deg, var(--accent), #1b6e9b);
+  background: linear-gradient(135deg, #173f29, var(--accent), var(--accent-glow));
   color: #fff;
-  box-shadow: 0 12px 24px rgba(14, 74, 125, 0.18);
+  box-shadow: 0 12px 24px rgba(var(--accent-rgb), 0.18);
 }
 
 .admin-muted,
@@ -65,7 +65,7 @@
 .admin-editor,
 .admin-config-form,
 .admin-config-list {
-  border: 1px solid rgba(151, 164, 184, 0.26);
+  border: 1px solid rgba(18, 21, 26, 0.08);
   border-radius: var(--radius-xl);
   background: var(--surface-glass);
   box-shadow: var(--shadow);
@@ -130,9 +130,9 @@
   justify-content: center;
   min-width: 72px;
   height: 38px;
-  border: 1px solid rgba(151, 164, 184, 0.22);
+  border: 1px solid rgba(18, 21, 26, 0.08);
   border-radius: 999px;
-  background: rgba(244, 248, 252, 0.72);
+  background: rgba(245, 240, 232, 0.72);
   color: var(--ink-muted);
   font-family: var(--font-mono);
   font-size: 0.76rem;
@@ -149,10 +149,10 @@
   display: grid;
   gap: 2px;
   min-width: 0;
-  border: 1px solid rgba(14, 74, 125, 0.12);
+  border: 1px solid rgba(var(--accent-rgb), 0.1);
   border-radius: 14px;
   background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.78), rgba(230, 242, 252, 0.46));
+    linear-gradient(135deg, rgba(255, 255, 255, 0.82), rgba(242, 247, 243, 0.58));
   color: var(--ink-muted);
   font-size: 0.72rem;
   font-weight: 800;
@@ -184,7 +184,7 @@
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 6px;
-  border: 1px solid rgba(14, 74, 125, 0.14);
+  border: 1px solid rgba(var(--accent-rgb), 0.12);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.7);
   color: var(--ink-soft);
@@ -206,7 +206,7 @@
 
 .admin-skill-filter:hover,
 .admin-skill-filter--on {
-  border-color: rgba(14, 74, 125, 0.34);
+  border-color: rgba(var(--accent-rgb), 0.26);
   background: var(--accent);
   color: #fff;
 }
@@ -219,7 +219,7 @@
 .admin-search {
   width: 100%;
   min-height: 38px;
-  border: 1px solid rgba(151, 164, 184, 0.28);
+  border: 1px solid rgba(18, 21, 26, 0.1);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.76);
   color: var(--ink);
@@ -228,7 +228,7 @@
 }
 
 .admin-search:focus {
-  border-color: rgba(14, 74, 125, 0.48);
+  border-color: rgba(var(--accent-rgb), 0.36);
   box-shadow: var(--focus-ring);
   outline: none;
 }
@@ -237,7 +237,7 @@
   max-height: calc(100vh - 270px);
   min-height: 360px;
   overflow: auto;
-  border: 1px solid rgba(151, 164, 184, 0.2);
+  border: 1px solid rgba(18, 21, 26, 0.08);
   border-radius: var(--radius-lg);
   background: rgba(255, 255, 255, 0.56);
 }
@@ -758,6 +758,41 @@
   font-weight: 800;
 }
 
+.admin-config__status {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.admin-config__status--healthy {
+  background: rgba(45, 138, 88, 0.12);
+  color: #1f7b4a;
+}
+
+.admin-config__status--cooldown {
+  background: rgba(189, 134, 24, 0.14);
+  color: #8a6410;
+}
+
+.admin-config__status--degraded {
+  background: rgba(191, 82, 57, 0.12);
+  color: #b24a2b;
+}
+
+.admin-config__status--off {
+  background: rgba(151, 164, 184, 0.16);
+  color: var(--ink-soft);
+}
+
+.admin-config__status--unknown {
+  background: rgba(47, 95, 224, 0.08);
+  color: var(--accent);
+}
+
 .admin-config__pri {
   background: var(--gold-light);
   color: #775922;
@@ -774,6 +809,12 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.admin-config__runtime {
+  color: var(--ink-soft);
+  font-size: 0.77rem;
+  line-height: 1.45;
 }
 
 .admin-config__actions {

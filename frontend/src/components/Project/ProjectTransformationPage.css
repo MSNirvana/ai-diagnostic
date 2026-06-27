@@ -240,7 +240,7 @@
 
 .transform-hero__anchors li {
   padding-left: 12px;
-  border-left: 2px solid rgba(14, 74, 125, 0.16);
+  border-left: 2px solid rgba(var(--accent-rgb), 0.16);
   color: var(--ink);
   font-size: 0.9rem;
   line-height: 1.58;
@@ -250,9 +250,9 @@
   display: grid;
   gap: 12px;
   padding: 15px 16px;
-  border: 1px solid rgba(151, 164, 184, 0.14);
+  border: 1px solid rgba(18, 21, 26, 0.08);
   border-radius: 18px;
-  background: rgba(247, 250, 253, 0.84);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(246, 241, 233, 0.82));
 }
 
 .transform-theme__panel--implementation {
@@ -283,7 +283,7 @@
   display: grid;
   gap: 14px;
   padding: 20px 22px;
-  border: 1px solid rgba(151, 164, 184, 0.18);
+  border: 1px solid rgba(18, 21, 26, 0.08);
   border-radius: 24px;
   background: rgba(255, 255, 255, 0.88);
   box-shadow: var(--shadow-sm);
@@ -310,7 +310,7 @@
   min-height: 28px;
   padding: 0 10px;
   border-radius: 999px;
-  background: rgba(14, 74, 125, 0.1);
+  background: rgba(var(--accent-rgb), 0.1);
   color: var(--accent);
   font-family: var(--font-mono);
   font-size: 0.74rem;
@@ -318,73 +318,123 @@
 }
 
 .transform-theme__head h3 {
-  margin: 6px 0 0;
+  margin: 0;
   color: var(--ink);
   font-family: var(--font-display);
-  font-size: 1.06rem;
-  line-height: 1.35;
+  font-size: 1.08rem;
+  line-height: 1.42;
 }
 
 .transform-ba {
   display: grid;
-  grid-template-columns: 110px minmax(0, 1fr) minmax(0, 1fr);
-  gap: 10px;
-  align-items: stretch;
+  grid-template-columns: minmax(148px, 0.34fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid rgba(18, 21, 26, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.74);
 }
 
 .transform-ba__col-head {
-  padding: 10px 12px;
-  border-radius: 14px;
-  font-size: 0.76rem;
+  min-width: 0;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(18, 21, 26, 0.08);
+  font-size: 0.74rem;
   font-weight: 900;
   text-align: left;
+  letter-spacing: 0.02em;
+}
+
+.transform-ba__col-head + .transform-ba__col-head {
+  border-left: 1px solid rgba(18, 21, 26, 0.08);
+}
+
+.transform-ba__col-head--dim {
+  background: linear-gradient(180deg, rgba(246, 241, 233, 0.94), rgba(255, 255, 255, 0.92));
+  color: var(--ink);
 }
 
 .transform-ba__col-head--before {
-  background: rgba(253, 242, 232, 0.96);
+  background: rgba(253, 245, 235, 0.96);
   color: #b45309;
 }
 
 .transform-ba__col-head--after {
-  background: rgba(236, 253, 245, 0.96);
+  background: rgba(239, 250, 243, 0.96);
   color: #047857;
 }
 
-.transform-ba__row {
-  display: contents;
-}
-
-.transform-ba__dim,
-.transform-ba__before,
-.transform-ba__after {
-  padding: 12px 13px;
-  border-radius: 14px;
-  background: rgba(244, 248, 252, 0.88);
-}
-
-.transform-ba__dim {
-  color: var(--ink);
-  font-size: 0.84rem;
-  font-weight: 850;
-}
-
-.transform-ba__before,
-.transform-ba__after {
+.transform-ba__cell {
+  min-width: 0;
+  margin: 0;
+  padding: 14px;
+  border-top: 1px solid rgba(18, 21, 26, 0.08);
   color: var(--ink-soft);
   font-size: 0.86rem;
-  line-height: 1.58;
+  line-height: 1.72;
 }
 
-.transform-ba__after {
-  background: rgba(232, 243, 251, 0.88);
+.transform-ba__cell:nth-child(3n - 1),
+.transform-ba__cell:nth-child(3n) {
+  border-left: 1px solid rgba(18, 21, 26, 0.08);
+}
+
+.transform-ba__cell--dim {
+  background: rgba(248, 244, 236, 0.78);
   color: var(--ink);
+  font-size: 0.84rem;
+  font-weight: 900;
+  line-height: 1.56;
+}
+
+.transform-ba__cell--before {
+  background: rgba(253, 248, 241, 0.72);
+}
+
+.transform-ba__cell--after {
+  background: rgba(242, 249, 244, 0.78);
+  color: var(--ink);
+}
+
+.transform-ba__copy {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.86rem;
+  line-height: 1.7;
+}
+
+.transform-ba__copy--after {
+  color: var(--ink);
+}
+
+.transform-theme__investment {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid rgba(var(--accent-rgb), 0.12);
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(241, 248, 243, 0.84), rgba(255, 255, 255, 0.94));
+}
+
+.transform-theme__investment span {
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.transform-theme__investment strong {
+  color: var(--ink);
+  font-size: 0.9rem;
+  line-height: 1.65;
 }
 
 .transform-theme__toggle {
   width: fit-content;
   min-height: 36px;
   padding: 0 14px;
-  border: 1px solid rgba(14, 74, 125, 0.18);
+  border: 1px solid rgba(var(--accent-rgb), 0.16);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.86);
   color: var(--accent);
@@ -394,7 +444,7 @@
 }
 
 .transform-theme__toggle:hover {
-  background: rgba(230, 242, 252, 0.96);
+  background: rgba(241, 248, 243, 0.96);
 }
 
 .transform-stages {
@@ -407,9 +457,9 @@
   grid-template-columns: 110px minmax(0, 1fr);
   gap: 12px;
   padding: 14px;
-  border: 1px solid rgba(151, 164, 184, 0.14);
+  border: 1px solid rgba(18, 21, 26, 0.08);
   border-radius: 18px;
-  background: rgba(248, 250, 252, 0.9);
+  background: rgba(250, 247, 241, 0.9);
 }
 
 .transform-stage__body {
@@ -465,7 +515,7 @@
   align-items: center;
   padding: 0 10px;
   border-radius: 999px;
-  background: rgba(14, 74, 125, 0.08);
+  background: rgba(var(--accent-rgb), 0.08);
   color: var(--accent);
   font-size: 0.74rem;
   font-weight: 800;
@@ -479,9 +529,9 @@
 
 .transform-theme__footnotes p {
   padding: 12px 13px;
-  border: 1px solid rgba(151, 164, 184, 0.14);
+  border: 1px solid rgba(18, 21, 26, 0.08);
   border-radius: 16px;
-  background: rgba(244, 248, 252, 0.84);
+  background: rgba(248, 244, 237, 0.84);
   color: var(--ink-soft);
   font-size: 0.84rem;
   line-height: 1.62;
@@ -507,6 +557,16 @@
 
   .transform-ba {
     grid-template-columns: 1fr;
+  }
+
+  .transform-ba__col-head + .transform-ba__col-head,
+  .transform-ba__cell:nth-child(3n - 1),
+  .transform-ba__cell:nth-child(3n) {
+    border-left: 0;
+  }
+
+  .transform-ba__col-head:not(:first-child) {
+    border-top: 1px solid rgba(18, 21, 26, 0.08);
   }
 
   .transform-stage__who {

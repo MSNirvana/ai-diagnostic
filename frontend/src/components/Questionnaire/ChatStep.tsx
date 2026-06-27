@@ -38,6 +38,41 @@ const PROJECT_CHAT_MODES: Record<ProjectChatMode, {
   },
 };
 
+const PROJECT_PROCESS_STEPS = [
+  {
+    key: "clarify",
+    index: "01",
+    label: "问题沟通",
+    summary: "先把问题聊透",
+    detail: "你先把经营问题讲出来，系统会持续追问核心卡点、目标和现状。",
+    outcome: "效果：先聚焦真实问题，再往下推进。",
+  },
+  {
+    key: "diagnose",
+    index: "02",
+    label: "多轮诊断",
+    summary: "围绕问题持续判断",
+    detail: "系统会结合问题地图、历史上下文和外部信息，多轮生成判断、建议和优先级。",
+    outcome: "效果：不是一次出结论，而是持续迭代变准。",
+  },
+  {
+    key: "deliver",
+    index: "03",
+    label: "作战室交付",
+    summary: "把诊断整理成结果",
+    detail: "诊断结果会进入项目作战室，沉淀成重点问题、动作方案和后续反馈。",
+    outcome: "效果：老板看到的不只是分析，还有下一步怎么做。",
+  },
+  {
+    key: "transform",
+    index: "04",
+    label: "AI改造",
+    summary: "把诊断延伸成升级路径",
+    detail: "系统会基于诊断结果，进一步生成对应的 AI 改造方向和落地动作。",
+    outcome: "效果：不止知道问题，还知道怎么用 AI 把它重做一遍。",
+  },
+] as const;
+
 interface ChatBlock {
   kind: ChatBlockKind;
   text: string;
@@ -268,6 +303,33 @@ function ChatMessageContent({
         )
       ))}
     </div>
+  );
+}
+
+function ChatProcessGuide() {
+  return (
+    <section className="chat-process-guide" aria-label="AI 咨询流程">
+      <div className="chat-process-guide__head">
+        <strong>AI 咨询流程</strong>
+        <span>从问题沟通到 AI 改造，一共 4 步。把鼠标放上去可以看每一步会发生什么。</span>
+      </div>
+
+      <div className="chat-process-guide__rail">
+        {PROJECT_PROCESS_STEPS.map((step) => (
+          <article className="chat-process-step" key={step.key} tabIndex={0}>
+            <span className="chat-process-step__index">{step.index}</span>
+            <strong className="chat-process-step__label">{step.label}</strong>
+            <p className="chat-process-step__summary">{step.summary}</p>
+
+            <div className="chat-process-step__detail" role="tooltip">
+              <strong>{step.label}</strong>
+              <p>{step.detail}</p>
+              <em>{step.outcome}</em>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -860,6 +922,7 @@ export function ChatStep({
             </div>
           )}
           {isProjectInline && <p className="chat-step__disclaimer">{activeModeConfig.note}</p>}
+          {isProjectInline && !hasConversation && <ChatProcessGuide />}
         </div>
       </div>
     </div>

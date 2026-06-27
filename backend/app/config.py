@@ -18,7 +18,14 @@ def _client_from_env() -> LLMClient:
     key_var = "ANTHROPIC_API_KEY" if provider == "anthropic" else "OPENAI_API_KEY"
     api_key = os.environ.get(key_var, "")
     base_url = os.environ.get("LLM_BASE_URL", "")
-    return make_llm_client(provider=provider, api_key=api_key, model=model, base_url=base_url)
+    client = make_llm_client(provider=provider, api_key=api_key, model=model, base_url=base_url)
+    client._debug_label_override = f"env:{provider}:{model}@{base_url or 'default'}"
+    return client
+
+
+def llm_config_debug_label(config: LLMConfig) -> str:
+    base = (config.base_url or "default").strip() or "default"
+    return f"{config.name}|{config.provider}:{config.model}@{base}"
 
 
 async def get_llm_client(
@@ -33,10 +40,11 @@ async def get_llm_client(
     configs = list(await session.scalars(stmt))
     if not configs:
         return _client_from_env()
-    clients = [
-        make_llm_client(
+    clients = []
+    for c in configs:
+        client = make_llm_client(
             provider=c.provider, api_key=c.api_key, model=c.model, base_url=c.base_url
         )
-        for c in configs
-    ]
+        client._debug_label_override = llm_config_debug_label(c)
+        clients.append(client)
     return FallbackLLMClient(clients)

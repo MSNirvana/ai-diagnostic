@@ -23,7 +23,7 @@ const result = {
     confidence: 0.82,
     confidence_reason: "有 1 条结论引用；已附外部基准",
     citations: [{ text: "定价高18%", source: "行业报告" }],
-    benchmarks: [{ name: "market 外部基准", source: "AI Diagnostic benchmark stub", value: "行业均值" }],
+    benchmarks: [{ name: "market 外部基准", source: "构造视界基准占位数据", value: "行业均值" }],
     audit_trail: {
       skill_version_id: "fallback",
       input_modules: ["market"],
@@ -43,7 +43,7 @@ describe("ModuleCard", () => {
     expect(screen.getByText("待补数据")).toBeTruthy();
     expect(screen.getByText("推广账号与广告平台")).toBeTruthy();
     expect(screen.getByText("证据完整度：82%")).toBeTruthy();
-    expect(screen.getByText(/AI Diagnostic benchmark stub/)).toBeTruthy();
+    expect(screen.getByText(/构造视界基准占位数据/)).toBeTruthy();
     expect(screen.getByText(/方法版本 fallback/)).toBeTruthy();
   });
 

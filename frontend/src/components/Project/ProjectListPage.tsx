@@ -73,6 +73,9 @@ export function ProjectListPage() {
     : featuredProject?.status === "archived" || featuredProject?.status === "deleted"
       ? visibleProjects?.[0] ?? null
       : featuredProject;
+  const listedProjects = featuredVisibleProject
+    ? visibleProjects?.filter((project) => project.id !== featuredVisibleProject.id)
+    : visibleProjects;
   const memoryPreview = (summary: string) => {
     const latest = summary.split("\n").filter(Boolean).slice(-1)[0] ?? "";
     const cleaned = latest
@@ -88,8 +91,9 @@ export function ProjectListPage() {
   return (
     <AppShell
       eyebrow="项目中枢"
-      title="AI咨询"
-      description="先把问题说清楚，再沉淀到项目和作战室。"
+      title="构造视界"
+      description="构造视界 · 先把问题说清楚，再沉淀到项目和作战室。"
+      showBrandMark
       actions={
         !creating ? (
           <button type="button" className="btn-primary" onClick={() => setCreating(true)}>
@@ -222,12 +226,12 @@ export function ProjectListPage() {
               )}
             </div>
           )}
-          {visibleProjects?.map((p, index) => (
+          {listedProjects?.map((p, index) => (
             <article
               key={p.id}
               className={p.status === "archived" ? "proj-card proj-card--archived" : "proj-card"}
             >
-              <span className="proj-card__index">{String(index + 1).padStart(2, "0")}</span>
+              <span className="proj-card__index">{String(featuredVisibleProject ? index + 2 : index + 1).padStart(2, "0")}</span>
               <span className="proj-card__name">{p.name}</span>
               <span className="proj-card__meta">
                 {p.status === "archived" ? "已归档" : "更新于"} {fmt(p.updated_at)}

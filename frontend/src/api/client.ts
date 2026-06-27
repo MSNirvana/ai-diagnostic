@@ -741,6 +741,21 @@ export async function deleteLLMConfig(id: string): Promise<void> {
   if (!resp.ok && resp.status !== 204) throw new Error(`删除失败: ${resp.status}`);
 }
 
+export async function probeLLMConfig(id: string): Promise<{ ok: boolean; message: string; config: LLMConfigOut }> {
+  const resp = await fetch(`${BASE}/admin/llm-configs/${id}/probe`, {
+    method: "POST",
+    headers: { ...authHeaders() },
+  });
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({}));
+    if (body?.detail?.message && body?.detail?.config) {
+      return body.detail as { ok: boolean; message: string; config: LLMConfigOut };
+    }
+    throw new Error(await errorMessage(resp, "测试模型通道失败"));
+  }
+  return (await resp.json()) as { ok: boolean; message: string; config: LLMConfigOut };
+}
+
 // ── 会话文件：选完即时上传，跨设备复用 ──────────────
 export async function uploadSessionFile(
   sessionId: string,

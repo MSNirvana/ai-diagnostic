@@ -18,9 +18,10 @@ from app.models.result import ModuleResult, TriageSummary
 from app.models.warroom import WarRoomPlan
 from app.orchestrator.dispatcher import diagnose_all
 from app.research.engine import gather_pre_research_evidence
-from app.research.store import attach_evidence_to_record
+from app.research.store import attach_evidence_to_record, list_job_evidence
 from app.warroom.composer import compose_war_room_plan
 from app.warroom.enhancer import enhance_war_room_plan
+from app.warroom.research_enrichment import enrich_record_war_room_plan_with_research
 from app.cases.archiver import archive_case
 from app.warroom.history import (
     apply_project_war_room_iteration,
@@ -188,6 +189,14 @@ async def diagnose(
         war_room_plan.record_id = record_id
     if record_id and research_evidence:
         await attach_evidence_to_record(session, job_id=research_job_id, record_id=record_id)
+        evidence_rows = await list_job_evidence(session, research_job_id, limit=200)
+        enriched_plan = await enrich_record_war_room_plan_with_research(
+            session,
+            record_id=record_id,
+            research_rows=evidence_rows,
+        )
+        if enriched_plan is not None:
+            war_room_plan = enriched_plan
     # Loop 3 案例飞轮：脱敏归档为可复用案例资产（旁路，失败不影响返回）
     await archive_case(session, questionnaire, outcome.results, outcome.triage, record_id)
     return DiagnoseResponse(
@@ -267,6 +276,14 @@ async def diagnose_with_upload(
         war_room_plan.record_id = record_id
     if record_id and research_evidence:
         await attach_evidence_to_record(session, job_id=research_job_id, record_id=record_id)
+        evidence_rows = await list_job_evidence(session, research_job_id, limit=200)
+        enriched_plan = await enrich_record_war_room_plan_with_research(
+            session,
+            record_id=record_id,
+            research_rows=evidence_rows,
+        )
+        if enriched_plan is not None:
+            war_room_plan = enriched_plan
     # Loop 3 案例飞轮：脱敏归档为可复用案例资产（旁路，失败不影响返回）
     await archive_case(session, questionnaire, outcome.results, outcome.triage, record_id)
     return DiagnoseResponse(

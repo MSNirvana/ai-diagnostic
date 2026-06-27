@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from app.config import get_llm_client
 from app.main import app
 from app.research.models import ResearchEvidenceItem
+from app.research.jobs import _user_facing_job_error
 from app.research.jobs import run_deep_diligence_job
 
 client = TestClient(app)
@@ -162,6 +163,15 @@ def test_job_runs_expert_supplemental_research_and_exposes_review_evidence(db_se
     assert detail["evidence_pack"][0]["source_stage"] == "expert_supplemental_research"
     assert detail["evidence_pack"][0]["record_id"] == status["record_id"]
     assert detail["results"][0]["conclusion"] == "竞品招商回本承诺和政策资质约束需要优先核验"
+
+
+def test_user_facing_job_error_hides_internal_fallback_exception():
+    message = _user_facing_job_error(
+        RuntimeError("FallbackLLMError: openai:gpt-5.5@https://api.ggoo.ai/v1[403] Your request was blocked.")
+    )
+    assert "FallbackLLMError" not in message
+    assert "api.ggoo.ai" not in message
+    assert "模型通道" in message
 
 
 def test_deep_diligence_full_delivery_flow(db_session, monkeypatch):

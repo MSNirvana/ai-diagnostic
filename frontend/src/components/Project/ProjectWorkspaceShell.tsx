@@ -63,14 +63,6 @@ function projectSidebarStorageKey() {
   return "ruice:project-sidebar-collapsed";
 }
 
-function defaultProjectLogo(name: string) {
-  const trimmed = name.trim();
-  if (!trimmed) return "睿";
-  const latin = trimmed.match(/[A-Za-z]/);
-  if (latin) return latin[0].toUpperCase();
-  return Array.from(trimmed)[0] ?? "睿";
-}
-
 function readProjectLogo(projectId: string) {
   try {
     if (typeof window.localStorage?.getItem !== "function") return "";
@@ -119,7 +111,6 @@ export function ProjectWorkspaceShell({
   const [sessionError, setSessionError] = useState("");
   const [brainstormError, setBrainstormError] = useState("");
   const [historyMode, setHistoryMode] = useState<"conversation" | "brainstorm">("conversation");
-  const defaultLogo = defaultProjectLogo(project.name);
   const [projectLogo, setProjectLogo] = useState(() => readProjectLogo(project.id));
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed);
   const logoInputRef = useRef<HTMLInputElement | null>(null);
@@ -148,6 +139,13 @@ export function ProjectWorkspaceShell({
   useEffect(() => {
     setBrainstorms(sortBrainstorms(project.brainstorm_sessions ?? []));
   }, [project.id, brainstormSignature]);
+
+  useEffect(() => {
+    const page = new URLSearchParams(location.search).get("page");
+    if (page === "brainstorm") {
+      setHistoryMode("brainstorm");
+    }
+  }, [location.search]);
 
   useEffect(() => {
     setProjectLogo(readProjectLogo(project.id));
@@ -646,18 +644,6 @@ export function ProjectWorkspaceShell({
   return (
     <div className={sidebarCollapsed ? "project-workspace-shell is-sidebar-collapsed" : "project-workspace-shell"}>
       <aside className={sidebarCollapsed ? "project-workspace-sidebar is-collapsed" : "project-workspace-sidebar"} aria-label={`${project.name} 项目导航`}>
-        <div className="project-workspace-sidebar__toggle-row">
-          <button
-            type="button"
-            className="project-workspace-sidebar__toggle"
-            onClick={toggleSidebarCollapsed}
-            aria-label={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
-            title={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
-          >
-            <span className="project-workspace-sidebar__toggle-icon" aria-hidden="true">{sidebarCollapsed ? "›" : "‹"}</span>
-            <span className="project-workspace-sidebar__toggle-label">{sidebarCollapsed ? "展开" : "收起"}</span>
-          </button>
-        </div>
         <div className="project-workspace-brand">
           <div className="project-workspace-project-card">
             <input
@@ -669,17 +655,26 @@ export function ProjectWorkspaceShell({
             />
             <button
               type="button"
-              className={projectLogo ? "project-workspace-logo has-image" : "project-workspace-logo"}
+              className="project-workspace-logo has-image"
               onClick={openProjectLogoPicker}
               title="点击更换项目 Logo 图片"
               aria-label="更换项目 Logo"
             >
-              {projectLogo ? <img src={projectLogo} alt="" /> : defaultLogo}
+              <img src={projectLogo || "/brand-logo.png"} alt="" />
             </button>
             <div className="project-workspace-project-copy">
-              <span>AI咨询项目</span>
+              <span>构造视界项目</span>
               <strong>{project.name}</strong>
             </div>
+            <button
+              type="button"
+              className="project-workspace-sidebar__toggle"
+              onClick={toggleSidebarCollapsed}
+              aria-label={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
+              title={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
+            >
+              <span className="project-workspace-sidebar__toggle-icon" aria-hidden="true">{sidebarCollapsed ? "›" : "‹"}</span>
+            </button>
           </div>
           {project.status === "archived" && (
             <div className="project-workspace-brand__meta">
@@ -736,6 +731,27 @@ export function ProjectWorkspaceShell({
               </button>
             </div>
           )}
+
+          <div className="project-workspace-menu__group project-workspace-menu__group--separated">
+            <a
+              className="project-workspace-menu__promo"
+              href="https://ggoo.ai"
+              target="_blank"
+              rel="noreferrer"
+              aria-label="打开 GGOO 官网"
+              title="打开 GGOO 官网"
+            >
+              <div className="project-workspace-menu__promo-head">
+                <span className="project-workspace-menu__icon" aria-hidden="true">G</span>
+                {!sidebarCollapsed ? (
+                  <div className="project-workspace-menu__promo-copy">
+                    <strong>GGOO</strong>
+                    <small>限时3倍积分，畅用海外模型</small>
+                  </div>
+                ) : null}
+              </div>
+            </a>
+          </div>
         </nav>
 
         {!sidebarCollapsed && (
