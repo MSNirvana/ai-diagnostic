@@ -652,8 +652,8 @@
   inset: 0;
   z-index: 140;
   display: flex;
-  align-items: flex-end;
-  justify-content: flex-start;
+  align-items: center;
+  justify-content: center;
   padding: 18px;
   background: rgba(31, 36, 43, 0.16);
   backdrop-filter: blur(8px);
@@ -1009,7 +1009,7 @@
   }
 
   .project-picker-overlay {
-    align-items: stretch;
+    align-items: center;
     padding: 12px;
   }
 
