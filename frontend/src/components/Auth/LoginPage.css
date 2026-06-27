@@ -23,8 +23,8 @@
 }
 
 .auth-wrap--home {
-  align-items: stretch;
-  justify-content: stretch;
+  display: grid;
+  place-items: center;
   padding: 0;
 }
 
@@ -380,6 +380,8 @@
   }
 
   .auth-wrap--home {
+    display: grid;
+    place-items: center;
     padding: 20px;
   }
 
