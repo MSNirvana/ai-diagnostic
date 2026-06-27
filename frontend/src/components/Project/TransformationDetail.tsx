@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import type { DomainTransformation } from "../../types";
 import { cleanDisplayText, cleanSentenceText } from "../../utils/displayText";
 import "./ProjectTransformationPage.css";
@@ -35,16 +35,29 @@ export function TransformationDetail({ item }: { item: DomainTransformation }) {
               <strong>把当前做法重做成 AI 原生打法</strong>
             </div>
             <div className="transform-ba">
-              <div className="transform-ba__col-head transform-ba__col-head--dim">维度</div>
-              <div className="transform-ba__col-head transform-ba__col-head--before">现在</div>
-              <div className="transform-ba__col-head transform-ba__col-head--after">AI 改造后</div>
-              {rows.map((row) => (
-                <Fragment key={row.id}>
-                  <div className="transform-ba__cell transform-ba__cell--dim">{row.dimension}</div>
-                  <p className="transform-ba__cell transform-ba__cell--before">{row.before}</p>
-                  <p className="transform-ba__cell transform-ba__cell--after">{row.after}</p>
-                </Fragment>
-              ))}
+              <div className="transform-ba__head" aria-hidden="true">
+                <div className="transform-ba__col-head transform-ba__col-head--dim">维度</div>
+                <div className="transform-ba__col-head transform-ba__col-head--before">现在</div>
+                <div className="transform-ba__col-head transform-ba__col-head--after">AI 改造后</div>
+              </div>
+              <div className="transform-ba__body">
+                {rows.map((row) => (
+                  <div className="transform-ba__row" key={row.id}>
+                    <div className="transform-ba__cell transform-ba__cell--dim">
+                      <span className="transform-ba__mobile-label">维度</span>
+                      {row.dimension}
+                    </div>
+                    <p className="transform-ba__cell transform-ba__cell--before">
+                      <span className="transform-ba__mobile-label">现在</span>
+                      {row.before}
+                    </p>
+                    <p className="transform-ba__cell transform-ba__cell--after">
+                      <span className="transform-ba__mobile-label">AI 改造后</span>
+                      {row.after}
+                    </p>
+                  </div>
+                ))}
+              </div>
             </div>
           </section>
         )}

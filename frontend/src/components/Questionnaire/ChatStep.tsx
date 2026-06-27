@@ -670,6 +670,8 @@ export function ChatStep({
           )}
           </header>}
 
+        {isProjectInline && !hasConversation && <ChatProcessGuide />}
+
         {!isProjectInline && showConfirmAction && problemMap && (
           <div className="confirm-banner">
             <p className="confirm-banner__hint">
@@ -942,7 +944,6 @@ export function ChatStep({
             </div>
           )}
           {isProjectInline && <p className="chat-step__disclaimer">{activeModeConfig.note}</p>}
-          {isProjectInline && !hasConversation && <ChatProcessGuide />}
         </div>
       </div>
     </div>

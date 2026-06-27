@@ -3338,8 +3338,34 @@
 
 @media (max-width: 640px) {
   .project-chat-console {
-    min-height: calc(100vh - 18px);
-    padding: 20px 0;
+    min-height: 100dvh;
+    padding: 14px 0 calc(96px + env(safe-area-inset-bottom));
+  }
+
+  .project-page-panel--chat-only {
+    height: 100dvh;
+  }
+
+  .project-module-nav {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 6px;
+    margin: 0 -2px 14px;
+    padding: 6px;
+    overflow-x: auto;
+    border-radius: 18px;
+    scrollbar-width: none;
+  }
+
+  .project-module-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .project-module-nav__item {
+    flex: 0 0 auto;
+    min-height: 32px;
+    font-size: 0.78rem;
+    padding: 0 11px;
   }
 
   .project-archive-domain-chip {
@@ -3374,6 +3400,50 @@
 
   .pd-profile-grid,
   .pd-fact-modules {
+    grid-template-columns: 1fr;
+  }
+
+  .pd-profile-item,
+  .pd-fact-card,
+  .pd-file-item {
+    padding: 12px;
+  }
+
+  .pd-fact-row {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+
+  .pd-file-item {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .pd-file-item__meta {
+    width: 100%;
+    margin-left: 24px;
+  }
+
+  .project-archive-extract-modal,
+  .project-archive-preview-modal {
+    align-items: flex-end;
+    padding: 10px;
+  }
+
+  .project-archive-extract-modal__card,
+  .project-archive-preview-modal__card {
+    max-height: 86dvh;
+    border-radius: 24px 24px 18px 18px;
+    padding: 16px;
+  }
+
+  .project-archive-extract-modal__actions,
+  .project-archive-preview-modal__actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .pd-update-item {
     grid-template-columns: 1fr;
   }
 }

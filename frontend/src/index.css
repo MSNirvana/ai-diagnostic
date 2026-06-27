@@ -42,6 +42,7 @@
 html {
   min-width: 320px;
   scroll-behavior: smooth;
+  overflow-x: hidden;
 }
 
 body {
@@ -56,6 +57,14 @@ body {
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   text-rendering: geometricPrecision;
+  overflow-x: hidden;
+}
+
+img,
+svg,
+video,
+canvas {
+  max-width: 100%;
 }
 
 button,
@@ -80,6 +89,30 @@ select:focus-visible {
 
 a {
   color: var(--accent);
+}
+
+@media (max-width: 640px) {
+  :root {
+    --radius-lg: 18px;
+    --radius-xl: 22px;
+    --shadow: 0 16px 42px rgba(18, 21, 26, 0.07);
+    --shadow-lg: 0 24px 64px rgba(18, 21, 26, 0.1);
+  }
+
+  body {
+    background:
+      radial-gradient(circle at 12% -8%, rgba(116, 179, 132, 0.18), transparent 30%),
+      radial-gradient(circle at 86% 8%, rgba(236, 225, 202, 0.68), transparent 34%),
+      linear-gradient(180deg, #fbf8f1 0%, var(--bg) 64%, #ece5d9 100%);
+  }
+
+  .btn-primary,
+  .btn-ghost,
+  .btn-text,
+  .btn-secondary {
+    min-height: 40px;
+    font-size: 0.88rem;
+  }
 }
 
 ::selection {

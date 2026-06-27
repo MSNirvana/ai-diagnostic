@@ -1,10 +1,16 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { login as apiLogin, register as apiRegister } from "../../api/client";
 import { useAuth } from "../../auth/useAuth";
 import "./LoginPage.css";
 
-export function LoginPage() {
+interface LoginPageProps {
+  modal?: boolean;
+  onClose?: () => void;
+  returnTo?: string;
+}
+
+export function LoginPage({ modal = false, onClose, returnTo: forcedReturnTo }: LoginPageProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { login, isAuthenticated } = useAuth();
@@ -15,11 +21,17 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false);
   const returnTo = useMemo(() => {
     const from = (location.state as { from?: { pathname?: string; search?: string } } | null)?.from;
+    if (forcedReturnTo) return forcedReturnTo;
     if (from?.pathname) return `${from.pathname}${from.search ?? ""}`;
     return "/";
-  }, [location.state]);
+  }, [forcedReturnTo, location.state]);
+
+  useEffect(() => {
+    if (modal && isAuthenticated) onClose?.();
+  }, [isAuthenticated, modal, onClose]);
 
   if (isAuthenticated) {
+    if (modal) return null;
     return <Navigate to={returnTo} replace />;
   }
 
@@ -67,6 +79,71 @@ export function LoginPage() {
     }
   };
 
+  const authCard = (
+    <div className="auth-card" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+      <button
+        className="auth-close"
+        type="button"
+        onClick={() => {
+          if (modal) {
+            onClose?.();
+            return;
+          }
+          navigate("/");
+        }}
+        aria-label={modal ? "关闭登录窗口" : "关闭并打开构造视界官网"}
+        title={modal ? "关闭" : "打开构造视界官网"}
+      >
+        ×
+      </button>
+      <div className="auth-logo" aria-hidden="true">
+        <img src="/brand-logo.png" alt="" />
+      </div>
+      <h1 className="auth-title" id="auth-title">构造视界</h1>
+      <p className="auth-subtitle">“最顶思维”配上“最顶模型”来解决你的项目问题！</p>
+      <div className="auth-banner">
+        <span className="auth-banner__icon" aria-hidden="true">✦</span>
+        <span>用 最好的AI 从0-1改造你的项目！</span>
+      </div>
+      <form className="auth-form" onSubmit={handleSubmit}>
+        <label className="auth-label">
+          邮箱
+          <input
+            className="auth-input"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="email"
+            placeholder="name@company.com"
+            required
+          />
+        </label>
+        <label className="auth-label">
+          密码
+          <input
+            className="auth-input"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password"
+            placeholder="至少 6 位"
+            required
+          />
+        </label>
+        <p className="auth-hint">如果这是新邮箱，提交后会直接完成注册并登录。</p>
+        {status && <p className="auth-status">{status}</p>}
+        {error && <p className="auth-error">{error}</p>}
+        <button className="auth-submit" type="submit" disabled={loading}>
+          {loading ? "处理中…" : "登录 / 注册"}
+        </button>
+      </form>
+    </div>
+  );
+
+  if (modal) {
+    return authCard;
+  }
+
   return (
     <div className="auth-wrap auth-wrap--home">
       <div className="auth-backdrop" aria-hidden="true">
@@ -106,58 +183,7 @@ export function LoginPage() {
           </div>
         </section>
       </div>
-      <div className="auth-card" role="dialog" aria-modal="true" aria-labelledby="auth-title">
-        <button
-          className="auth-close"
-          type="button"
-          onClick={() => navigate("/")}
-          aria-label="关闭并打开构造视界官网"
-          title="打开构造视界官网"
-        >
-          ×
-        </button>
-        <div className="auth-logo" aria-hidden="true">
-          <img src="/brand-logo.png" alt="" />
-        </div>
-        <h1 className="auth-title" id="auth-title">构造视界</h1>
-        <p className="auth-subtitle">一个账号，进入项目、作战室与长期档案。</p>
-        <div className="auth-banner">
-          <span className="auth-banner__icon" aria-hidden="true">✦</span>
-          <span>邮箱登录 / 注册一体化，首次使用会自动创建账号</span>
-        </div>
-        <form className="auth-form" onSubmit={handleSubmit}>
-          <label className="auth-label">
-            邮箱
-            <input
-              className="auth-input"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
-              placeholder="name@company.com"
-              required
-            />
-          </label>
-          <label className="auth-label">
-            密码
-            <input
-              className="auth-input"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              placeholder="至少 6 位"
-              required
-            />
-          </label>
-          <p className="auth-hint">如果这是新邮箱，提交后会直接完成注册并登录。</p>
-          {status && <p className="auth-status">{status}</p>}
-          {error && <p className="auth-error">{error}</p>}
-          <button className="auth-submit" type="submit" disabled={loading}>
-            {loading ? "处理中…" : "登录 / 注册"}
-          </button>
-        </form>
-      </div>
+      {authCard}
     </div>
   );
 }

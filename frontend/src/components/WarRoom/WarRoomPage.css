@@ -2659,6 +2659,41 @@
 }
 
 @media (max-width: 620px) {
+  .war-room {
+    gap: 14px;
+  }
+
+  .war-room__brief,
+  .war-panel,
+  .war-room-overview__focus,
+  .war-room-next-action,
+  .war-room-priority-card {
+    border-radius: 20px;
+  }
+
+  .war-room__brief {
+    padding: 18px;
+  }
+
+  .war-room__brief h2 {
+    font-size: clamp(1.18rem, 6vw, 1.48rem);
+    line-height: 1.28;
+  }
+
+  .war-room__objective,
+  .war-room__brief-summary p,
+  .war-room__summary-point p,
+  .war-room-point-list li {
+    font-size: 0.88rem;
+    line-height: 1.68;
+  }
+
+  .war-room__accumulation,
+  .war-room__conservative {
+    width: 100%;
+    border-radius: 16px;
+  }
+
   .war-room__brief-metrics,
   .department-grid,
   .department-tabs,
@@ -2666,6 +2701,48 @@
   .war-room-subnav,
   .boss-room__quick-facts {
     grid-template-columns: 1fr;
+  }
+
+  .war-room__brief-metrics div {
+    min-height: 62px;
+    padding: 12px;
+  }
+
+  .war-room-subnav {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 6px;
+    margin: 0 -2px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .war-room-subnav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .war-room-subnav a,
+  .war-room-subnav button {
+    flex: 0 0 auto;
+    min-width: max-content;
+  }
+
+  .project-war-room-shell__head {
+    gap: 12px;
+  }
+
+  .project-war-room-shell__actions,
+  .war-room__title-row,
+  .recommendation-detail__actions,
+  .decision-card__actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .project-war-room-shell__actions > *,
+  .recommendation-detail__actions > *,
+  .decision-card__actions > * {
+    width: 100%;
   }
 
   .data-needs-card__head {
@@ -2684,8 +2761,65 @@
     width: fit-content;
   }
 
+  .recommendation-cluster {
+    gap: 10px;
+    padding: 14px;
+    border-radius: 22px;
+  }
+
+  .recommendation-cluster__head {
+    align-items: flex-start;
+  }
+
+  .recommendation-cluster__grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .recommendation-mini-card {
+    min-width: 0;
+    min-height: 0;
+    padding: 14px;
+    border-radius: 18px;
+  }
+
+  .recommendation-mini-card h3 {
+    font-size: 0.96rem;
+    line-height: 1.36;
+  }
+
+  .recommendation-mini-card p,
+  .recommendation-mini-card .recommendation-empty,
+  .recommendation-mini-card .recommendation-evidence-list li,
+  .recommendation-block p,
+  .recommendation-evidence-list li {
+    font-size: 0.86rem;
+    line-height: 1.72;
+    text-align: left;
+    word-break: normal;
+    overflow-wrap: anywhere;
+    line-break: loose;
+  }
+
+  .recommendation-evidence-list li,
+  .recommendation-feedback li {
+    padding: 10px 11px;
+    border-radius: 13px;
+  }
+
+  .recommendation-evidence-list a {
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+
   .decision-feedback-dialog {
-    padding: 12px;
+    align-items: flex-end;
+    padding: 10px;
+  }
+
+  .decision-feedback-dialog__card {
+    max-height: 88dvh;
+    border-radius: 24px 24px 18px 18px;
   }
 
   .decision-feedback-dialog__head,

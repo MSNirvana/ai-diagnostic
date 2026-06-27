@@ -395,6 +395,7 @@
 @media (max-width: 560px) {
   .auth-wrap {
     padding: 20px;
+    align-items: flex-end;
   }
 
   .auth-wrap--home {
@@ -420,8 +421,21 @@
   }
 
   .auth-card {
-    border-radius: 26px;
+    width: 100%;
+    max-height: calc(100dvh - 28px);
+    overflow-y: auto;
+    border-radius: 28px 28px 22px 22px;
     padding: 24px 20px 22px;
+  }
+
+  .auth-title {
+    font-size: 2rem;
+  }
+
+  .auth-subtitle {
+    margin-bottom: 18px;
+    font-size: 0.9rem;
+    line-height: 1.55;
   }
 
   .auth-close {

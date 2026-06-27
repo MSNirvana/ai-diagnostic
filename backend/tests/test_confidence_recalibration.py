@@ -131,7 +131,7 @@ def test_recalibrate_all_confidence_updates_records_memory_and_project_war_room(
             assert confidence <= 0.78
             assert "缺少 2 类必需数据" in results[0]["evidence_package"]["confidence_reason"]
             benchmark = results[0]["evidence_package"]["benchmarks"][0]
-            assert benchmark["source"] == "AI Diagnostic benchmark stub"
+            assert benchmark["source"] == "构造视界基准占位数据"
             assert benchmark["value"] == "note: external benchmark placeholder"
 
             record_plan = WarRoomPlan.model_validate_json(refreshed_record.war_room_plan_json)

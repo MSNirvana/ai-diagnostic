@@ -256,6 +256,10 @@ export function ProjectWorkspaceShell({
   };
 
   const openProjectPicker = () => {
+    if (placeholderProject && !token) {
+      onRequireProject?.();
+      return;
+    }
     setProjectPickerOpen(true);
     loadProjectPicker();
   };
@@ -502,6 +506,10 @@ export function ProjectWorkspaceShell({
   };
 
   const handleLogout = () => {
+    if (!token) {
+      onRequireProject?.();
+      return;
+    }
     logout();
     navigate("/login");
   };

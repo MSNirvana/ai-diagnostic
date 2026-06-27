@@ -88,9 +88,10 @@ function HomeEntryPage() {
   );
 }
 
-function NoProjectHomePage() {
+function NoProjectHomePage({ requireAuth = false }: { requireAuth?: boolean }) {
   const navigate = useNavigate();
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [loginOpen, setLoginOpen] = useState(false);
   const [pendingPrompt, setPendingPrompt] = useState("");
   const [projectName, setProjectName] = useState("");
   const [creating, setCreating] = useState(false);
@@ -108,8 +109,18 @@ function NoProjectHomePage() {
   const openCreateProject = (text: string) => {
     setPendingPrompt(text);
     setCreateError("");
+    if (requireAuth) {
+      setLoginOpen(true);
+      return false;
+    }
     setPickerOpen(true);
     return false;
+  };
+
+  const requireLogin = () => {
+    setPendingPrompt("");
+    setCreateError("");
+    setLoginOpen(true);
   };
 
   const createAndContinue = async () => {
@@ -144,11 +155,11 @@ function NoProjectHomePage() {
       activeSection="new"
       conversationLayout="chat"
       placeholderProject
-      onRequireProject={() => {
-        setPendingPrompt("");
-        setCreateError("");
-        setPickerOpen(true);
-      }}
+      onRequireProject={requireAuth ? requireLogin : () => {
+          setPendingPrompt("");
+          setCreateError("");
+          setPickerOpen(true);
+        }}
       onNewConversation={() => {
         setPendingPrompt("");
         setResetKey((key) => key + 1);
@@ -216,13 +227,21 @@ function NoProjectHomePage() {
           </section>
         </div>
       )}
+
+      {loginOpen && (
+        <div className="home-login-overlay" role="presentation" onMouseDown={() => setLoginOpen(false)}>
+          <div className="home-login-overlay__panel" onMouseDown={(event) => event.stopPropagation()}>
+            <LoginPage modal onClose={() => setLoginOpen(false)} returnTo="/" />
+          </div>
+        </div>
+      )}
     </ProjectWorkspaceShell>
   );
 }
 
 function HomeRoute() {
   const { isAuthenticated } = useAuth();
-  return isAuthenticated ? <HomeEntryPage /> : <LoginPage />;
+  return isAuthenticated ? <HomeEntryPage /> : <NoProjectHomePage requireAuth />;
 }
 
 export default function App() {

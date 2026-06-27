@@ -188,7 +188,45 @@
   color: #9d2f2f;
 }
 
+.home-login-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 180;
+  display: grid;
+  place-items: center;
+  padding: clamp(18px, 4vw, 42px);
+  background:
+    radial-gradient(circle at 18% 18%, rgba(132, 190, 149, 0.12), transparent 28%),
+    radial-gradient(circle at 82% 20%, rgba(225, 208, 186, 0.18), transparent 26%),
+    rgba(246, 242, 236, 0.42);
+  backdrop-filter: blur(18px) saturate(110%);
+}
+
+.home-login-overlay__panel {
+  width: min(520px, 100%);
+}
+
 @media (max-width: 560px) {
+  .home-login-overlay {
+    align-items: flex-end;
+    padding: 10px;
+  }
+
+  .home-login-overlay__panel {
+    width: 100%;
+  }
+
+  .home-project-required-overlay {
+    align-items: flex-end;
+    padding: 10px;
+  }
+
+  .home-project-required-panel {
+    width: 100%;
+    border-radius: 24px 24px 18px 18px;
+    padding: 16px;
+  }
+
   .home-project-required-panel__create {
     grid-template-columns: 1fr;
   }
