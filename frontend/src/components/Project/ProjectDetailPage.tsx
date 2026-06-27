@@ -599,6 +599,7 @@ export function ProjectDetailPage() {
     newConversation?: boolean;
     rejectedRecordId?: string;
     initialPrompt?: string;
+    autoSendInitialPrompt?: boolean;
   } | null) ?? {};
   const initialProject = navState.projectSnapshot && navState.projectSnapshot.id === id
     ? projectSnapshotToDetail(navState.projectSnapshot)
@@ -619,6 +620,7 @@ export function ProjectDetailPage() {
   const [archiving, setArchiving] = useState(false);
   const [activeInlineSessionId, setActiveInlineSessionId] = useState<string | undefined>();
   const [inlineInitialPrompt, setInlineInitialPrompt] = useState<string | undefined>();
+  const [inlineAutoSendInitialPrompt, setInlineAutoSendInitialPrompt] = useState(false);
   const [inlineResetKey, setInlineResetKey] = useState(0);
   const [inlineError, setInlineError] = useState<string | null>(null);
   const [inlineLoading, setInlineLoading] = useState(false);
@@ -791,6 +793,7 @@ export function ProjectDetailPage() {
     resetInlineConversation();
     if (navState.initialPrompt) {
       setInlineInitialPrompt(navState.initialPrompt);
+      setInlineAutoSendInitialPrompt(Boolean(navState.autoSendInitialPrompt));
     }
     if (navState.rejectedRecordId) {
       setInlineError(null);
@@ -809,11 +812,12 @@ export function ProjectDetailPage() {
         resumeSessionId: undefined,
         rejectedRecordId: navState.rejectedRecordId,
         initialPrompt: navState.initialPrompt,
+        autoSendInitialPrompt: false,
       },
       }
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [navState.newConversation, navState.initialPrompt, navState.rejectedRecordId, project?.id]);
+  }, [navState.newConversation, navState.initialPrompt, navState.autoSendInitialPrompt, navState.rejectedRecordId, project?.id]);
 
   useEffect(() => {
     if (!navState.rejectedRecordId) {
@@ -912,6 +916,7 @@ export function ProjectDetailPage() {
   const moduleTotal = archive.modules.length || 6;
   const resumeInlineSession = (sessionId: string) => {
     setInlineInitialPrompt(undefined);
+    setInlineAutoSendInitialPrompt(false);
     setActiveInlineSessionId(sessionId);
     setInlineResetKey((key) => key + 1);
     setInlineQuestionnaireMode("chatting");
@@ -1025,6 +1030,7 @@ export function ProjectDetailPage() {
   const resetInlineConversation = () => {
     setActiveInlineSessionId(undefined);
     setInlineInitialPrompt(undefined);
+    setInlineAutoSendInitialPrompt(false);
     setInlineError(null);
     setInlineDiagnosis(null);
     setInlineQuestionnaireMode("chatting");
@@ -1541,6 +1547,7 @@ export function ProjectDetailPage() {
               resumeSessionId={activeInlineSessionId}
               supplementRecord={supplementRecord}
               initialPrompt={inlineInitialPrompt}
+              autoSendInitialPrompt={inlineAutoSendInitialPrompt}
               variant="project-inline"
               projectMode={projectChatMode}
               onProjectModeChange={changeProjectChatMode}

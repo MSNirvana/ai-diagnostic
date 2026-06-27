@@ -356,6 +356,8 @@ interface ChatStepProps {
   onBrainstormDraftChange?: (value: string) => void;
   onBrainstormSend?: (attachments?: UploadedChatFile[]) => void;
   onBrainstormContextChange?: (enabled: boolean) => void;
+  onBeforeSend?: (text: string) => boolean | Promise<boolean>;
+  autoSendInitialPrompt?: boolean;
 }
 
 export function ChatStep({
@@ -381,6 +383,8 @@ export function ChatStep({
   onBrainstormDraftChange,
   onBrainstormSend,
   onBrainstormContextChange,
+  onBeforeSend,
+  autoSendInitialPrompt = false,
 }: ChatStepProps) {
   const isProjectInline = variant === "project-inline";
   const isBrainstormMode = isProjectInline && projectMode === "brainstorm";
@@ -413,6 +417,7 @@ export function ChatStep({
   const mapToggleRef = useRef<HTMLDivElement>(null);
   const mapPopoverRef = useRef<HTMLDivElement>(null);
   const plusControlsRef = useRef<HTMLDivElement>(null);
+  const autoSentInitialPromptRef = useRef(false);
   const composingRef = useRef(false);   // 输入法合成中（拼音/英文候选未上屏）
   const prevLoadingRef = useRef(false);
   const displayedMessages: DisplayChatMessage[] = isBrainstormMode
@@ -508,6 +513,13 @@ export function ChatStep({
   const send = async () => {
     const text = draft.trim();
     if (!text || loading) return;
+    try {
+      const shouldContinue = await onBeforeSend?.(text);
+      if (shouldContinue === false) return;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "发送前准备失败，请重试。");
+      return;
+    }
     const filesToSend = uploadedFiles;
     const next: DisplayChatMessage[] = [
       ...messages,
@@ -549,6 +561,14 @@ export function ChatStep({
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!autoSendInitialPrompt || autoSentInitialPromptRef.current || isBrainstormMode) return;
+    if (!draft.trim() || loading) return;
+    autoSentInitialPromptRef.current = true;
+    void send();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoSendInitialPrompt, draft, isBrainstormMode, loading]);
 
   const sendBrainstorm = () => {
     const filesToSend = uploadedFiles;

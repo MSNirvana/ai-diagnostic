@@ -163,6 +163,8 @@ interface QuestionnaireProps {
   onBrainstormDraftChange?: (value: string) => void;
   onBrainstormSend?: () => void;
   onBrainstormContextChange?: (enabled: boolean) => void;
+  onBeforeSend?: (text: string) => boolean | Promise<boolean>;
+  autoSendInitialPrompt?: boolean;
   onProblemMapChange?: (problemMap: ProblemMap | null) => void;
   onSessionStarted?: (sessionId: string, firstMessage?: string) => void;
   onModeChange?: (mode: Mode) => void;
@@ -193,6 +195,8 @@ export function Questionnaire({
   onBrainstormDraftChange,
   onBrainstormSend,
   onBrainstormContextChange,
+  onBeforeSend,
+  autoSendInitialPrompt = false,
   onProblemMapChange,
   onSessionStarted,
   onModeChange,
@@ -844,6 +848,8 @@ export function Questionnaire({
           onBrainstormDraftChange={onBrainstormDraftChange}
           onBrainstormSend={onBrainstormSend}
           onBrainstormContextChange={onBrainstormContextChange}
+          onBeforeSend={onBeforeSend}
+          autoSendInitialPrompt={autoSendInitialPrompt}
         />
       </>
     );

@@ -18,6 +18,8 @@ interface ProjectWorkspaceShellProps {
   onResumeBrainstorm?: (brainstormId: string) => void;
   onNewBrainstorm?: () => void;
   onOpenArchive?: () => void;
+  placeholderProject?: boolean;
+  onRequireProject?: () => void;
 }
 
 function sessionStatusLabel(status: string) {
@@ -92,6 +94,8 @@ export function ProjectWorkspaceShell({
   onResumeBrainstorm,
   onNewBrainstorm,
   onOpenArchive,
+  placeholderProject = false,
+  onRequireProject,
 }: ProjectWorkspaceShellProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -121,6 +125,10 @@ export function ProjectWorkspaceShell({
   const [projectPickerCreating, setProjectPickerCreating] = useState(false);
   const [projectPickerNewName, setProjectPickerNewName] = useState("");
   const [projectPickerBusyId, setProjectPickerBusyId] = useState<string | null>(null);
+  const [projectPickerMenuId, setProjectPickerMenuId] = useState<string | null>(null);
+  const [projectPickerRenameId, setProjectPickerRenameId] = useState<string | null>(null);
+  const [projectPickerRenameValue, setProjectPickerRenameValue] = useState("");
+  const [projectPickerDeleteConfirmId, setProjectPickerDeleteConfirmId] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<MeResponse | null>(null);
   const logoInputRef = useRef<HTMLInputElement | null>(null);
   const sessionSignature = useMemo(
@@ -238,6 +246,9 @@ export function ProjectWorkspaceShell({
   const loadProjectPicker = () => {
     setProjectPickerLoading(true);
     setProjectPickerError("");
+    setProjectPickerMenuId(null);
+    setProjectPickerRenameId(null);
+    setProjectPickerDeleteConfirmId(null);
     listProjects()
       .then((items) => setProjectPickerItems(items))
       .catch((error) => setProjectPickerError(error instanceof Error ? error.message : "项目列表加载失败"))
@@ -280,6 +291,10 @@ export function ProjectWorkspaceShell({
   };
 
   const openNewConversation = () => {
+    if (placeholderProject) {
+      onNewConversation?.();
+      return;
+    }
     navigate(`/projects/${project.id}`, {
       replace: false,
       preventScrollReset: true,
@@ -293,12 +308,20 @@ export function ProjectWorkspaceShell({
   };
 
   const openArchive = () => {
+    if (placeholderProject) {
+      onRequireProject?.();
+      return;
+    }
     if (navigateStable(`/projects/${project.id}?page=archive`)) {
       onOpenArchive?.();
     }
   };
 
   const openWarRoom = () => {
+    if (placeholderProject) {
+      onRequireProject?.();
+      return;
+    }
     navigateStable(`/projects/${project.id}/war-room`);
   };
 
@@ -500,6 +523,50 @@ export function ProjectWorkspaceShell({
     }
   };
 
+  const beginRenameProjectFromPicker = (target: ProjectSummary) => {
+    setProjectPickerMenuId(null);
+    setProjectPickerDeleteConfirmId(null);
+    setProjectPickerRenameId(target.id);
+    setProjectPickerRenameValue(target.name);
+  };
+
+  const renameProjectFromPicker = async (target: ProjectSummary) => {
+    const name = projectPickerRenameValue.trim();
+    if (!name) return;
+    setProjectPickerBusyId(target.id);
+    setProjectPickerError("");
+    try {
+      const updated = await patchProject(target.id, { name });
+      setProjectPickerItems((items) => items.map((item) => item.id === target.id ? { ...item, ...updated } : item));
+      setProjectPickerRenameId(null);
+      setProjectPickerRenameValue("");
+      window.dispatchEvent(new CustomEvent("ruice:project-updated", { detail: updated }));
+    } catch (error) {
+      setProjectPickerError(error instanceof Error ? error.message : "重命名项目失败");
+    } finally {
+      setProjectPickerBusyId(null);
+    }
+  };
+
+  const archiveProjectFromPicker = async (target: ProjectSummary) => {
+    setProjectPickerBusyId(target.id);
+    setProjectPickerError("");
+    try {
+      const updated = await patchProject(target.id, { status: "archived" });
+      setProjectPickerItems((items) => items.map((item) => item.id === target.id ? { ...item, ...updated } : item));
+      setProjectPickerMenuId(null);
+      window.dispatchEvent(new CustomEvent("ruice:project-updated", { detail: updated }));
+      if (target.id === project.id) {
+        setProjectPickerOpen(false);
+        navigate("/", { replace: true });
+      }
+    } catch (error) {
+      setProjectPickerError(error instanceof Error ? error.message : "归档项目失败");
+    } finally {
+      setProjectPickerBusyId(null);
+    }
+  };
+
   const restoreProjectFromPicker = async (target: ProjectSummary) => {
     setProjectPickerBusyId(target.id);
     setProjectPickerError("");
@@ -507,8 +574,29 @@ export function ProjectWorkspaceShell({
       const updated = await patchProject(target.id, { status: "active" });
       setProjectPickerItems((items) => items.map((item) => item.id === target.id ? { ...item, ...updated } : item));
       setProjectPickerArchived(false);
+      setProjectPickerMenuId(null);
+      window.dispatchEvent(new CustomEvent("ruice:project-updated", { detail: updated }));
     } catch (error) {
       setProjectPickerError(error instanceof Error ? error.message : "恢复项目失败");
+    } finally {
+      setProjectPickerBusyId(null);
+    }
+  };
+
+  const deleteProjectFromPicker = async (target: ProjectSummary) => {
+    setProjectPickerBusyId(target.id);
+    setProjectPickerError("");
+    try {
+      await patchProject(target.id, { status: "deleted" });
+      setProjectPickerItems((items) => items.filter((item) => item.id !== target.id));
+      setProjectPickerMenuId(null);
+      setProjectPickerDeleteConfirmId(null);
+      if (target.id === project.id) {
+        setProjectPickerOpen(false);
+        navigate("/", { replace: true });
+      }
+    } catch (error) {
+      setProjectPickerError(error instanceof Error ? error.message : "删除项目失败");
     } finally {
       setProjectPickerBusyId(null);
     }
@@ -984,30 +1072,123 @@ export function ProjectWorkspaceShell({
               )}
               {!projectPickerLoading && visibleProjectPickerItems.map((item) => (
                 <article key={item.id} className={item.id === project.id ? "project-picker-card is-current" : "project-picker-card"}>
-                  <button
-                    type="button"
-                    className="project-picker-card__main"
-                    onClick={() => {
-                      setProjectPickerOpen(false);
-                      if (item.id !== project.id) navigate(`/projects/${item.id}`, { preventScrollReset: true });
-                    }}
-                  >
-                    <span>{item.name.slice(0, 1).toUpperCase()}</span>
-                    <div>
-                      <strong>{item.name}</strong>
-                      <small>{item.id === project.id ? "当前项目" : `更新于 ${formatDate(item.updated_at)}`}</small>
-                    </div>
-                  </button>
-                  {item.status === "archived" ? (
-                    <button
-                      type="button"
-                      className="project-picker-card__restore"
-                      disabled={projectPickerBusyId === item.id}
-                      onClick={() => void restoreProjectFromPicker(item)}
+                  {projectPickerRenameId === item.id ? (
+                    <form
+                      className="project-picker-rename"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void renameProjectFromPicker(item);
+                      }}
                     >
-                      恢复
-                    </button>
-                  ) : null}
+                      <input
+                        value={projectPickerRenameValue}
+                        autoFocus
+                        onChange={(event) => setProjectPickerRenameValue(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Escape") {
+                            setProjectPickerRenameId(null);
+                            setProjectPickerRenameValue("");
+                          }
+                        }}
+                      />
+                      <button type="button" onClick={() => setProjectPickerRenameId(null)}>
+                        取消
+                      </button>
+                      <button type="submit" disabled={projectPickerBusyId === item.id || !projectPickerRenameValue.trim()}>
+                        保存
+                      </button>
+                    </form>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className="project-picker-card__main"
+                        onClick={() => {
+                          setProjectPickerOpen(false);
+                          if (item.id !== project.id) navigate(`/projects/${item.id}`, { preventScrollReset: true });
+                        }}
+                      >
+                        <span>{item.name.slice(0, 1).toUpperCase()}</span>
+                        <div>
+                          <strong>{item.name}</strong>
+                          <small>{item.id === project.id ? "当前项目" : item.status === "archived" ? `已归档 · ${formatDate(item.updated_at)}` : `更新于 ${formatDate(item.updated_at)}`}</small>
+                        </div>
+                      </button>
+                      <div className="project-picker-card__actions">
+                        <button
+                          type="button"
+                          className="project-picker-card__more"
+                          aria-label={`管理项目：${item.name}`}
+                          aria-expanded={projectPickerMenuId === item.id}
+                          onClick={() => {
+                            setProjectPickerRenameId(null);
+                            setProjectPickerDeleteConfirmId(null);
+                            setProjectPickerMenuId((current) => current === item.id ? null : item.id);
+                          }}
+                        >
+                          ···
+                        </button>
+                      </div>
+                      {projectPickerMenuId === item.id && (
+                        <div className="project-picker-card__menu" role="menu">
+                          {projectPickerDeleteConfirmId === item.id ? (
+                            <div className="project-picker-card__confirm">
+                              <strong>删除这个项目？</strong>
+                              <p>只从当前账号列表隐藏，数据库资料仍保留。</p>
+                              <div>
+                                <button type="button" onClick={() => setProjectPickerDeleteConfirmId(null)}>
+                                  取消
+                                </button>
+                                <button
+                                  type="button"
+                                  className="is-danger"
+                                  disabled={projectPickerBusyId === item.id}
+                                  onClick={() => void deleteProjectFromPicker(item)}
+                                >
+                                  删除
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <button type="button" role="menuitem" onClick={() => beginRenameProjectFromPicker(item)}>
+                                重命名
+                              </button>
+                              {item.status === "archived" ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    disabled={projectPickerBusyId === item.id}
+                                    onClick={() => void restoreProjectFromPicker(item)}
+                                  >
+                                    恢复项目
+                                  </button>
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    className="is-danger"
+                                    onClick={() => setProjectPickerDeleteConfirmId(item.id)}
+                                  >
+                                    删除
+                                  </button>
+                                </>
+                              ) : (
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  disabled={projectPickerBusyId === item.id}
+                                  onClick={() => void archiveProjectFromPicker(item)}
+                                >
+                                  归档
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  )}
                 </article>
               ))}
             </div>
