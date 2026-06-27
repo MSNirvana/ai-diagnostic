@@ -11,6 +11,7 @@ import { RecordDetailPage } from "./components/Project/RecordDetailPage";
 import { AdminPage } from "./components/Admin/AdminPage";
 import { FreeChatPage } from "./components/FreeChat/FreeChatPage";
 import { PublicSupplementPage } from "./components/Supplement/PublicSupplementPage";
+import { useAuth } from "./auth/useAuth";
 import "./App.css";
 
 function ProjectDiagnoseRedirect() {
@@ -76,6 +77,11 @@ function HomeEntryPage() {
   );
 }
 
+function HomeRoute() {
+  const { isAuthenticated } = useAuth();
+  return isAuthenticated ? <HomeEntryPage /> : <LoginPage />;
+}
+
 export default function App() {
   return (
     <Routes>
@@ -123,11 +129,7 @@ export default function App() {
       />
       <Route
         path="/"
-        element={
-          <ProtectedRoute>
-            <HomeEntryPage />
-          </ProtectedRoute>
-        }
+        element={<HomeRoute />}
       />
       <Route
         path="/history"
