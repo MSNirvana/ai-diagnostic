@@ -619,28 +619,152 @@
 
 .project-workspace-footer {
   display: grid;
-  gap: 6px;
+  gap: 10px;
   margin-top: auto;
-  padding-top: 12px;
+  padding: 12px 0 0;
   border-top: 1px solid rgba(18, 21, 26, 0.08);
 }
 
-.project-workspace-footer button {
-  min-height: 34px;
+.project-workspace-project-list-btn {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 54px;
   border: 0;
-  border-radius: 12px;
-  background: transparent;
-  color: var(--ink-soft);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 92% 0%, rgba(255, 255, 255, 0.76), transparent 34%),
+    linear-gradient(135deg, rgba(var(--accent-rgb), 0.12), rgba(255, 255, 255, 0.86));
+  box-shadow:
+    0 16px 34px rgba(var(--accent-rgb), 0.12),
+    inset 0 0 0 1px rgba(var(--accent-rgb), 0.12);
+  color: var(--accent);
   cursor: pointer;
-  font-size: 0.82rem;
-  font-weight: 800;
+  padding: 8px 10px;
   text-align: left;
-  padding: 0 10px;
+  transition: box-shadow 0.16s ease, transform 0.16s ease, background 0.16s ease;
 }
 
-.project-workspace-footer button:hover {
-  background: rgba(var(--accent-rgb), 0.07);
+.project-workspace-project-list-btn:hover {
+  background:
+    radial-gradient(circle at 92% 0%, rgba(255, 255, 255, 0.92), transparent 34%),
+    linear-gradient(135deg, rgba(var(--accent-rgb), 0.17), rgba(255, 255, 255, 0.94));
+  box-shadow:
+    0 20px 40px rgba(var(--accent-rgb), 0.18),
+    inset 0 0 0 1px rgba(var(--accent-rgb), 0.18);
+  transform: translateY(-1px);
+}
+
+.project-workspace-project-list-btn__icon {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 13px;
+  background: #fff;
   color: var(--accent);
+  font-size: 0.95rem;
+  font-weight: 950;
+  box-shadow: 0 10px 22px rgba(18, 21, 26, 0.08);
+}
+
+.project-workspace-project-list-btn__copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.project-workspace-project-list-btn__copy strong {
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 930;
+  letter-spacing: -0.01em;
+}
+
+.project-workspace-project-list-btn__copy small {
+  color: rgba(72, 88, 106, 0.72);
+  font-size: 0.72rem;
+  font-weight: 760;
+}
+
+.project-workspace-account-card {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) 34px;
+  align-items: center;
+  gap: 10px;
+  min-height: 64px;
+  border: 1px solid rgba(18, 21, 26, 0.06);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow:
+    0 18px 42px rgba(18, 21, 26, 0.08),
+    0 6px 16px rgba(18, 21, 26, 0.04);
+  padding: 9px 10px;
+}
+
+.project-workspace-account-card__avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 35% 25%, rgba(255, 255, 255, 0.8), transparent 30%),
+    linear-gradient(135deg, #17452c, #77b98b);
+  color: #fff;
+  font-size: 0.86rem;
+  font-weight: 950;
+  box-shadow: 0 12px 24px rgba(var(--accent-rgb), 0.18);
+}
+
+.project-workspace-account-card__copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.project-workspace-account-card__copy strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 930;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-workspace-account-card__copy small {
+  overflow: hidden;
+  color: var(--ink-muted);
+  font-size: 0.72rem;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-workspace-account-card button,
+.project-workspace-account-icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(18, 21, 26, 0.06);
+  border-radius: 999px;
+  background: rgba(248, 246, 241, 0.82);
+  color: var(--ink-muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 900;
+  padding: 0;
+  transition: background 0.16s ease, color 0.16s ease, transform 0.16s ease;
+}
+
+.project-workspace-account-card button:hover,
+.project-workspace-account-icon-btn:hover {
+  background: rgba(var(--accent-rgb), 0.08);
+  color: var(--accent);
+  transform: rotate(12deg);
 }
 
 .project-workspace-footer__icon {
@@ -1112,8 +1236,25 @@
   padding: 0;
 }
 
+.project-workspace-sidebar.is-collapsed .project-workspace-project-list-btn {
+  width: 48px;
+  min-height: 48px;
+  grid-template-columns: 1fr;
+  padding: 0;
+}
+
+.project-workspace-sidebar.is-collapsed .project-workspace-project-list-btn__icon {
+  width: 28px;
+  height: 28px;
+  box-shadow: none;
+}
+
 .project-workspace-sidebar.is-collapsed .project-workspace-footer button > span:not(.project-workspace-footer__icon) {
   display: none;
+}
+
+.project-workspace-sidebar.is-collapsed .project-workspace-project-list-btn > .project-workspace-project-list-btn__icon {
+  display: inline-grid;
 }
 
 .project-workspace-sidebar.is-collapsed .project-workspace-footer__icon {

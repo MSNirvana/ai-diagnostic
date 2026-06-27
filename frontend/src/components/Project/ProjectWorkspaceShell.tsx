@@ -1,9 +1,9 @@
 import { type ChangeEvent, type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { createProject, deleteBrainstormSession, deleteSession, listProjects, patchProject, updateBrainstormSession, updateSession } from "../../api/client";
+import { createProject, deleteBrainstormSession, deleteSession, fetchMe, listProjects, patchProject, updateBrainstormSession, updateSession } from "../../api/client";
 import { useAuth } from "../../auth/useAuth";
 import { useIsAdmin } from "../../auth/useIsAdmin";
-import type { ProjectBrainstormBrief, ProjectDetail, ProjectSessionBrief, ProjectSummary } from "../../types";
+import type { MeResponse, ProjectBrainstormBrief, ProjectDetail, ProjectSessionBrief, ProjectSummary } from "../../types";
 import "./ProjectWorkspaceShell.css";
 
 type ProjectWorkspaceSection = "new" | "archive" | "warroom" | "transform";
@@ -95,7 +95,7 @@ export function ProjectWorkspaceShell({
 }: ProjectWorkspaceShellProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { logout } = useAuth();
+  const { logout, token } = useAuth();
   const isAdmin = useIsAdmin();
   const [sessions, setSessions] = useState<ProjectSessionBrief[]>(() => sortSessions(project.sessions ?? []));
   const [brainstorms, setBrainstorms] = useState<ProjectBrainstormBrief[]>(() => sortBrainstorms(project.brainstorm_sessions ?? []));
@@ -121,6 +121,7 @@ export function ProjectWorkspaceShell({
   const [projectPickerCreating, setProjectPickerCreating] = useState(false);
   const [projectPickerNewName, setProjectPickerNewName] = useState("");
   const [projectPickerBusyId, setProjectPickerBusyId] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<MeResponse | null>(null);
   const logoInputRef = useRef<HTMLInputElement | null>(null);
   const sessionSignature = useMemo(
     () => (project.sessions ?? []).map((s) => `${s.id}:${s.title}:${s.updated_at}:${s.is_pinned ? 1 : 0}`).join("|"),
@@ -201,6 +202,24 @@ export function ProjectWorkspaceShell({
     document.addEventListener("keydown", closeOnEscape);
     return () => document.removeEventListener("keydown", closeOnEscape);
   }, [projectPickerOpen]);
+
+  useEffect(() => {
+    if (!token) {
+      setCurrentUser(null);
+      return;
+    }
+    let active = true;
+    fetchMe()
+      .then((user) => {
+        if (active) setCurrentUser(user);
+      })
+      .catch(() => {
+        if (active) setCurrentUser(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [token]);
 
   const navigateStable = (target: string, state?: Record<string, unknown>) => {
     const current = `${location.pathname}${location.search}`;
@@ -503,6 +522,8 @@ export function ProjectWorkspaceShell({
   const activeProjectPickerItems = sortedProjectPickerItems.filter((item) => item.status !== "archived" && item.status !== "deleted");
   const archivedProjectPickerItems = sortedProjectPickerItems.filter((item) => item.status === "archived");
   const visibleProjectPickerItems = projectPickerArchived ? archivedProjectPickerItems : activeProjectPickerItems;
+  const accountName = currentUser?.email?.split("@")[0]?.trim() || "构造视界";
+  const accountMeta = currentUser?.email || "项目账号";
 
   const conversationHistoryList = visibleSessions.length === 0 ? (
     <p className="project-workspace-history__empty">真实开始对话后，记录会沉淀在这里。</p>
@@ -854,14 +875,33 @@ export function ProjectWorkspaceShell({
         )}
 
         <div className="project-workspace-footer">
-          <button type="button" onClick={openProjectPicker} aria-label="项目列表" title="项目列表">
-            <span className="project-workspace-footer__icon" aria-hidden="true">▦</span>
-            {!sidebarCollapsed ? <span>项目列表</span> : null}
+          <button type="button" className="project-workspace-project-list-btn" onClick={openProjectPicker} aria-label="项目列表" title="项目列表">
+            <span className="project-workspace-project-list-btn__icon" aria-hidden="true">▦</span>
+            {!sidebarCollapsed ? (
+              <span className="project-workspace-project-list-btn__copy">
+                <strong>项目列表</strong>
+                <small>新建 / 切换项目</small>
+              </span>
+            ) : null}
           </button>
-          <button type="button" onClick={handleLogout} aria-label="退出" title="退出">
-            <span className="project-workspace-footer__icon" aria-hidden="true">⎋</span>
-            {!sidebarCollapsed ? <span>退出</span> : null}
-          </button>
+          {!sidebarCollapsed ? (
+            <div className="project-workspace-account-card">
+              <span className="project-workspace-account-card__avatar" aria-hidden="true">
+                {accountName.slice(0, 1).toUpperCase()}
+              </span>
+              <span className="project-workspace-account-card__copy">
+                <strong>{accountName}</strong>
+                <small>{accountMeta}</small>
+              </span>
+              <button type="button" onClick={handleLogout} aria-label="退出登录" title="退出登录">
+                ⎋
+              </button>
+            </div>
+          ) : (
+            <button type="button" className="project-workspace-account-icon-btn" onClick={handleLogout} aria-label="退出" title="退出">
+              <span className="project-workspace-footer__icon" aria-hidden="true">⎋</span>
+            </button>
+          )}
         </div>
       </aside>
 
