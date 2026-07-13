@@ -13,10 +13,7 @@ MIN_SCORE_TO_CONFIRM = 70
 BLOCKING_DIMENSIONS = {
     "项目画像",
     "核心问题",
-    "影响与时间",
     "目标",
-    "约束",
-    "成功标准",
 }
 
 
@@ -152,10 +149,12 @@ def annotate_problem_map(problem_map: ProblemMap | None) -> ProblemMap | None:
 
 
 def build_intake_gate_message(result: IntakeCompletenessResult) -> str:
-    missing = "、".join(result.missing_fields[:3]) if result.missing_fields else "关键信息"
+    blocking_missing = [label for label in result.missing_fields if label in BLOCKING_DIMENSIONS]
+    missing = "、".join(blocking_missing[:3] or result.missing_fields[:3]) if result.missing_fields else "关键信息"
     return (
-        f"我先不要急着进入确认，目前信息完整度约 {result.score}/100，"
-        f"还缺少：{missing}。{result.next_question}"
+        f"我先把已知信息用上，不重复问已经在项目档案或对话里出现过的内容。"
+        f"不要急着进入确认，"
+        f"目前信息完整度约 {result.score}/100，还缺少：{missing}。{result.next_question}"
     )
 
 

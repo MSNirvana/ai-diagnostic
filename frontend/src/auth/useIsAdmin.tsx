@@ -28,7 +28,16 @@ export function useIsAdmin(): boolean | null {
         return;
       }
       if (!cancelled) setVal(null);
-      fetchMe()
+      let request: ReturnType<typeof fetchMe>;
+      try {
+        request = fetchMe();
+      } catch {
+        cacheToken = token;
+        cacheValue = false;
+        if (!cancelled) setVal(false);
+        return;
+      }
+      request
         .then((m) => { cacheToken = token; cacheValue = m.is_admin; })
         .catch(() => { cacheToken = token; cacheValue = false; })
         .finally(() => { if (!cancelled) setVal(cacheValue); });

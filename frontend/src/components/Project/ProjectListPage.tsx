@@ -73,9 +73,9 @@ export function ProjectListPage() {
     : featuredProject?.status === "archived" || featuredProject?.status === "deleted"
       ? visibleProjects?.[0] ?? null
       : featuredProject;
-  const listedProjects = featuredVisibleProject
-    ? visibleProjects?.filter((project) => project.id !== featuredVisibleProject.id)
-    : visibleProjects;
+  // Keep the highlighted project in the manageable list as well. Otherwise a
+  // single recent project has no archive/delete controls anywhere on the page.
+  const listedProjects = visibleProjects;
   const memoryPreview = (summary: string) => {
     const latest = summary.split("\n").filter(Boolean).slice(-1)[0] ?? "";
     const cleaned = latest

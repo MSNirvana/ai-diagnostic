@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.llm.base import LLMClient
 from app.models.questionnaire import Questionnaire
+from app.system_config import research_config_values
 
 from .models import ResearchBrief, ResearchEvidenceItem, ResearchQuery
 from .perplexity import PerplexityResearchClient
@@ -31,12 +32,13 @@ async def run_system_pre_research(
     llm: LLMClient | None = None,
 ) -> ResearchBrief:
     scope = await build_research_scope(questionnaire, session)
-    queries = (await plan_research_queries(questionnaire, llm, session, scope=scope))[:_max_queries()]
-    client = client or PerplexityResearchClient()
+    runtime_config = await research_config_values(session)
+    queries = (await plan_research_queries(questionnaire, llm, session, scope=scope))[:_max_queries(runtime_config)]
+    client = client or _configured_research_client(runtime_config)
     if not client.enabled or not queries:
         return ResearchBrief(queries=queries, evidence=[], summary="外部研究未启用或无可执行查询。")
 
-    raw_evidence = await _run_queries(client, queries)
+    raw_evidence = await _run_queries(client, queries, runtime_config=runtime_config)
     evidence = _filter_relevant_evidence(raw_evidence, scope)
     evidence = _dedupe_evidence(evidence)
     await save_research_evidence(
@@ -87,12 +89,16 @@ async def gather_pre_research_evidence(
 async def _run_queries(
     client: PerplexityResearchClient,
     queries: list[ResearchQuery],
+    *,
+    runtime_config: dict[str, str] | None = None,
 ) -> list[ResearchEvidenceItem]:
-    semaphore = asyncio.Semaphore(_concurrency())
+    config = runtime_config or {}
+    semaphore = asyncio.Semaphore(_concurrency(config))
+    max_results = _results_per_query(config)
 
     async def one(query: ResearchQuery) -> list[ResearchEvidenceItem]:
         async with semaphore:
-            return await client.search(query, max_results=_results_per_query())
+            return await client.search(query, max_results=max_results)
 
     batches = await asyncio.gather(*(one(query) for query in queries), return_exceptions=True)
     evidence: list[ResearchEvidenceItem] = []
@@ -277,13 +283,29 @@ def _raw_for_row(row) -> dict:
     return payload if isinstance(payload, dict) else {}
 
 
-def _max_queries() -> int:
-    return int(os.environ.get("RESEARCH_MAX_QUERIES", DEFAULT_MAX_QUERIES))
+def _configured_research_client(values: dict[str, str]) -> PerplexityResearchClient:
+    return PerplexityResearchClient(
+        api_key=values.get("PERPLEXITY_API_KEY") or None,
+        base_url=values.get("PERPLEXITY_BASE_URL") or None,
+        model=values.get("PERPLEXITY_MODEL") or None,
+    )
 
 
-def _results_per_query() -> int:
-    return int(os.environ.get("RESEARCH_RESULTS_PER_QUERY", DEFAULT_RESULTS_PER_QUERY))
+def _config_int(values: dict[str, str], key: str, default: int) -> int:
+    raw = values.get(key) or os.environ.get(key) or str(default)
+    try:
+        return max(1, int(raw))
+    except (TypeError, ValueError):
+        return default
 
 
-def _concurrency() -> int:
-    return int(os.environ.get("RESEARCH_CONCURRENCY", DEFAULT_CONCURRENCY))
+def _max_queries(values: dict[str, str] | None = None) -> int:
+    return _config_int(values or {}, "RESEARCH_MAX_QUERIES", DEFAULT_MAX_QUERIES)
+
+
+def _results_per_query(values: dict[str, str] | None = None) -> int:
+    return _config_int(values or {}, "RESEARCH_RESULTS_PER_QUERY", DEFAULT_RESULTS_PER_QUERY)
+
+
+def _concurrency(values: dict[str, str] | None = None) -> int:
+    return _config_int(values or {}, "RESEARCH_CONCURRENCY", DEFAULT_CONCURRENCY)

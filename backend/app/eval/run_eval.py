@@ -45,12 +45,9 @@ async def run_eval(key: str, use_fake: bool = False) -> dict:
         from app.eval._fake_llm import FakeDiagnosisLLM
         llm = FakeDiagnosisLLM()
     else:
-        # get_llm_client 是 async 且依赖 DB（按 LLMConfig 主备 fallback），
-        # 这里手动开一个 session 解析出真实 client。
+        # 离线评测显式使用 GGOO_SERVICE_API_KEY，不占用任意 Web 用户身份。
         from app.config import get_llm_client
-        from app.db.database import AsyncSessionLocal
-        async with AsyncSessionLocal() as _sess:
-            llm = await get_llm_client(session=_sess)
+        llm = await get_llm_client(authorization=None)
 
     case_reports = []
     l1_all_pass = True

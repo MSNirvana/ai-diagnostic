@@ -6,8 +6,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.jwt import get_optional_user
-from app.db.database import get_session
+from app.config import get_llm_client
+from app.db.database import AsyncSessionLocal, get_session
 from app.db.models import DiagnosisJob, User
+from app.llm.base import LLMClient
 from app.models.questionnaire import Questionnaire
 from app.research.jobs import run_deep_diligence_job
 from app.research.store import list_job_evidence
@@ -50,6 +52,7 @@ async def create_diagnosis_job(
     questionnaire: Questionnaire,
     background_tasks: BackgroundTasks,
     user: User | None = Depends(get_optional_user),
+    llm: LLMClient = Depends(get_llm_client),
     session: AsyncSession = Depends(get_session),
 ) -> CreateDiagnosisJobResponse:
     job = DiagnosisJob(
@@ -63,7 +66,9 @@ async def create_diagnosis_job(
     )
     session.add(job)
     await session.commit()
-    background_tasks.add_task(run_deep_diligence_job, job.id)
+    # The user-scoped GGOO client stays in memory for this in-process job. No
+    # access token or model key is persisted in Build's independent database.
+    background_tasks.add_task(run_deep_diligence_job, job.id, AsyncSessionLocal, llm)
     return CreateDiagnosisJobResponse(job_id=job.id, status=job.status)
 
 

@@ -26,10 +26,12 @@ class PerplexityResearchClient:
         api_key: str | None = None,
         *,
         base_url: str | None = None,
+        model: str | None = None,
         timeout: float = DEFAULT_TIMEOUT,
     ):
         self.api_key = api_key or os.environ.get("PERPLEXITY_API_KEY", "")
         self.base_url = (base_url or os.environ.get("PERPLEXITY_BASE_URL") or PPLX_BASE_URL).rstrip("/")
+        self.model = model or os.environ.get("PERPLEXITY_MODEL", "sonar")
         self.timeout = timeout
 
     @property
@@ -67,7 +69,7 @@ class PerplexityResearchClient:
         max_results: int,
     ) -> list[ResearchEvidenceItem]:
         payload = {
-            "model": os.environ.get("PERPLEXITY_MODEL", "sonar"),
+            "model": self.model,
             "messages": [
                 {
                     "role": "system",

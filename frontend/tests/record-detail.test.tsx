@@ -1,12 +1,16 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, it, expect, vi } from "vitest";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { RecordDetailPage } from "../src/components/Project/RecordDetailPage";
 import { ProjectWarRoomPage } from "../src/components/Project/ProjectWarRoomPage";
 
+afterEach(cleanup);
+
 vi.mock("../src/api/client", () => ({
   listProjects: vi.fn(async () => []),
   patchProject: vi.fn(),
+  getTransformationPlan: vi.fn(async () => ({ items: {} })),
+  listDataSupplementRequests: vi.fn(async () => []),
   getProject: vi.fn(async () => ({
     id: "proj-1",
     name: "待审核项目",
@@ -161,9 +165,9 @@ describe("RecordDetailPage", () => {
     expect(screen.getAllByText("本轮经营会先围绕销售承接链路定动作。").length).toBeGreaterThan(0)
     );
     expect(screen.getByText("项目总览")).toBeTruthy();
-    expect(screen.getByText(/咨询把握度/)).toBeTruthy();
+    expect(screen.getAllByText(/咨询把握度/).length).toBeGreaterThan(0);
     expect(screen.getByText("当前第 1 版")).toBeTruthy();
-    expect(screen.getByText("查看全部建议")).toBeTruthy();
+    expect(screen.getAllByText(/重分线索池/).length).toBeGreaterThan(0);
     expect(screen.queryByText("历史版本")).toBeNull();
   });
 

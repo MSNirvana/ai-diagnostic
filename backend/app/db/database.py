@@ -30,6 +30,15 @@ async def init_db() -> None:
 
 
 async def _ensure_sqlite_columns(conn) -> None:
+    user_result = await conn.execute(text("PRAGMA table_info(user)"))
+    user_columns = {row[1] for row in user_result.fetchall()}
+    if user_columns and "ggoo_user_id" not in user_columns:
+        await conn.execute(text("ALTER TABLE user ADD COLUMN ggoo_user_id INTEGER"))
+    if user_columns and "ggoo_uuid" not in user_columns:
+        await conn.execute(text("ALTER TABLE user ADD COLUMN ggoo_uuid VARCHAR"))
+    await conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_user_ggoo_user_id ON user (ggoo_user_id)"))
+    await conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_user_ggoo_uuid ON user (ggoo_uuid)"))
+
     await conn.execute(text("""
         CREATE TABLE IF NOT EXISTS warroomfeedbackevent (
             id VARCHAR NOT NULL,
@@ -107,6 +116,17 @@ async def _ensure_sqlite_columns(conn) -> None:
     supplement_submission_columns = {row[1] for row in supplement_submission_result.fetchall()}
     if supplement_submission_columns and "deleted_file_ids_json" not in supplement_submission_columns:
         await conn.execute(text("ALTER TABLE datasupplementsubmission ADD COLUMN deleted_file_ids_json TEXT DEFAULT '[]'"))
+
+    await conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS systemconfig (
+            key VARCHAR NOT NULL,
+            value VARCHAR NOT NULL,
+            is_secret BOOLEAN NOT NULL,
+            updated_at TIMESTAMP NOT NULL,
+            PRIMARY KEY (key)
+        )
+    """))
+    await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_systemconfig_is_secret ON systemconfig (is_secret)"))
 
     diagnosis_result = await conn.execute(text("PRAGMA table_info(diagnosisrecord)"))
     diagnosis_columns = {row[1] for row in diagnosis_result.fetchall()}

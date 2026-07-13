@@ -5,7 +5,14 @@ from pydantic import BaseModel, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.jwt import create_token, get_current_user, hash_password, is_admin_email, verify_password
+from app.auth.jwt import (
+    create_token,
+    get_current_user,
+    hash_password,
+    is_admin_email,
+    legacy_local_auth_enabled,
+    verify_password,
+)
 from app.db.database import get_session
 from app.db.models import User
 
@@ -60,6 +67,11 @@ async def register(
     body: RegisterRequest,
     session: AsyncSession = Depends(get_session),
 ) -> TokenResponse:
+    if not legacy_local_auth_enabled():
+        raise HTTPException(
+            status_code=410,
+            detail="Build 已使用 GGOO 统一账号，请通过 GGOO 登录或注册",
+        )
     existing = await session.scalar(select(User).where(User.email == body.email))
     if existing is not None:
         raise HTTPException(status_code=409, detail="该邮箱已注册")
@@ -78,6 +90,11 @@ async def login(
     body: LoginRequest,
     session: AsyncSession = Depends(get_session),
 ) -> TokenResponse:
+    if not legacy_local_auth_enabled():
+        raise HTTPException(
+            status_code=410,
+            detail="Build 已使用 GGOO 统一账号，请通过 GGOO 登录",
+        )
     user = await session.scalar(select(User).where(User.email == body.email))
     if user is None or not verify_password(body.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="邮箱或密码错误")

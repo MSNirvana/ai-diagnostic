@@ -1,10 +1,12 @@
-import { describe, it, expect, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, it, expect, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { DecisionBoard } from "../src/components/WarRoom/DecisionBoard";
 import { DepartmentActionGrid } from "../src/components/WarRoom/DepartmentActionGrid";
 import { EvidenceRiskPanel } from "../src/components/WarRoom/EvidenceRiskPanel";
 import { WarRoomPage } from "../src/components/WarRoom/WarRoomPage";
 import type { WarRoomPlan } from "../src/types";
+
+afterEach(cleanup);
 
 const plan: WarRoomPlan = {
   id: "wr_1",
@@ -298,11 +300,11 @@ describe("WarRoom components", () => {
     expect(screen.getByText("CRM 阶段转化率")).toBeTruthy();
     expect(screen.getByText("通常由 销售负责人 提供")).toBeTruthy();
 
-    fireEvent.click(screen.getByText("复制请求发给负责人"));
+    fireEvent.click(screen.getByText("复制补资料链接"));
     expect(writeText).toHaveBeenCalledWith(
       "【数据补充请求】麻烦帮忙提供：CRM 阶段转化率\n用途：验证线索在哪个阶段流失\n从哪取：CRM"
     );
-    expect(await screen.findByText("已复制 ✓")).toBeTruthy();
+    expect(await screen.findByText("已复制")).toBeTruthy();
   });
 
   it("cleans internal object-like evidence from the boss-facing panel", () => {

@@ -40,7 +40,7 @@ import { AppShell } from "../Layout/AppShell";
 import { EvidencePackPanel } from "../Evidence/EvidencePackPanel";
 import "./AdminPage.css";
 
-type Tab = "skills" | "models" | "review" | "cases" | "health";
+type Tab = "skills" | "review" | "cases" | "health";
 
 type SkillGroupKey = "intake" | "questionnaire" | "engine" | "core" | "professional" | "capability" | "delivery" | "assistant" | "other";
 type SkillFilterKey = SkillGroupKey | "all";
@@ -100,7 +100,7 @@ export function AdminPage() {
     <AppShell
       eyebrow="运营后台"
       title="后台管理"
-      description="维护专家方法库、模型通道与版本留痕，让前台交付稳定、可追溯、可持续优化。"
+      description="维护专家方法库、审核流程与版本留痕，让前台交付稳定、可追溯、可持续优化。"
       actions={
         <button type="button" className="btn-ghost" onClick={() => navigate("/projects")}>
           返回项目组合
@@ -111,7 +111,6 @@ export function AdminPage() {
         <div className="admin-tabs" aria-label="后台模块切换">
           <button type="button" className={tab === "review" ? "admin-tab admin-tab--on" : "admin-tab"} onClick={() => setTab("review")}>审核队列</button>
           <button type="button" className={tab === "skills" ? "admin-tab admin-tab--on" : "admin-tab"} onClick={() => setTab("skills")}>专家方法库</button>
-          <button type="button" className={tab === "models" ? "admin-tab admin-tab--on" : "admin-tab"} onClick={() => setTab("models")}>模型通道</button>
           <button type="button" className={tab === "cases" ? "admin-tab admin-tab--on" : "admin-tab"} onClick={() => setTab("cases")}>案例库</button>
           <span className="admin-tab-divider" />
           <button type="button" className={tab === "health" ? "admin-tab admin-tab--on" : "admin-tab"} onClick={() => setTab("health")}>系统健康</button>
@@ -119,7 +118,6 @@ export function AdminPage() {
 
         {tab === "review" && <ReviewTab />}
         {tab === "skills" && <SkillsTab />}
-        {tab === "models" && <ModelsTab />}
         {tab === "cases" && <CaseLibraryTab />}
         {tab === "health" && <SystemHealthTab />}
       </section>

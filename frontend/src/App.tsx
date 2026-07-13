@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Routes, Route, Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 import { createProject, listProjects } from "./api/client";
 import { LoginPage } from "./components/Auth/LoginPage";
+import { AuthCallbackPage } from "./components/Auth/AuthCallbackPage";
 import { ProtectedRoute } from "./components/Auth/ProtectedRoute";
 import { AdminRoute } from "./components/Auth/AdminRoute";
 import { ProjectDetailPage } from "./components/Project/ProjectDetailPage";
@@ -248,6 +249,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/auth/callback" element={<AuthCallbackPage />} />
       <Route path="/supplement/:token" element={<PublicSupplementPage />} />
       <Route
         path="/projects"

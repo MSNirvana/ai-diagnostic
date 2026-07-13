@@ -13,12 +13,12 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.conversation import run_chat_turn
+from app.api.conversation import _project_context_for_intake, run_chat_turn
 from app.auth.jwt import get_current_user, get_optional_user
 from app.config import get_llm_client
 from app.data.uploads import render_file_summary
 from app.db.database import get_session
-from app.db.models import User, DiagnosisSession, Project, ProjectMemoryEntry, UploadedFile
+from app.db.models import User, DiagnosisSession, ProjectMemoryEntry, UploadedFile
 from app.llm.base import LLMClient
 from app.memory.project_memory import append_conversation_memory, append_memory_entry, append_problem_map_memory
 from app.memory.session_visibility import is_meaningful_session
@@ -173,12 +173,10 @@ async def session_chat(
     if body.memory_enabled is not None:
         s.memory_enabled = body.memory_enabled
 
-    # 读所属项目的长期记忆，作为对话背景注入
+    # 读所属项目档案与长期记忆，作为对话背景注入，避免复诊时重复追问已知事实。
     project_memory = ""
     if s.project_id:
-        proj = await session.get(Project, s.project_id)
-        if proj:
-            project_memory = proj.memory_summary
+        project_memory = await _project_context_for_intake(session, s.project_id, user)
 
     # 读历史，追加用户这轮发言
     history = [ChatMessage.model_validate(m) for m in json.loads(s.messages_json)]

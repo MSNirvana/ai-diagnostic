@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import App from "../src/App";
 import {
@@ -14,6 +14,11 @@ import {
 } from "../src/api/client";
 import { ProjectWarRoomPage } from "../src/components/Project/ProjectWarRoomPage";
 import type { WarRoomPlan } from "../src/types";
+
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
 
 const warRoomPlan: WarRoomPlan = {
   id: "wr-1",
@@ -183,6 +188,7 @@ vi.mock("../src/api/client", () => {
     attachments: body.attachments ?? [],
   })),
   listDataSupplementRequests: vi.fn(async () => []),
+  getTransformationPlan: vi.fn(async () => ({ items: {} })),
   createDataSupplementRequest: vi.fn(async (_projectId: string, warRoomPlanId: string, dataRequest: any) => ({
     id: "supp-1",
     token: "token-1",
@@ -503,17 +509,17 @@ describe("project diagnosis war room routing", () => {
     );
 
     await waitFor(() => screen.getByText("项目总览"));
-    fireEvent.click(screen.getByText("查看全部建议"));
+    fireEvent.click(screen.getByRole("button", { name: /线索响应提速/ }));
 
     await waitFor(() =>
       expect(screen.getByTestId("location").textContent).toBe(
-        "/projects/proj-1/war-room/view/recommendations?recommendation=action%3Asales-action-1"
+        "/projects/proj-1/war-room?recommendation=action%3Asales-action-1"
       )
     );
     expect(screen.getByText("问题是什么？")).toBeTruthy();
     expect(screen.getByText("行动建议")).toBeTruthy();
     expect(screen.getAllByText("线索响应提速").length).toBeGreaterThan(0);
-    expect(screen.getByText(/重分线索池/)).toBeTruthy();
+    expect(screen.getByText(/A 类线索 10 分钟内首响/)).toBeTruthy();
   });
 
   it("turns verbose recommendation actions into short navigation titles", async () => {
@@ -550,9 +556,9 @@ describe("project diagnosis war room routing", () => {
     vi.mocked(getProjectWarRoom).mockResolvedValueOnce(verbosePlan);
 
     render(
-      <MemoryRouter initialEntries={["/projects/proj-1/war-room/view/recommendations"]}>
+      <MemoryRouter initialEntries={["/projects/proj-1/war-room"]}>
         <Routes>
-          <Route path="/projects/:projectId/war-room/view/:section" element={<ProjectWarRoomPage />} />
+          <Route path="/projects/:projectId/war-room" element={<ProjectWarRoomPage />} />
         </Routes>
       </MemoryRouter>
     );
@@ -567,7 +573,7 @@ describe("project diagnosis war room routing", () => {
     expect(Array.from(tabs).some((tab) => tab.textContent?.includes("连接或上传真实推广账号"))).toBe(false);
     expect(Array.from(tabs).every((tab) => !tab.textContent?.includes("优先级"))).toBe(true);
     expect(Array.from(tabs).every((tab) => !tab.textContent?.includes("数据待补"))).toBe(true);
-    expect(screen.getByText(/连接或上传真实推广账号与近30\/90天投放报表/)).toBeTruthy();
+    expect(screen.getByText(/先接入投放后台和渠道消耗/)).toBeTruthy();
   });
 
   it("copies a public supplement link from the data page", async () => {
@@ -575,9 +581,9 @@ describe("project diagnosis war room routing", () => {
     Object.assign(navigator, { clipboard: { writeText } });
 
     render(
-      <MemoryRouter initialEntries={["/projects/proj-1/war-room/view/recommendations?recommendation=action%3Asales-action-1"]}>
+      <MemoryRouter initialEntries={["/projects/proj-1/war-room?recommendation=action%3Asales-action-1"]}>
         <Routes>
-          <Route path="/projects/:projectId/war-room/view/:section" element={<ProjectWarRoomPage />} />
+          <Route path="/projects/:projectId/war-room" element={<ProjectWarRoomPage />} />
         </Routes>
       </MemoryRouter>
     );
@@ -634,9 +640,9 @@ describe("project diagnosis war room routing", () => {
       ],
     });
     render(
-      <MemoryRouter initialEntries={["/projects/proj-1/war-room/view/recommendations?recommendation=action%3Asales-action-1"]}>
+      <MemoryRouter initialEntries={["/projects/proj-1/war-room?recommendation=action%3Asales-action-1"]}>
         <Routes>
-          <Route path="/projects/:projectId/war-room/view/:section" element={<ProjectWarRoomPage />} />
+          <Route path="/projects/:projectId/war-room" element={<ProjectWarRoomPage />} />
         </Routes>
       </MemoryRouter>
     );

@@ -42,7 +42,9 @@ async def run_deep_diligence_job(
             await _merge_stored_files(session, questionnaire)
 
             await _update_job(session, job, status="researching", current_step="系统预研外部证据", progress=0.18)
-            llm = llm or await get_llm_client(session)
+            # Web-created jobs receive the request-scoped user client. This
+            # fallback is reserved for explicit offline service-key runs.
+            llm = llm or await get_llm_client(authorization=None)
             research_brief = await engine.run_system_pre_research(
                 session,
                 job_id=job.id,

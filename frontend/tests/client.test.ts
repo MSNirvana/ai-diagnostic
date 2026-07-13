@@ -60,4 +60,55 @@ describe("runDiagnose", () => {
       diagnosis_focus: "sales",
     });
   });
+
+  it("refreshes an expired GGOO token and retries the Build request", async () => {
+    localStorage.setItem("auth_token", "expired-token");
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: false, status: 401 })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ code: 200, data: { access_token: "fresh-token" } }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          results: [],
+          record_id: null,
+          skill_version_ids: {},
+          triage: {
+            primary_module: null,
+            selected_experts: [],
+            conflicts: [],
+            dependencies: [],
+            priority_actions: [],
+          },
+        }),
+      });
+    globalThis.fetch = fetchMock;
+
+    await runDiagnose([{ module: "market", facts: {}, pains: [] }]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(String(fetchMock.mock.calls[1][0])).toContain("api.ggoo.ai/api/v1/auth/refresh");
+    const retryHeaders = new Headers(fetchMock.mock.calls[2][1]?.headers);
+    expect(retryHeaders.get("Authorization")).toBe("Bearer fresh-token");
+    expect(localStorage.getItem("auth_token")).toBe("fresh-token");
+  });
+
+  it("keeps the current session when GGOO refresh is temporarily unavailable", async () => {
+    localStorage.setItem("auth_token", "expired-token");
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: false, status: 401 })
+      .mockRejectedValueOnce(new TypeError("network unavailable"));
+    globalThis.fetch = fetchMock;
+
+    await expect(
+      runDiagnose([{ module: "market", facts: {}, pains: [] }])
+    ).rejects.toThrow("GGOO 登录刷新暂时不可用");
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(localStorage.getItem("auth_token")).toBe("expired-token");
+  });
 });

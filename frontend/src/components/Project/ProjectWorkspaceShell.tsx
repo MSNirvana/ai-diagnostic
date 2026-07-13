@@ -217,7 +217,14 @@ export function ProjectWorkspaceShell({
       return;
     }
     let active = true;
-    fetchMe()
+    let request: Promise<MeResponse>;
+    try {
+      request = fetchMe();
+    } catch {
+      setCurrentUser(null);
+      return;
+    }
+    request
       .then((user) => {
         if (active) setCurrentUser(user);
       })

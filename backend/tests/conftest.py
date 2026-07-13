@@ -1,4 +1,10 @@
 """测试共享 fixture：每个测试用独立的内存 SQLite，建表 + 注入 get_session。"""
+import os
+
+# Historical API tests use locally issued tokens. Production defaults to false;
+# dedicated GGOO auth tests explicitly disable this compatibility switch.
+os.environ["BUILD_LEGACY_AUTH_ENABLED"] = "true"
+
 import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -7,6 +13,26 @@ from sqlmodel import SQLModel
 from app.db import models  # noqa: F401  确保表注册
 from app.db.database import get_session
 from app.main import app
+
+
+class _DefaultTestLLM:
+    async def complete(self, system: str, prompt: str) -> str:
+        return "{}"
+
+    async def describe_image(self, system: str, prompt: str, image_bytes: bytes, media_type: str) -> str:
+        return "测试图片摘要"
+
+
+@pytest.fixture(autouse=True)
+def _bypass_ggoo_model_gateway():
+    """Business tests use a deterministic model unless they install a richer fake."""
+    from app.config import get_llm_client
+
+    fallback = lambda: _DefaultTestLLM()
+    app.dependency_overrides[get_llm_client] = fallback
+    yield
+    if app.dependency_overrides.get(get_llm_client) is fallback:
+        app.dependency_overrides.pop(get_llm_client, None)
 
 
 @pytest.fixture(autouse=True)

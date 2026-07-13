@@ -233,6 +233,7 @@ vi.mock("../src/api/client", () => ({
       { role: "assistant", content: "可以先从渠道承接链路做验证。" },
     ],
   })),
+  listBrainstormSessions: vi.fn(async () => baseProjectDetail.brainstorm_sessions ?? []),
   updateBrainstormSession: vi.fn(async (id: string, body: { title?: string; is_pinned?: boolean }) => ({
     id,
     project_id: "proj-1",
@@ -449,7 +450,7 @@ describe("ProjectDetailPage memory timeline", () => {
     expect(screen.getByText("低成本获客动作")).toBeTruthy();
     fireEvent.click(screen.getByRole("tab", { name: "对话记录 1" }));
     expect(screen.getByText("获客成本过高")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "更换项目 Logo" }).textContent).toBe("星");
+    expect(screen.getByRole("button", { name: "更换项目 Logo" }).querySelector("img")).toBeTruthy();
     expect(screen.queryByText("返回工作台")).toBeNull();
     expect(screen.queryByRole("button", { name: "返回项目组合" })).toBeNull();
     expect(screen.queryByText("当前状态")).toBeNull();
@@ -598,7 +599,7 @@ describe("ProjectDetailPage memory timeline", () => {
     expect(within(screen.getByRole("region", { name: "项目记录" })).getByText("我想测试当前对话记录是否出现")).toBeTruthy();
   });
 
-  it("requires data collection before starting deep diagnosis from the confirmed problem map", async () => {
+  it("starts deep diagnosis directly from the confirmed problem map", async () => {
     vi.mocked(sessionChat).mockResolvedValueOnce({
       message: "我已经整理出问题地图，请确认是否开始诊断。",
       done: false,
@@ -644,31 +645,15 @@ describe("ProjectDetailPage memory timeline", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "确认问题地图并开始诊断" })).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "确认问题地图并开始诊断" }));
 
-    expect(await screen.findByText("诊断方案已定制完成，请先补充关键数据。")).toBeTruthy();
-    expect(screen.getByText("补充数据")).toBeTruthy();
-    expect(createDiagnosisJob).not.toHaveBeenCalled();
-    expect(screen.getByPlaceholderText("还有要补充或纠正的吗？直接说…")).toBeTruthy();
-    expect(screen.queryByLabelText("诊断流程")).toBeNull();
-
-    fireEvent.click(screen.getByText("补充数据"));
-    expect(await screen.findByRole("heading", { name: "市场与客户" })).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("近 30 天渠道花费"), {
-      target: { value: "抖音 8 万，小红书 2 万" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "开始诊断" }));
-
+    expect(await screen.findByText("正在基于你的问题定制诊断方案…（这需要几分钟）")).toBeTruthy();
     await waitFor(() => expect(createDiagnosisJob).toHaveBeenCalledTimes(1));
     expect(createDiagnosisJob).toHaveBeenCalledWith(
-      [
-        expect.objectContaining({
-          module: "market",
-          facts: expect.objectContaining({ channel_cost: "抖音 8 万，小红书 2 万" }),
-        }),
-      ],
+      [],
       "sess-new",
       "proj-1",
       expect.objectContaining({ core_problem: "获客成本过高" })
     );
+    expect(screen.getByPlaceholderText("输入消息...")).toBeTruthy();
     expect(screen.getByLabelText("诊断流程")).toBeTruthy();
     expect(getDiagnosisJob).not.toHaveBeenCalled();
   });
@@ -741,6 +726,8 @@ describe("ProjectDetailPage memory timeline", () => {
 
     expect(screen.getByTestId("location").textContent).toBe("/projects/proj-1");
     expect(screen.queryByText("作战室页面")).toBeNull();
+    expect(await screen.findByText("已提交顾问复核，顾问正在深度判断中。")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "查看进度" }));
     expect(await screen.findByRole("heading", { name: "市场与客户" })).toBeTruthy();
     expect(screen.getByDisplayValue("搜索广告 5 万，内容投放 3 万")).toBeTruthy();
   });
@@ -760,12 +747,12 @@ describe("ProjectDetailPage memory timeline", () => {
     );
 
     await waitFor(() => expect(getDiagnosisJob).toHaveBeenCalledWith("job-1"));
-    expect(await screen.findByText("资料与证据已整理完成，顾问正在深度判断中。")).toBeTruthy();
+    expect(await screen.findByText("已提交顾问复核，顾问正在深度判断中。")).toBeTruthy();
     expect(screen.getByRole("button", { name: "查看进度" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "重新诊断" })).toBeTruthy();
     const toolbar = document.querySelector(".chat-input-toolbar");
     expect(toolbar?.textContent).toContain("AI咨询");
-    expect(toolbar?.textContent).toContain("资料与证据已整理完成，顾问正在深度判断中。");
+    expect(toolbar?.textContent).toContain("已提交顾问复核，顾问正在深度判断中。");
     expect(screen.getByPlaceholderText("输入消息...")).toBeTruthy();
   });
 
@@ -820,40 +807,52 @@ describe("ProjectDetailPage memory timeline", () => {
       </MemoryRouter>
     );
 
-    await screen.findByText("资料与证据已整理完成，顾问正在深度判断中。");
+    await screen.findByText("已提交顾问复核，顾问正在深度判断中。");
     fireEvent.click(screen.getByRole("button", { name: "重新诊断" }));
     expect(await screen.findByText("问题地图未更新，无需重新诊断。")).toBeTruthy();
     expect(createDiagnosisJob).not.toHaveBeenCalled();
   });
 
   it("keeps the problem map visible while the diagnosis plan keeps progressing", async () => {
+    const persistedProblemMap = {
+      company_name: "星麦直播",
+      industry: "直播电商",
+      main_business: "直播带货",
+      business_model: "投流获客后直播转化",
+      scale: "",
+      stage: "",
+      core_problem: "获客成本翻倍",
+      sub_problems: ["投放 ROI 下滑"],
+      goal: "降低获客成本",
+      constraints: "预算不能继续翻倍",
+      success_criteria: "ROI 回到 1.5 以上",
+      impact: "近半年预算翻倍但 ROI 下降",
+      context: "直播电商项目",
+      suspected_cause: "",
+      tried: "",
+      data_readiness: "有投放后台数据",
+      diagnosis_focus: "market",
+      information_score: 88,
+      missing_fields: [],
+      next_question_reason: "",
+    };
     vi.mocked(sessionChat).mockResolvedValueOnce({
       message: "问题地图已成型，我会在后台继续推进诊断方案。",
       done: true,
       phase: "done",
       summary: null,
-      problem_map: {
-        company_name: "星麦直播",
-        industry: "直播电商",
-        main_business: "直播带货",
-        business_model: "投流获客后直播转化",
-        scale: "",
-        stage: "",
-        core_problem: "获客成本翻倍",
-        sub_problems: ["投放 ROI 下滑"],
-        goal: "降低获客成本",
-        constraints: "预算不能继续翻倍",
-        success_criteria: "ROI 回到 1.5 以上",
-        impact: "近半年预算翻倍但 ROI 下降",
-        context: "直播电商项目",
-        suspected_cause: "",
-        tried: "",
-        data_readiness: "有投放后台数据",
-        diagnosis_focus: "market",
-        information_score: 88,
-        missing_fields: [],
-        next_question_reason: "",
-      },
+      problem_map: persistedProblemMap,
+    });
+    vi.mocked(getSessionDetail).mockResolvedValueOnce({
+      id: "sess-new",
+      created_at: "2026-06-03T00:00:00Z",
+      updated_at: "2026-06-03T00:00:00Z",
+      title: "获客成本翻倍",
+      status: "filling",
+      messages: [{ role: "user", content: "获客成本越来越高" }],
+      problem_map: persistedProblemMap,
+      diagnosis_record_id: null,
+      draft_json: null,
     });
 
     render(
@@ -868,13 +867,19 @@ describe("ProjectDetailPage memory timeline", () => {
     fireEvent.change(input, { target: { value: "获客成本越来越高" } });
     fireEvent.click(screen.getByRole("button", { name: "发送消息" }));
 
-    expect(await screen.findByText("诊断方案已定制完成，请先补充关键数据。")).toBeTruthy();
-    expect(createDiagnosisJob).not.toHaveBeenCalled();
+    expect(await screen.findByText("正在基于你的问题定制诊断方案…（这需要几分钟）")).toBeTruthy();
+    await waitFor(() => expect(createDiagnosisJob).toHaveBeenCalledTimes(1));
+    expect(createDiagnosisJob).toHaveBeenCalledWith(
+      [],
+      "sess-new",
+      "proj-1",
+      expect.objectContaining({ core_problem: "获客成本翻倍" })
+    );
     expect(screen.queryByRole("button", { name: "确认问题地图并开始诊断" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "打开问题地图" }));
     expect(await screen.findByRole("dialog", { name: "问题地图" })).toBeTruthy();
     expect(screen.getByText("获客成本翻倍")).toBeTruthy();
-    expect(screen.queryByLabelText("诊断流程")).toBeNull();
+    expect(screen.getByLabelText("诊断流程")).toBeTruthy();
   });
 
   it("lets project brainstorm examples fill the draft and toggles project context", async () => {
@@ -1176,7 +1181,7 @@ describe("ProjectDetailPage memory timeline", () => {
     );
 
     const logoButton = await screen.findByRole("button", { name: "更换项目 Logo" });
-    expect(logoButton.textContent).toBe("星");
+    expect(logoButton.querySelector("img")).toBeTruthy();
     const input = document.querySelector<HTMLInputElement>(".project-workspace-logo-input");
     expect(input).toBeTruthy();
     const file = new File(["fake"], "logo.png", { type: "image/png" });
@@ -1502,7 +1507,7 @@ describe("ProjectDetailPage memory timeline", () => {
     );
 
     await waitFor(() => screen.getByText("今天，你想解决什么？"));
-    expect(screen.getByText("返回项目列表")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "项目列表" })).toBeTruthy();
     expect(screen.queryByText(/检测到上次未完成的填写/)).toBeNull();
     expect(screen.queryByText(/你好，我是你的诊断顾问/)).toBeNull();
     expect(screen.queryByText(/查看全部/)).toBeNull();

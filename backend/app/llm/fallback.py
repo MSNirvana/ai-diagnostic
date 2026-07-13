@@ -64,6 +64,23 @@ class FallbackLLMClient(LLMClient):
             raise FallbackLLMError(failures) from last_err
         raise last_err or RuntimeError("无可用 LLM")
 
+    async def describe_image(self, system: str, prompt: str, image_bytes: bytes, media_type: str) -> str:
+        last_err: Exception | None = None
+        failures: list[str] = []
+        for c in _ordered_clients(self._clients):
+            try:
+                result = await c.describe_image(system, prompt, image_bytes, media_type)
+                _register_success(c.debug_label)
+                return result
+            except Exception as e:
+                last_err = e
+                _register_failure(c.debug_label, e)
+                failures.append(_format_failure(c, e))
+                continue
+        if failures:
+            raise FallbackLLMError(failures) from last_err
+        raise last_err or RuntimeError("无可用 LLM")
+
 
 def _format_failure(client: LLMClient, err: Exception) -> str:
     status = getattr(err, "status_code", None)

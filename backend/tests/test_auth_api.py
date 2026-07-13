@@ -5,6 +5,14 @@ from app.main import app
 client = TestClient(app)
 
 
+def test_local_auth_is_disabled_in_production_mode(db_session, monkeypatch):
+    monkeypatch.setenv("BUILD_LEGACY_AUTH_ENABLED", "false")
+    register_resp = client.post("/auth/register", json={"email": "a@b.com", "password": "secret123"})
+    login_resp = client.post("/auth/login", json={"email": "a@b.com", "password": "secret123"})
+    assert register_resp.status_code == 410
+    assert login_resp.status_code == 410
+
+
 def test_register_returns_token(db_session):
     resp = client.post("/auth/register", json={"email": "a@b.com", "password": "secret123"})
     assert resp.status_code == 201

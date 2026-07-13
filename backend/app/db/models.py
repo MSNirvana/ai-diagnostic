@@ -18,6 +18,10 @@ class User(SQLModel, table=True):
     hashed_password: str
     created_at: datetime = Field(default_factory=_now)
     is_admin: bool = Field(default=False)   # 运营后台访问权；由 ADMIN_EMAILS 环境变量 bootstrap
+    # Build keeps its own user row as the owner of local projects and sessions.
+    # These fields bind that row to the canonical GGOO account.
+    ggoo_user_id: int | None = Field(default=None, unique=True, index=True)
+    ggoo_uuid: str | None = Field(default=None, unique=True, index=True)
 
 
 class Project(SQLModel, table=True):
@@ -278,6 +282,18 @@ class LLMConfig(SQLModel, table=True):
     priority: int = Field(default=0, index=True)  # 0=主，升序 fallback
     is_active: bool = Field(default=True, index=True)
     created_at: datetime = Field(default_factory=_now)
+
+
+class SystemConfig(SQLModel, table=True):
+    """运营后台可维护的系统级配置。
+
+    适合放外部搜索、诊断运行参数这类运行时可调整项。启动安全项
+    如 JWT_SECRET / ADMIN_EMAILS 仍保留环境变量，但后台健康页会提示状态。
+    """
+    key: str = Field(primary_key=True)
+    value: str = ""
+    is_secret: bool = Field(default=False, index=True)
+    updated_at: datetime = Field(default_factory=_now)
 
 
 class UploadedFile(SQLModel, table=True):

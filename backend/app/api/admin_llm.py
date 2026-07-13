@@ -20,9 +20,9 @@ router = APIRouter(prefix="/admin/llm-configs", dependencies=[Depends(require_ad
 
 
 def _mask(key: str) -> str:
-    if len(key) <= 4:
+    if len(key) <= 8:
         return "****"
-    return "****" + key[-4:]
+    return f"{key[:6]}{'*' * 8}{key[-4:]}"
 
 
 class LLMConfigOut(BaseModel):

@@ -47,14 +47,68 @@ import type {
   ResearchEvidenceOut,
   ArchiveExtractionPreview,
 } from "../types";
-import { clearToken, getToken } from "../auth/authStore";
+import { clearToken, getToken, setToken } from "../auth/authStore";
 
 const BASE = import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8000";
+const GGOO_API_BASE = (import.meta.env.VITE_GGOO_API_BASE ?? "https://api.ggoo.ai").replace(/\/$/, "");
+let refreshPromise: Promise<string> | null = null;
+
+class TransientAuthRefreshError extends Error {}
 
 function authHeaders(): Record<string, string> {
   const token = getToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
+
+async function refreshGGOOAccessToken(): Promise<string> {
+  refreshPromise ??= (async () => {
+    let response: Response;
+    try {
+      response = await globalThis.fetch(`${GGOO_API_BASE}/api/v1/auth/refresh`, {
+        method: "POST",
+        credentials: "include",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+      });
+    } catch {
+      throw new TransientAuthRefreshError("GGOO 登录刷新暂时不可用，请稍后重试");
+    }
+    const payload = await response.json().catch(() => null) as {
+      code?: number;
+      msg?: string;
+      data?: { access_token?: string };
+    } | null;
+    if (response.status >= 500) {
+      throw new TransientAuthRefreshError(payload?.msg || "GGOO 登录刷新暂时不可用，请稍后重试");
+    }
+    const token = payload?.data?.access_token?.trim();
+    if (!response.ok || !token) {
+      throw new Error(payload?.msg || "GGOO 登录状态已失效");
+    }
+    setToken(token);
+    return token;
+  })().finally(() => {
+    refreshPromise = null;
+  });
+  return refreshPromise;
+}
+
+async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const response = await globalThis.fetch(input, init);
+  if (response.status !== 401 || !getToken()) return response;
+  try {
+    const token = await refreshGGOOAccessToken();
+    const headers = new Headers(init?.headers);
+    headers.set("Authorization", `Bearer ${token}`);
+    return await globalThis.fetch(input, { ...init, headers });
+  } catch (error) {
+    if (error instanceof TransientAuthRefreshError) throw error;
+    clearToken();
+    return response;
+  }
+}
+
+// Keep all existing API methods on one retry-aware transport.
+const fetch = apiFetch;
 
 async function errorMessage(resp: Response, fallback: string): Promise<string> {
   if (resp.status === 401) {
@@ -199,32 +253,6 @@ export async function submitFeedback(
       comment,
     }),
   });
-}
-
-export async function register(email: string, password: string): Promise<string> {
-  const resp = await fetch(`${BASE}/auth/register`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  });
-  if (!resp.ok) {
-    const detail = await resp.json().catch(() => ({}));
-    throw new Error(detail.detail || `注册失败: ${resp.status}`);
-  }
-  return (await resp.json()).access_token as string;
-}
-
-export async function login(email: string, password: string): Promise<string> {
-  const resp = await fetch(`${BASE}/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  });
-  if (!resp.ok) {
-    const detail = await resp.json().catch(() => ({}));
-    throw new Error(detail.detail || `登录失败: ${resp.status}`);
-  }
-  return (await resp.json()).access_token as string;
 }
 
 export async function fetchHistory(): Promise<DiagnosisSummary[]> {

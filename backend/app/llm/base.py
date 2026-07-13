@@ -14,3 +14,7 @@ class LLMClient(ABC):
     async def complete(self, system: str, prompt: str) -> str:
         """给定 system 指令和用户 prompt，返回模型文本输出。"""
         ...
+
+    async def describe_image(self, system: str, prompt: str, image_bytes: bytes, media_type: str) -> str:
+        """可选多模态能力：读取图片并返回文本摘要。默认实现表示该通道不支持。"""
+        raise NotImplementedError(f"{self.debug_label} 不支持图片识别")

@@ -1,3 +1,5 @@
+import base64
+
 from openai import AsyncOpenAI
 import httpx
 from app.llm.base import LLMClient
@@ -49,6 +51,34 @@ class OpenAIClient(LLMClient):
             resp.raise_for_status()
             data = resp.json()
         return _extract_text(data)
+
+    async def describe_image(self, system: str, prompt: str, image_bytes: bytes, media_type: str) -> str:
+        image_b64 = base64.b64encode(image_bytes).decode("ascii")
+        payload = {
+            "model": self._model,
+            "messages": [
+                {"role": "system", "content": system},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:{media_type};base64,{image_b64}",
+                            },
+                        },
+                    ],
+                },
+            ],
+        }
+        try:
+            resp = await self._client.chat.completions.create(**payload)
+            return resp.choices[0].message.content or ""
+        except Exception as exc:
+            if not _should_fallback_to_http(exc):
+                raise
+        return await self._complete_via_http(payload)
 
 
 def _should_fallback_to_http(exc: Exception) -> bool:

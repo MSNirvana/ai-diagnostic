@@ -62,6 +62,18 @@ PROJECT_CONTEXT_RUNTIME_RULE = (
     "- 如果本轮 prompt 出现【项目信息状态】且说明未找到项目档案，才可以说明项目档案不可用。"
 )
 
+INTAKE_MEMORY_RUNTIME_RULE = (
+    "\n\n【项目档案优先规则】\n"
+    "- 如果系统提示中出现【这个项目的历史诊断记忆】、【项目当前档案】或【最近档案事件】，"
+    "这些都是当前项目已知事实，不是闲聊噪音。\n"
+    "- 已知事实必须直接写入 problem_map；不要再次追问同一件事。"
+    "例如档案里已有预算、人手、时间、阶段、核心业务、目标客户、已尝试动作，就不能再问用户“你不知道吗/你先告诉我”。\n"
+    "- 只有三类信息可以继续问：项目档案没有的关键缺口、用户刚刚说法与档案冲突的地方、可能随时间变化需要确认的数字。"
+    "这类问题要写成“我看到档案里是……，现在是否有变化？”而不是从零提问。\n"
+    "- 语气要像顾问复诊：先承认已知，再问缺口。禁止责备式、反问式、考试式表达。\n"
+    "- 信息完整度够进入确认时，直接基于档案与本轮对话生成 confirm，不要为了补齐可选字段拖着用户。"
+)
+
 
 def _format_history(req: ChatRequest) -> str:
     if not req.messages:
@@ -171,6 +183,85 @@ async def _project_context_for_free_chat(
         f"最近档案事件：\n{chr(10).join(memory_lines)}" if memory_lines else "",
         war_room,
     ]).strip()
+
+
+async def _project_context_for_intake(
+    session: AsyncSession,
+    project_id: str | None,
+    user: User | None,
+) -> str:
+    if not project_id:
+        return ""
+    project = await session.get(Project, project_id)
+    if project is None:
+        return ""
+    if project.user_id is not None and (user is None or project.user_id != user.id):
+        return ""
+
+    sections: list[str] = [f"项目名称：{project.name}"]
+    if project.profile_json:
+        try:
+            profile = json.loads(project.profile_json)
+            if isinstance(profile, dict):
+                facts = _problem_map_fact_lines(profile)
+                if facts:
+                    sections.append("【项目当前档案】\n" + "\n".join(facts))
+        except (TypeError, ValueError):
+            pass
+    if project.memory_summary.strip():
+        sections.append("【长期记忆摘要】\n" + project.memory_summary.strip())
+
+    memory_rows = list((await session.scalars(
+        select(ProjectMemoryEntry)
+        .where(ProjectMemoryEntry.project_id == project_id)
+        .order_by(ProjectMemoryEntry.created_at.desc())
+        .limit(10)
+    )).all())
+    memory_lines = [
+        f"- {row.entry_type}：{_clean_card_text(row.summary)[:260]}"
+        for row in memory_rows
+        if _clean_card_text(row.summary)
+    ]
+    if memory_lines:
+        sections.append("【最近档案事件】\n" + "\n".join(memory_lines))
+
+    return "\n\n".join(section for section in sections if section.strip()).strip()
+
+
+def _problem_map_fact_lines(payload: dict) -> list[str]:
+    labels = {
+        "company_name": "企业/项目",
+        "industry": "行业",
+        "main_business": "主营业务",
+        "business_model": "商业模式",
+        "scale": "规模",
+        "stage": "阶段",
+        "core_problem": "核心问题",
+        "goal": "目标",
+        "constraints": "约束",
+        "success_criteria": "成功标准",
+        "impact": "影响",
+        "context": "背景",
+        "suspected_cause": "疑似原因",
+        "tried": "已尝试动作",
+        "data_readiness": "可用数据",
+        "diagnosis_focus": "优先诊断方向",
+    }
+    lines: list[str] = []
+    for key, label in labels.items():
+        value = payload.get(key)
+        if isinstance(value, list):
+            text = "；".join(str(item).strip() for item in value if str(item).strip())
+        else:
+            text = str(value or "").strip()
+        if text:
+            lines.append(f"- {label}：{_clean_card_text(text)[:260]}")
+    sub_problems = payload.get("sub_problems")
+    if isinstance(sub_problems, list) and sub_problems:
+        text = "；".join(str(item).strip() for item in sub_problems if str(item).strip())
+        if text:
+            lines.append(f"- 相关子问题：{_clean_card_text(text)[:260]}")
+    return lines
 
 
 def _is_stale_no_project_reply(text: str) -> bool:
@@ -378,6 +469,7 @@ async def run_chat_turn(
         completeness_ver.system_prompt if completeness_ver else INTAKE_COMPLETENESS
     )
     system = system + "\n\n" + completeness_prompt
+    system = system + INTAKE_MEMORY_RUNTIME_RULE
 
     # 注入项目长期记忆，让"再次诊断"能基于这个项目的历史，而非从零开始
     if project_memory.strip():
