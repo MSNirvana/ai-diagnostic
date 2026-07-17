@@ -729,6 +729,14 @@ export interface MeResponse {
   is_admin: boolean;
 }
 
+// ── 平台计费（积分余额 / 任务账本）──────────────────────────────────────────────
+// GGOO 余额接口尚未最终确认，available=false 时前端应隐藏展示，不出假数字。
+
+export interface CreditsBalance {
+  available: boolean;
+  points: number | null;
+}
+
 // ── 案例库类型 ────────────────────────────────────────────────────────────────
 
 export interface ProjectLedgerItem {

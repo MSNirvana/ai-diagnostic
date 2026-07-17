@@ -416,3 +416,32 @@ class IndustryBenchmark(SQLModel, table=True):
     needs_verification: bool = False        # LLM 估算未联网核实 = True
     fetched_at: datetime = Field(default_factory=_now)
     expires_at: datetime = Field(index=True)
+
+
+class ToolTask(SQLModel, table=True):
+    """跨工具的任务账本：报价 -> 冻结 -> 执行 -> 结算/退款 的统一记录。
+
+    交接文档第 9 节要求"钱包共用、消费来源分开"：AIBuild 内的每次计费任务
+    （图片生成、经营诊断模型调用等）都应落一行账本，用 source/tool/mode 区分
+    归因，避免多个消费来源混用同一 GGOO API Key 后无法拆账。
+
+    状态机（见 app/billing/ledger.py）：
+    quoted -> reserved -> running -> succeeded
+                    \\-> cancelled      \\-> failed -> refunded
+    """
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    user_id: str = Field(foreign_key="user.id", index=True)
+    project_id: str | None = Field(default=None, index=True)
+    workflow_id: str | None = Field(default=None, index=True)
+    created_at: datetime = Field(default_factory=_now)
+    updated_at: datetime = Field(default_factory=_now)
+    source: str = Field(default="build", index=True)   # build | codex | external_api
+    tool: str = Field(index=True)                      # image | diagnostic | ...
+    mode: str = ""                                     # basic | canvas | api
+    model: str = ""                                    # 实际路由模型
+    status: str = Field(default="quoted", index=True)  # quoted|reserved|running|succeeded|failed|cancelled|refunded
+    quote_points: int | None = None                    # 预计积分
+    actual_points: int | None = None                   # 实际积分
+    idempotency_key: str | None = Field(default=None, unique=True, index=True)
+    error_message: str = ""
+    payload_json: str = "{}"                           # 任务上下文快照（工具自定义结构）

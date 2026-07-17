@@ -35,6 +35,9 @@ class GGOORemoteUser:
     nickname: str
 
 
+_NO_BALANCE = object()  # sentinel cached when no usable balance field was found
+
+
 class _TTLCache:
     def __init__(self) -> None:
         self._store: dict[str, tuple[Any, float]] = {}
@@ -146,6 +149,7 @@ class GGOOLLMClient(LLMClient):
 class GGOOClient:
     VERIFY_USER_TTL = 60.0
     ACTIVE_KEY_TTL = 300.0
+    BALANCE_TTL = 30.0
     MAX_RETRIES = 2
 
     def __init__(self, client: httpx.AsyncClient | None = None) -> None:
@@ -157,6 +161,7 @@ class GGOOClient:
         self._owns_client = client is None
         self._verify_cache = _TTLCache()
         self._active_key_cache = _TTLCache()
+        self._balance_cache = _TTLCache()
 
     @staticmethod
     def api_base_url() -> str:
@@ -218,6 +223,36 @@ class GGOOClient:
             raise GGOOError("无法创建 GGOO API Key，请前往 GGOO API 页面检查账户")
         self._active_key_cache.set(token, key, self.ACTIVE_KEY_TTL)
         return key
+
+    async def get_credit_balance(self, token: str) -> float | None:
+        """Best-effort GGOO credit balance lookup.
+
+        GGOO has not confirmed a dedicated balance endpoint yet (handover
+        doc section 16 "待确认"), so by default this probes the existing
+        `users/me` response for a plausible balance field. Once GGOO
+        confirms a real endpoint/field, point `GGOO_BALANCE_PATH` /
+        `GGOO_BALANCE_FIELD` (dotted path, e.g. `wallet.balance`) at it —
+        no code change needed. Returns `None` when nothing usable is found
+        so callers hide the display instead of showing a fabricated number.
+        """
+        configured_path = os.environ.get("GGOO_BALANCE_PATH", "").strip()
+        if token.startswith("sk-") and not configured_path:
+            # API keys can't call users/me, and without a dedicated balance
+            # path there is nothing reliable left to probe.
+            return None
+
+        cached = self._balance_cache.get(token)
+        if cached is not None:
+            return None if cached is _NO_BALANCE else cached
+
+        path = configured_path or "/api/v1/sys/users/me"
+        payload = await self._request_json("GET", f"{self.api_base_url()}{path}", token=token)
+        data = payload.get("data") or {}
+        field = os.environ.get("GGOO_BALANCE_FIELD", "").strip()
+        raw_value = _lookup_dotted(data, field) if field else _probe_balance_field(data)
+        balance = _coerce_float(raw_value)
+        self._balance_cache.set(token, balance if balance is not None else _NO_BALANCE, self.BALANCE_TTL)
+        return balance
 
     async def make_llm_client(self, token: str) -> GGOOLLMClient:
         api_key = await self.get_or_create_active_key(token)
@@ -281,6 +316,45 @@ class GGOOClient:
     async def close(self) -> None:
         if self._owns_client:
             await self._client.aclose()
+
+
+_BALANCE_FIELD_CANDIDATES = (
+    "balance",
+    "credits",
+    "points",
+    "credit_balance",
+    "remain_quota",
+    "quota",
+)
+
+
+def _probe_balance_field(data: dict[str, Any]) -> Any:
+    for field in _BALANCE_FIELD_CANDIDATES:
+        if field in data:
+            return data[field]
+    return None
+
+
+def _lookup_dotted(data: Any, dotted_field: str) -> Any:
+    current = data
+    for part in dotted_field.split("."):
+        if not isinstance(current, dict) or part not in current:
+            return None
+        current = current[part]
+    return current
+
+
+def _coerce_float(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
 
 
 def _response_message(response: httpx.Response) -> str:

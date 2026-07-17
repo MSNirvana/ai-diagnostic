@@ -21,6 +21,7 @@ vi.mock("../src/auth/ggooSso", () => ({
 
 vi.mock("../src/api/client", () => ({
   listProjects: vi.fn(async () => []),
+  fetchCreditsBalance: vi.fn(async () => ({ available: false, points: null })),
 }));
 
 const listProjectsMock = vi.mocked(listProjects);

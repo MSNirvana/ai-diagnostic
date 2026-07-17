@@ -46,6 +46,7 @@ import type {
   DiagnosisJobStatus,
   ResearchEvidenceOut,
   ArchiveExtractionPreview,
+  CreditsBalance,
 } from "../types";
 import { clearToken, getToken, setToken } from "../auth/authStore";
 
@@ -883,6 +884,12 @@ export async function fetchMe(): Promise<MeResponse> {
   const resp = await fetch(`${BASE}/auth/me`, { headers: { ...authHeaders() } });
   if (!resp.ok) throw new Error(await errorMessage(resp, "获取当前用户失败"));
   return (await resp.json()) as MeResponse;
+}
+
+export async function fetchCreditsBalance(): Promise<CreditsBalance> {
+  const resp = await fetch(`${BASE}/billing/balance`, { headers: { ...authHeaders() } });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "获取积分余额失败"));
+  return (await resp.json()) as CreditsBalance;
 }
 
 export async function fetchCaseProjects(
