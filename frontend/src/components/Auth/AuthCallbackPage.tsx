@@ -30,7 +30,7 @@ export function AuthCallbackPage() {
         <div className="auth-logo" aria-hidden="true">
           <img src="/brand-logo.png" alt="" />
         </div>
-        <h1 className="auth-title">构造视界</h1>
+        <h1 className="auth-title">GGOO Build</h1>
         {error ? (
           <>
             <p className="auth-error">{error}</p>

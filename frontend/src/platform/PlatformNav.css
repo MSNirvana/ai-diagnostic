@@ -1,0 +1,119 @@
+.platform-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  max-width: var(--container);
+  margin: 0 auto;
+  padding: 18px 28px;
+}
+
+.platform-nav__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-display);
+  font-weight: 700;
+}
+
+.platform-nav__ggoo {
+  color: var(--ink-soft);
+  text-decoration: none;
+  font-size: 17px;
+  letter-spacing: 0.02em;
+  transition: color 0.15s ease;
+}
+
+.platform-nav__ggoo:hover {
+  color: var(--accent);
+}
+
+.platform-nav__divider {
+  color: var(--ink-muted);
+  font-weight: 400;
+}
+
+.platform-nav__build {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  text-decoration: none;
+  font-size: 17px;
+  letter-spacing: 0.02em;
+}
+
+.platform-nav__build img {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.platform-nav__links {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  flex: 1;
+  justify-content: center;
+}
+
+.platform-nav__links a {
+  color: var(--ink-soft);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  transition: color 0.15s ease;
+}
+
+.platform-nav__links a:hover {
+  color: var(--ink);
+}
+
+.platform-nav__account {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.platform-nav__login,
+.platform-nav__logout {
+  border: none;
+  cursor: pointer;
+  border-radius: 999px;
+  padding: 9px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.platform-nav__login {
+  background: var(--accent);
+  color: #fff;
+}
+
+.platform-nav__login:hover {
+  background: var(--accent-hover);
+}
+
+.platform-nav__logout {
+  background: transparent;
+  color: var(--ink-soft);
+  border: 1px solid var(--line-strong);
+}
+
+.platform-nav__logout:hover {
+  color: var(--ink);
+  background: var(--surface-subtle);
+}
+
+@media (max-width: 720px) {
+  .platform-nav {
+    padding: 14px 18px;
+    gap: 12px;
+  }
+
+  .platform-nav__links {
+    gap: 14px;
+  }
+}

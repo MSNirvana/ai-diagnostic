@@ -13,7 +13,8 @@ import { FreeChatPage } from "./components/FreeChat/FreeChatPage";
 import { PublicSupplementPage } from "./components/Supplement/PublicSupplementPage";
 import { Questionnaire } from "./components/Questionnaire/Questionnaire";
 import { ProjectWorkspaceShell } from "./components/Project/ProjectWorkspaceShell";
-import { useAuth } from "./auth/useAuth";
+import { PlatformHomePage } from "./platform/PlatformHomePage";
+import { AllToolsPage } from "./platform/AllToolsPage";
 import "./App.css";
 
 function ProjectDiagnoseRedirect() {
@@ -240,17 +241,14 @@ function NoProjectHomePage({ requireAuth = false }: { requireAuth?: boolean }) {
   );
 }
 
-function HomeRoute() {
-  const { isAuthenticated } = useAuth();
-  return isAuthenticated ? <HomeEntryPage /> : <NoProjectHomePage requireAuth />;
-}
-
 export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/auth/callback" element={<AuthCallbackPage />} />
       <Route path="/supplement/:token" element={<PublicSupplementPage />} />
+      <Route path="/tools" element={<AllToolsPage />} />
+      <Route path="/tools/diagnostic" element={<Navigate to="/projects" replace />} />
       <Route
         path="/projects"
         element={
@@ -293,7 +291,7 @@ export default function App() {
       />
       <Route
         path="/"
-        element={<HomeRoute />}
+        element={<PlatformHomePage />}
       />
       <Route
         path="/history"

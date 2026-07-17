@@ -45,7 +45,7 @@ export function LoginPage({ modal = false, onClose, returnTo: forcedReturnTo }: 
       <div className="auth-logo" aria-hidden="true">
         <img src="/brand-logo.png" alt="" />
       </div>
-      <h1 className="auth-title" id="auth-title">构造视界</h1>
+      <h1 className="auth-title" id="auth-title">GGOO Build</h1>
       <p className="auth-subtitle">使用 GGOO 统一账户进入你的项目空间</p>
       <div className="auth-banner">
         <span className="auth-banner__icon" aria-hidden="true">G</span>
@@ -55,7 +55,7 @@ export function LoginPage({ modal = false, onClose, returnTo: forcedReturnTo }: 
         <button className="auth-submit" type="button" onClick={() => beginGGOOSSO(returnTo)}>
           使用 GGOO 登录 / 注册
         </button>
-        <p className="auth-hint">登录后将自动返回构造视界。</p>
+        <p className="auth-hint">登录后将自动返回 GGOO Build。</p>
       </div>
     </div>
   );
@@ -68,7 +68,7 @@ export function LoginPage({ modal = false, onClose, returnTo: forcedReturnTo }: 
         <aside className="auth-home-sidebar">
           <div className="auth-home-brand">
             <span className="auth-home-logo"><img src="/brand-logo.png" alt="" /></span>
-            <div><small>构造视界项目</small><strong>经营增长诊断</strong></div>
+            <div><small>GGOO Build</small><strong>经营增长诊断</strong></div>
           </div>
           <div className="auth-home-menu"><span>＋ 新对话</span><span>□ 项目档案</span><span>⚑ 作战室</span></div>
           <div className="auth-home-history">
