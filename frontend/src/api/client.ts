@@ -929,6 +929,8 @@ export async function createImageTask(req: {
   reference_asset_id?: string;
   style?: string;
   size?: string;
+  generation_mode?: "text2image" | "image2image";
+  edited_description?: string;
   idempotency_key?: string;
 }): Promise<CreateImageTaskResponse> {
   const resp = await fetch(`${BASE}/image-tool/tasks`, {

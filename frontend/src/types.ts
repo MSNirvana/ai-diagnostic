@@ -758,12 +758,49 @@ export interface ImageTaskStatus {
   result_image_url: string | null;
   created_at: string;
   updated_at: string;
+  // Canvas-relevant payload fields (optional; populated after job runs).
+  preset_id?: string | null;
+  user_intent?: string | null;
+  reference_asset_id?: string | null;
+  reverse_prompt?: string | null;
+  assembled_prompt?: string | null;
+  generation_mode?: "text2image" | "image2image" | null;
 }
 
 export interface CreateImageTaskResponse {
   task_id: string;
   status: string;
   quote_points: number | null;
+}
+
+// ── 画布节点类型 ──────────────────────────────────────────────────────────────
+
+export type CanvasNodeKind =
+  | "requirement"
+  | "asset"
+  | "reversePrompt"
+  | "prompt"
+  | "model"
+  | "generate"
+  | "result"
+  | "export";
+
+export interface CanvasNodeData {
+  kind: CanvasNodeKind;
+  label: string;
+  // Optional payload fields used by individual node renderers.
+  presetName?: string;
+  userIntent?: string;
+  assetName?: string;
+  assetThumbUrl?: string;
+  reversePrompt?: string;
+  assembledPrompt?: string;
+  modelName?: string;
+  generationMode?: "text2image" | "image2image";
+  taskStatus?: string;
+  resultImageUrl?: string;
+  // Index signature required by @xyflow/react v12 Node<T> constraint.
+  [key: string]: unknown;
 }
 
 // ── 案例库类型 ────────────────────────────────────────────────────────────────

@@ -110,3 +110,36 @@
   max-height: 90vh;
   overflow: auto;
 }
+
+/* Mode tabs (基础 / 高级) */
+.image-tool-mode-tabs {
+  display: inline-flex;
+  gap: 4px;
+  background: #fff;
+  border: 1px solid #e8e8ec;
+  border-radius: 10px;
+  padding: 4px;
+  margin-bottom: 24px;
+}
+
+.image-tool-tab {
+  border: none;
+  background: transparent;
+  color: #666;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 8px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.image-tool-tab:hover {
+  color: #1a1a2e;
+  background: #f3f4f6;
+}
+
+.image-tool-tab.active {
+  background: #6366f1;
+  color: #fff;
+}

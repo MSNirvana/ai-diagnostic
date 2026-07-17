@@ -1,0 +1,77 @@
+.canvas-node {
+  min-width: 180px;
+  max-width: 220px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  font-size: 12px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.canvas-node__title {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 6px;
+  color: #111827;
+}
+
+.canvas-node__body {
+  color: #374151;
+}
+
+.canvas-node__field {
+  margin-bottom: 4px;
+  word-break: break-word;
+}
+
+.canvas-node__field--muted {
+  color: #9ca3af;
+  font-style: italic;
+}
+
+.canvas-node__field--text {
+  max-height: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+}
+
+.canvas-node__thumb {
+  width: 100%;
+  max-height: 80px;
+  object-fit: cover;
+  border-radius: 4px;
+  margin-bottom: 4px;
+}
+
+.canvas-node__status {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  background: #e5e7eb;
+  color: #374151;
+}
+
+/* Node type accents */
+.canvas-node--requirement { border-left: 3px solid #3b82f6; }
+.canvas-node--asset { border-left: 3px solid #10b981; }
+.canvas-node--reverse { border-left: 3px solid #8b5cf6; }
+.canvas-node--prompt { border-left: 3px solid #f59e0b; }
+.canvas-node--model { border-left: 3px solid #6366f1; }
+.canvas-node--generate { border-left: 3px solid #ec4899; }
+.canvas-node--result { border-left: 3px solid #14b8a6; }
+.canvas-node--export { border-left: 3px solid #6b7280; }
+
+/* Generate node status accents */
+.canvas-node--pending .canvas-node__status { background: #e5e7eb; color: #374151; }
+.canvas-node--quoted .canvas-node__status { background: #dbeafe; color: #1e40af; }
+.canvas-node--reserved .canvas-node__status { background: #dbeafe; color: #1e40af; }
+.canvas-node--running .canvas-node__status { background: #fef3c7; color: #92400e; }
+.canvas-node--succeeded .canvas-node__status { background: #d1fae5; color: #065f46; }
+.canvas-node--failed .canvas-node__status { background: #fee2e2; color: #991b1b; }
+.canvas-node--cancelled .canvas-node__status { background: #f3f4f6; color: #6b7280; }
+.canvas-node--refunded .canvas-node__status { background: #f3f4f6; color: #6b7280; }

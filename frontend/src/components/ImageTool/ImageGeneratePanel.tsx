@@ -13,13 +13,17 @@ const TERMINAL_STATUSES = new Set(["succeeded", "failed", "cancelled", "refunded
 
 interface ImageGeneratePanelProps {
   presetId: string;
+  /** Called when the user clicks "进入高级模式" after a successful generation. */
+  onEnterCanvas?: (taskId: string) => void;
 }
 
-export function ImageGeneratePanel({ presetId }: ImageGeneratePanelProps) {
+export function ImageGeneratePanel({ presetId, onEnterCanvas }: ImageGeneratePanelProps) {
   const [userIntent, setUserIntent] = useState("");
   const [referenceAsset, setReferenceAsset] = useState<ImageAssetOut | null>(null);
   const [assets, setAssets] = useState<ImageAssetOut[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [reversePrompt, setReversePrompt] = useState("");
+  const [generationMode, setGenerationMode] = useState<"text2image" | "image2image">("image2image");
   const [taskId, setTaskId] = useState<string | null>(null);
   const [taskStatus, setTaskStatus] = useState<ImageTaskStatus | null>(null);
   const [quotePoints, setQuotePoints] = useState<number | null>(null);
@@ -30,6 +34,15 @@ export function ImageGeneratePanel({ presetId }: ImageGeneratePanelProps) {
   useEffect(() => {
     listImageAssets().then(setAssets).catch(() => {});
   }, []);
+
+  // When the selected reference asset changes, sync the reverse-prompt editor.
+  useEffect(() => {
+    if (referenceAsset?.vision_status === "parsed" && referenceAsset.vision_description) {
+      setReversePrompt(referenceAsset.vision_description);
+    } else {
+      setReversePrompt("");
+    }
+  }, [referenceAsset]);
 
   useEffect(() => {
     if (!taskId) return;
@@ -75,28 +88,34 @@ export function ImageGeneratePanel({ presetId }: ImageGeneratePanelProps) {
     }
   }, []);
 
-  const handleCreate = useCallback(async () => {
-    if (!userIntent.trim()) {
-      setError("请描述你的需求");
-      return;
-    }
-    setCreating(true);
-    setError(null);
-    try {
-      const resp = await createImageTask({
-        preset_id: presetId,
-        user_intent: userIntent.trim(),
-        reference_asset_id: referenceAsset?.id,
-      });
-      setTaskId(resp.task_id);
-      setQuotePoints(resp.quote_points);
-      setTaskStatus(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "创建任务失败");
-    } finally {
-      setCreating(false);
-    }
-  }, [presetId, userIntent, referenceAsset]);
+  const startTask = useCallback(
+    async (mode: "text2image" | "image2image") => {
+      if (!userIntent.trim()) {
+        setError("请描述你的需求");
+        return;
+      }
+      setCreating(true);
+      setError(null);
+      setGenerationMode(mode);
+      try {
+        const resp = await createImageTask({
+          preset_id: presetId,
+          user_intent: userIntent.trim(),
+          reference_asset_id: referenceAsset?.id,
+          generation_mode: mode,
+          edited_description: reversePrompt.trim() || undefined,
+        });
+        setTaskId(resp.task_id);
+        setQuotePoints(resp.quote_points);
+        setTaskStatus(null);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "创建任务失败");
+      } finally {
+        setCreating(false);
+      }
+    },
+    [presetId, userIntent, referenceAsset, reversePrompt]
+  );
 
   const handleConfirm = useCallback(async () => {
     if (!taskId) return;
@@ -135,6 +154,8 @@ export function ImageGeneratePanel({ presetId }: ImageGeneratePanelProps) {
             >
               <span>{asset.original_name}</span>
               {asset.vision_status === "parsed" && <small>已识别</small>}
+              {asset.vision_status === "pending" && <small>识别中</small>}
+              {asset.vision_status === "failed" && <small>识别失败</small>}
             </button>
           ))}
           <button
@@ -159,6 +180,22 @@ export function ImageGeneratePanel({ presetId }: ImageGeneratePanelProps) {
         </div>
       </div>
 
+      {referenceAsset && (
+        <div className="image-generate-field">
+          <label htmlFor="image-reverse-prompt">
+            反推提示词{referenceAsset.vision_status === "pending" ? "（识别中…）" : "（可编辑）"}
+          </label>
+          <textarea
+            id="image-reverse-prompt"
+            value={reversePrompt}
+            onChange={(e) => setReversePrompt(e.target.value)}
+            placeholder={referenceAsset.vision_status === "failed" ? "图片识别失败，可手动输入描述" : "基于参考图反推的提示词，可修改"}
+            rows={3}
+            disabled={referenceAsset.vision_status === "pending"}
+          />
+        </div>
+      )}
+
       <div className="image-generate-field">
         <label htmlFor="image-intent">需求描述</label>
         <textarea
@@ -173,14 +210,37 @@ export function ImageGeneratePanel({ presetId }: ImageGeneratePanelProps) {
       {error && <p className="image-generate-error">{error}</p>}
 
       {!taskId && (
-        <button
-          type="button"
-          className="image-generate-submit"
-          disabled={creating || !userIntent.trim()}
-          onClick={() => void handleCreate()}
-        >
-          {creating ? "创建中…" : "获取报价"}
-        </button>
+        <div className="image-generate-actions-row">
+          {referenceAsset ? (
+            <>
+              <button
+                type="button"
+                className="image-generate-submit"
+                disabled={creating || !userIntent.trim()}
+                onClick={() => void startTask("image2image")}
+              >
+                {creating && generationMode === "image2image" ? "创建中…" : "以原图二次创作"}
+              </button>
+              <button
+                type="button"
+                className="image-generate-submit image-generate-submit--secondary"
+                disabled={creating || !userIntent.trim()}
+                onClick={() => void startTask("text2image")}
+              >
+                {creating && generationMode === "text2image" ? "创建中…" : "基于提示词生成"}
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className="image-generate-submit"
+              disabled={creating || !userIntent.trim()}
+              onClick={() => void startTask("text2image")}
+            >
+              {creating ? "创建中…" : "获取报价"}
+            </button>
+          )}
+        </div>
       )}
 
       {isQuoted && (
@@ -213,9 +273,16 @@ export function ImageGeneratePanel({ presetId }: ImageGeneratePanelProps) {
         <div className="image-generate-result">
           <img src={taskStatus.result_image_url} alt="生成结果" />
           <div className="image-generate-actions">
-            <button type="button" onClick={handleReset}>
-              再次生成
-            </button>
+            <button type="button" onClick={handleReset}>再次生成</button>
+            {onEnterCanvas && taskId && (
+              <button
+                type="button"
+                className="image-generate-submit--secondary"
+                onClick={() => onEnterCanvas(taskId)}
+              >
+                进入高级模式
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -223,9 +290,7 @@ export function ImageGeneratePanel({ presetId }: ImageGeneratePanelProps) {
       {taskStatus?.status === "failed" && (
         <div className="image-generate-failed">
           <p>生成失败：{taskStatus.error || "未知错误"}</p>
-          <button type="button" onClick={handleReset}>
-            重试
-          </button>
+          <button type="button" onClick={handleReset}>重试</button>
         </div>
       )}
     </div>

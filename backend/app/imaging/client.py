@@ -38,12 +38,23 @@ class GGOOImageClient:
         size: str,
         model: str | None = None,
         n: int = 1,
+        reference_image_url: str | None = None,
     ) -> str:
         """Generate an image and return its URL.
 
+        When `reference_image_url` is provided, runs in image-to-image mode:
+        - Uses the edit endpoint path (env `GGOO_IMAGE_EDIT_PATH`, defaults to
+          `GGOO_IMAGE_GENERATIONS_PATH` value)
+        - Sends the reference image under the field named by env
+          `GGOO_IMAGE_REFERENCE_FIELD` (default `image`)
+
         Raises GGOOError subclasses on failure; never returns a fake URL.
         """
-        path = os.environ.get("GGOO_IMAGE_GENERATIONS_PATH", "/images/generations").strip()
+        if reference_image_url:
+            default_path = os.environ.get("GGOO_IMAGE_GENERATIONS_PATH", "/images/generations").strip()
+            path = os.environ.get("GGOO_IMAGE_EDIT_PATH", default_path).strip()
+        else:
+            path = os.environ.get("GGOO_IMAGE_GENERATIONS_PATH", "/images/generations").strip()
         if not path.startswith("/"):
             path = f"/{path}"
         url = f"{self._gateway_base_url}{path}"
@@ -55,6 +66,9 @@ class GGOOImageClient:
             "size": size,
             "n": n,
         }
+        if reference_image_url:
+            ref_field = os.environ.get("GGOO_IMAGE_REFERENCE_FIELD", "image").strip() or "image"
+            body[ref_field] = reference_image_url
 
         response = await self._client.post(
             url,

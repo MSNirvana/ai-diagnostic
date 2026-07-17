@@ -26,6 +26,8 @@ class CreateImageTaskRequest(BaseModel):
     reference_asset_id: str | None = None
     style: str | None = None
     size: str | None = None
+    generation_mode: str | None = None  # "text2image" | "image2image"
+    edited_description: str | None = None  # user-edited reverse-prompt
     idempotency_key: str | None = None
 
 
@@ -45,6 +47,13 @@ class ImageTaskStatus(BaseModel):
     result_image_url: str | None
     created_at: str
     updated_at: str
+    # Canvas-relevant payload fields (optional; populated after job runs).
+    preset_id: str | None = None
+    user_intent: str | None = None
+    reference_asset_id: str | None = None
+    reverse_prompt: str | None = None
+    assembled_prompt: str | None = None
+    generation_mode: str | None = None
 
 
 def _task_status(task: ToolTask) -> ImageTaskStatus:
@@ -59,6 +68,12 @@ def _task_status(task: ToolTask) -> ImageTaskStatus:
         result_image_url=payload.get("result_image_url"),
         created_at=task.created_at.isoformat(),
         updated_at=task.updated_at.isoformat(),
+        preset_id=payload.get("preset_id"),
+        user_intent=payload.get("user_intent"),
+        reference_asset_id=payload.get("reference_asset_id"),
+        reverse_prompt=payload.get("reverse_prompt") or payload.get("edited_description"),
+        assembled_prompt=payload.get("assembled_prompt"),
+        generation_mode=payload.get("generation_mode"),
     )
 
 
@@ -80,12 +95,16 @@ async def create_image_task(
             raise HTTPException(status_code=404, detail="参考素材不存在")
 
     quote = estimate_points("image", "basic")
+    # Normalize generation mode: image2image requires a reference asset.
+    mode = req.generation_mode or ("image2image" if req.reference_asset_id else "text2image")
     payload = {
         "preset_id": req.preset_id,
         "user_intent": req.user_intent,
         "reference_asset_id": req.reference_asset_id,
         "style": req.style or preset.default_style,
         "size": req.size or preset.default_size,
+        "generation_mode": mode,
+        "edited_description": req.edited_description,
         "progress": 0,
     }
     task = await create_task(

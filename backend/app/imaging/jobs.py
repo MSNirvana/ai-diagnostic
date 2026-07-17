@@ -4,6 +4,7 @@ Runs after the API returns 202; transitions the ToolTask through
 running -> succeeded/failed with billing ledger integration.
 """
 import json
+import os
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -13,6 +14,19 @@ from app.imaging.client import GGOOImageClient
 from app.imaging.prompts import build_generate_prompt
 from app.imaging.presets import get_preset
 from app.integrations.ggoo import ggoo_client
+
+
+def _build_reference_url(asset_id: str) -> str | None:
+    """Build a publicly-reachable URL for an image asset.
+
+    Uses env `IMAGE_PUBLIC_BASE_URL` as the host prefix. If unset, returns None
+    (image2image mode cannot run without a public URL — callers should fall back
+    to text2image). The path follows the `/image-assets/{id}/file` route.
+    """
+    base = os.environ.get("IMAGE_PUBLIC_BASE_URL", "").strip().rstrip("/")
+    if not base:
+        return None
+    return f"{base}/image-assets/{asset_id}/file"
 
 
 async def run_image_generation_job(
@@ -36,10 +50,17 @@ async def run_image_generation_job(
 
             anchor_description = ""
             reference_asset_id = payload.get("reference_asset_id")
+            asset = None
             if reference_asset_id:
                 asset = await session.get(ImageAsset, reference_asset_id)
                 if asset is not None:
                     anchor_description = asset.vision_description
+
+            # Prefer user-edited reverse prompt as the anchor when provided.
+            edited = payload.get("edited_description")
+            if edited:
+                anchor_description = edited
+            payload["reverse_prompt"] = anchor_description
 
             prompt = build_generate_prompt(
                 anchor_description=anchor_description,
@@ -48,6 +69,17 @@ async def run_image_generation_job(
                 size=payload.get("size", preset.default_size),
                 prompt_skeleton=preset.prompt_skeleton,
             )
+            payload["assembled_prompt"] = prompt
+
+            mode = payload.get("generation_mode", "text2image")
+            reference_image_url: str | None = None
+            if mode == "image2image" and reference_asset_id:
+                reference_image_url = _build_reference_url(reference_asset_id)
+                if reference_image_url is None:
+                    # No public base URL configured — fall back to text2image.
+                    mode = "text2image"
+                    payload["generation_mode"] = mode
+                    payload["fallback_reason"] = "image2image_unavailable_no_public_url"
 
             api_key = await ggoo_client.get_or_create_active_key(authorization)
             image_client = GGOOImageClient(
@@ -58,6 +90,7 @@ async def run_image_generation_job(
             image_url = await image_client.generate_image(
                 prompt=prompt,
                 size=payload.get("size", preset.default_size),
+                reference_image_url=reference_image_url if mode == "image2image" else None,
             )
 
             payload["result_image_url"] = image_url

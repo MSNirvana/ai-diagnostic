@@ -1,9 +1,9 @@
 import { useCallback, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { PlatformNav } from "../../platform/PlatformNav";
 import { LoginPage } from "../Auth/LoginPage";
 import { ImageGeneratePanel } from "./ImageGeneratePanel";
 import { ImageHistoryList } from "./ImageHistoryList";
+import { CanvasMode } from "./CanvasMode";
 import "./ImageToolPage.css";
 
 const PRESETS = [
@@ -24,21 +24,23 @@ const PRESETS = [
   },
 ] as const;
 
+type Mode = "basic" | "advanced";
+
 export function ImageToolPage() {
-  const navigate = useNavigate();
   const [loginOpen, setLoginOpen] = useState(false);
   const [activePreset, setActivePreset] = useState<string | null>(null);
+  const [mode, setMode] = useState<Mode>("basic");
+  const [canvasTaskId, setCanvasTaskId] = useState<string | null>(null);
 
-  const handleEnterCanvas = useCallback(
-    (taskId: string) => {
-      navigate(`/tools/image/canvas?taskId=${encodeURIComponent(taskId)}`);
-    },
-    [navigate],
-  );
+  const handleEnterCanvas = useCallback((taskId: string) => {
+    setCanvasTaskId(taskId);
+    setMode("advanced");
+  }, []);
 
-  const handleEnterAdvanced = useCallback(() => {
-    navigate("/tools/image/canvas");
-  }, [navigate]);
+  const handleBackToBasic = useCallback(() => {
+    setMode("basic");
+    setCanvasTaskId(null);
+  }, []);
 
   return (
     <div className="image-tool-page">
@@ -50,33 +52,52 @@ export function ImageToolPage() {
         </header>
 
         <div className="image-tool-mode-tabs">
-          <button type="button" className="image-tool-tab active">
+          <button
+            type="button"
+            className={`image-tool-tab ${mode === "basic" ? "active" : ""}`}
+            onClick={() => setMode("basic")}
+          >
             基础模式
           </button>
-          <button type="button" className="image-tool-tab" onClick={handleEnterAdvanced}>
+          <button
+            type="button"
+            className={`image-tool-tab ${mode === "advanced" ? "active" : ""}`}
+            onClick={() => {
+              setMode("advanced");
+              setCanvasTaskId(null);
+            }}
+          >
             高级模式
           </button>
         </div>
 
-        <section className="image-tool-presets">
-          {PRESETS.map((preset) => (
-            <button
-              key={preset.id}
-              type="button"
-              className={`image-tool-preset-card ${activePreset === preset.id ? "active" : ""}`}
-              onClick={() => setActivePreset(activePreset === preset.id ? null : preset.id)}
-            >
-              <h3>{preset.name}</h3>
-              <p>{preset.tagline}</p>
-            </button>
-          ))}
-        </section>
+        {mode === "basic" && (
+          <>
+            <section className="image-tool-presets">
+              {PRESETS.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  className={`image-tool-preset-card ${activePreset === preset.id ? "active" : ""}`}
+                  onClick={() => setActivePreset(activePreset === preset.id ? null : preset.id)}
+                >
+                  <h3>{preset.name}</h3>
+                  <p>{preset.tagline}</p>
+                </button>
+              ))}
+            </section>
 
-        {activePreset && (
-          <ImageGeneratePanel presetId={activePreset} onEnterCanvas={handleEnterCanvas} />
+            {activePreset && (
+              <ImageGeneratePanel presetId={activePreset} onEnterCanvas={handleEnterCanvas} />
+            )}
+
+            <ImageHistoryList />
+          </>
         )}
 
-        <ImageHistoryList />
+        {mode === "advanced" && (
+          <CanvasMode taskId={canvasTaskId} onBack={handleBackToBasic} />
+        )}
       </main>
 
       {loginOpen && (
