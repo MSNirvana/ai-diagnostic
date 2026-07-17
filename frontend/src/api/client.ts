@@ -47,6 +47,9 @@ import type {
   ResearchEvidenceOut,
   ArchiveExtractionPreview,
   CreditsBalance,
+  ImageAssetOut,
+  ImageTaskStatus,
+  CreateImageTaskResponse,
 } from "../types";
 import { clearToken, getToken, setToken } from "../auth/authStore";
 
@@ -890,6 +893,76 @@ export async function fetchCreditsBalance(): Promise<CreditsBalance> {
   const resp = await fetch(`${BASE}/billing/balance`, { headers: { ...authHeaders() } });
   if (!resp.ok) throw new Error(await errorMessage(resp, "获取积分余额失败"));
   return (await resp.json()) as CreditsBalance;
+}
+
+// ── 图片工具 API ──────────────────────────────────────────────────────────────
+
+export async function uploadImageAsset(file: File): Promise<ImageAssetOut> {
+  const form = new FormData();
+  form.append("file", file);
+  const resp = await fetch(`${BASE}/image-assets/`, {
+    method: "POST",
+    headers: { ...authHeaders() },
+    body: form,
+  });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "上传图片素材失败"));
+  return (await resp.json()) as ImageAssetOut;
+}
+
+export async function listImageAssets(): Promise<ImageAssetOut[]> {
+  const resp = await fetch(`${BASE}/image-assets/`, { headers: { ...authHeaders() } });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "获取图片素材列表失败"));
+  return (await resp.json()) as ImageAssetOut[];
+}
+
+export async function deleteImageAsset(assetId: string): Promise<void> {
+  const resp = await fetch(`${BASE}/image-assets/${assetId}`, {
+    method: "DELETE",
+    headers: { ...authHeaders() },
+  });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "删除图片素材失败"));
+}
+
+export async function createImageTask(req: {
+  preset_id: string;
+  user_intent: string;
+  reference_asset_id?: string;
+  style?: string;
+  size?: string;
+  idempotency_key?: string;
+}): Promise<CreateImageTaskResponse> {
+  const resp = await fetch(`${BASE}/image-tool/tasks`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(req),
+  });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "创建图片生成任务失败"));
+  return (await resp.json()) as CreateImageTaskResponse;
+}
+
+export async function confirmImageTask(taskId: string): Promise<ImageTaskStatus> {
+  const resp = await fetch(`${BASE}/image-tool/tasks/${taskId}/confirm`, {
+    method: "POST",
+    headers: { ...authHeaders() },
+  });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "确认图片生成任务失败"));
+  return (await resp.json()) as ImageTaskStatus;
+}
+
+export async function getImageTask(taskId: string): Promise<ImageTaskStatus> {
+  const resp = await fetch(`${BASE}/image-tool/tasks/${taskId}`, {
+    headers: { ...authHeaders() },
+  });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "获取图片生成任务失败"));
+  return (await resp.json()) as ImageTaskStatus;
+}
+
+export async function listImageTasks(limit = 50): Promise<ImageTaskStatus[]> {
+  const resp = await fetch(`${BASE}/image-tool/tasks?limit=${limit}`, {
+    headers: { ...authHeaders() },
+  });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "获取图片任务列表失败"));
+  return (await resp.json()) as ImageTaskStatus[];
 }
 
 export async function fetchCaseProjects(

@@ -15,6 +15,7 @@ import { Questionnaire } from "./components/Questionnaire/Questionnaire";
 import { ProjectWorkspaceShell } from "./components/Project/ProjectWorkspaceShell";
 import { PlatformHomePage } from "./platform/PlatformHomePage";
 import { AllToolsPage } from "./platform/AllToolsPage";
+import { ImageToolPage } from "./components/ImageTool/ImageToolPage";
 import "./App.css";
 
 function ProjectDiagnoseRedirect() {
@@ -249,6 +250,14 @@ export default function App() {
       <Route path="/supplement/:token" element={<PublicSupplementPage />} />
       <Route path="/tools" element={<AllToolsPage />} />
       <Route path="/tools/diagnostic" element={<Navigate to="/projects" replace />} />
+      <Route
+        path="/tools/image"
+        element={
+          <ProtectedRoute>
+            <ImageToolPage />
+          </ProtectedRoute>
+        }
+      />
       <Route
         path="/projects"
         element={

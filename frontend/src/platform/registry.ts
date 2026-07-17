@@ -27,6 +27,13 @@ export const tools: ToolDefinition[] = [
     entryPath: "/tools/diagnostic",
     status: "active",
   },
+  {
+    id: "image",
+    name: "图片创作",
+    tagline: "一键生成宣传图、电商图，或从模板开始",
+    entryPath: "/tools/image",
+    status: "active",
+  },
 ];
 
 export function listVisibleTools(): ToolDefinition[] {

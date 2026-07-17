@@ -418,6 +418,22 @@ class IndustryBenchmark(SQLModel, table=True):
     expires_at: datetime = Field(index=True)
 
 
+class ImageAsset(SQLModel, table=True):
+    """图片工具的素材资产（用户上传的参考图）。
+
+    与诊断工具的 UploadedFile 分离：不绑 session，是平台级资产。
+    生成结果不落此表，塞 ToolTask.payload_json。
+    """
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    user_id: str = Field(foreign_key="user.id", index=True)
+    stored_path: str
+    original_name: str
+    content_type: str
+    vision_description: str = ""
+    vision_status: str = "pending"
+    created_at: datetime = Field(default_factory=_now)
+
+
 class ToolTask(SQLModel, table=True):
     """跨工具的任务账本：报价 -> 冻结 -> 执行 -> 结算/退款 的统一记录。
 

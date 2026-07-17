@@ -737,6 +737,35 @@ export interface CreditsBalance {
   points: number | null;
 }
 
+// ── 图片工具类型 ──────────────────────────────────────────────────────────────
+
+export interface ImageAssetOut {
+  id: string;
+  original_name: string;
+  content_type: string;
+  vision_description: string;
+  vision_status: string;
+  created_at: string;
+}
+
+export interface ImageTaskStatus {
+  id: string;
+  status: "quoted" | "reserved" | "running" | "succeeded" | "failed" | "cancelled" | "refunded";
+  progress: number;
+  quote_points: number | null;
+  actual_points: number | null;
+  error: string | null;
+  result_image_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateImageTaskResponse {
+  task_id: string;
+  status: string;
+  quote_points: number | null;
+}
+
 // ── 案例库类型 ────────────────────────────────────────────────────────────────
 
 export interface ProjectLedgerItem {

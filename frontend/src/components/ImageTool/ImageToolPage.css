@@ -1,0 +1,112 @@
+.image-tool-page {
+  min-height: 100vh;
+  background: #f8f9fa;
+}
+
+.image-tool-main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 32px 24px;
+}
+
+.image-tool-header {
+  margin-bottom: 32px;
+}
+
+.image-tool-header h1 {
+  font-size: 28px;
+  font-weight: 700;
+  color: #1a1a2e;
+  margin: 0 0 8px;
+}
+
+.image-tool-header p {
+  font-size: 15px;
+  color: #666;
+  margin: 0;
+}
+
+.image-tool-presets {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.image-tool-preset-card {
+  background: #fff;
+  border: 2px solid #e8e8ec;
+  border-radius: 12px;
+  padding: 24px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.image-tool-preset-card:hover {
+  border-color: #6366f1;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.12);
+}
+
+.image-tool-preset-card.active {
+  border-color: #6366f1;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+}
+
+.image-tool-preset-card h3 {
+  font-size: 17px;
+  font-weight: 600;
+  color: #1a1a2e;
+  margin: 0 0 8px;
+}
+
+.image-tool-preset-card p {
+  font-size: 14px;
+  color: #666;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.image-tool-login-hint {
+  background: #fff;
+  border: 1px solid #e8e8ec;
+  border-radius: 12px;
+  padding: 32px;
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.image-tool-login-hint p {
+  font-size: 15px;
+  color: #666;
+  margin: 0 0 16px;
+}
+
+.image-tool-login-hint button {
+  background: #6366f1;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 24px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.image-tool-login-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.image-tool-login-overlay__panel {
+  background: #fff;
+  border-radius: 16px;
+  max-width: 480px;
+  width: 90%;
+  max-height: 90vh;
+  overflow: auto;
+}

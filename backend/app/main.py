@@ -21,6 +21,8 @@ from app.api.project import router as project_router
 from app.api.files import router as files_router
 from app.api.data_supplement import router as data_supplement_router
 from app.api.billing import router as billing_router
+from app.api.image_assets import router as image_assets_router
+from app.api.image_tool import router as image_tool_router
 from app.db.database import init_db
 from app.integrations.ggoo import GGOOError, ggoo_client
 
@@ -73,6 +75,8 @@ app.include_router(project_router)
 app.include_router(files_router)
 app.include_router(data_supplement_router)
 app.include_router(billing_router)
+app.include_router(image_assets_router)
+app.include_router(image_tool_router)
 
 
 @app.get("/health")
