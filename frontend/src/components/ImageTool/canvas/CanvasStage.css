@@ -1,0 +1,392 @@
+/* 全屏画布布局 */
+.canvas-fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #f7f8fa;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 顶部浮动工具栏 */
+.canvas-toolbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 48px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  z-index: 100;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.canvas-toolbar__back {
+  padding: 6px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  color: #374151;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.canvas-toolbar__back:hover {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+}
+
+.canvas-toolbar__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.canvas-toolbar__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.canvas-toolbar__toggle {
+  padding: 6px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  color: #374151;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.canvas-toolbar__toggle:hover {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+}
+
+/* 加载/错误提示 */
+.canvas-loading,
+.canvas-error {
+  position: absolute;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #6b7280;
+  z-index: 99;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.canvas-error {
+  color: #dc2626;
+  border-color: #fca5a5;
+}
+
+/* 主画布区域 */
+.canvas-main {
+  position: absolute;
+  top: 48px;
+  left: 0;
+  right: 0;
+  bottom: 32px;
+  overflow: hidden;
+}
+
+/* 浮动面板（左右） */
+.canvas-panel {
+  position: absolute;
+  top: 48px;
+  bottom: 32px;
+  width: 260px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  border: 1px solid #e5e7eb;
+  overflow-y: auto;
+  z-index: 50;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.canvas-panel--left {
+  left: 0;
+  border-right: none;
+  border-radius: 0 8px 8px 0;
+}
+
+.canvas-panel--right {
+  right: 0;
+  border-left: none;
+  border-radius: 8px 0 0 8px;
+}
+
+.canvas-panel__section {
+  padding: 16px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.canvas-panel__section:last-child {
+  border-bottom: none;
+}
+
+.canvas-panel__section h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+  margin: 0 0 8px;
+}
+
+.canvas-panel__hint {
+  font-size: 12px;
+  color: #9ca3af;
+  margin: 0 0 12px;
+}
+
+/* 节点工具箱 */
+.canvas-palette {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.canvas-palette__item {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  padding: 8px 10px;
+  background: #f9fafb;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.canvas-palette__item:hover {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+}
+
+.canvas-palette__label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.canvas-palette__desc {
+  font-size: 11px;
+  color: #6b7280;
+  margin-top: 2px;
+}
+
+/* 图层管理 */
+.canvas-layers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.canvas-layer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 0.15s;
+}
+
+.canvas-layer:hover {
+  background: #f3f4f6;
+}
+
+.canvas-layer--selected {
+  background: #eef2ff;
+  border-left: 2px solid #6366f1;
+}
+
+.canvas-layer--hidden {
+  opacity: 0.5;
+}
+
+.canvas-layer__label {
+  flex: 1;
+  color: #1f2937;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.canvas-layer__kind {
+  color: #9ca3af;
+  font-size: 11px;
+}
+
+.canvas-layer__actions {
+  display: flex;
+  gap: 2px;
+}
+
+.canvas-layer__actions button {
+  padding: 2px 4px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+
+.canvas-layer__actions button:hover {
+  opacity: 1;
+}
+
+/* 批量操作 */
+.canvas-batch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.canvas-batch button {
+  padding: 4px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  color: #374151;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.canvas-batch button:hover {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+}
+
+.canvas-batch__delete {
+  border-color: #fca5a5 !important;
+  color: #dc2626 !important;
+}
+
+.canvas-batch__delete:hover {
+  background: #fef2f2 !important;
+  border-color: #dc2626 !important;
+}
+
+/* 属性面板 */
+.canvas-props {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.canvas-props__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.canvas-props__row--column {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.canvas-props__row span {
+  color: #6b7280;
+}
+
+.canvas-props__row strong {
+  color: #111827;
+  font-weight: 600;
+}
+
+.canvas-props__row textarea {
+  width: 100%;
+  font-size: 12px;
+  padding: 6px 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  background: #f9fafb;
+  color: #374151;
+  resize: vertical;
+}
+
+.canvas-props__row a {
+  color: #6366f1;
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.canvas-props__row a:hover {
+  text-decoration: underline;
+}
+
+.canvas-props__empty {
+  font-size: 13px;
+  color: #9ca3af;
+  line-height: 1.6;
+}
+
+/* 底部状态栏 */
+.canvas-statusbar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 32px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 16px;
+  font-size: 12px;
+  color: #6b7280;
+  z-index: 100;
+}
+
+.canvas-statusbar__hint {
+  margin-left: auto;
+  color: #9ca3af;
+}
+
+/* Minimap 总览 */
+.canvas-minimap {
+  position: absolute;
+  bottom: 44px;
+  right: 12px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  cursor: pointer;
+  z-index: 60;
+}
+
+.canvas-minimap canvas {
+  display: block;
+}

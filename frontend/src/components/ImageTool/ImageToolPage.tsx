@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { PlatformNav } from "../../platform/PlatformNav";
 import { LoginPage } from "../Auth/LoginPage";
-import { useAuth } from "../../auth/useAuth";
 import { ImageGeneratePanel } from "./ImageGeneratePanel";
 import { ImageHistoryList } from "./ImageHistoryList";
 import "./ImageToolPage.css";
@@ -25,9 +25,20 @@ const PRESETS = [
 ] as const;
 
 export function ImageToolPage() {
-  const { isAuthenticated } = useAuth();
+  const navigate = useNavigate();
   const [loginOpen, setLoginOpen] = useState(false);
   const [activePreset, setActivePreset] = useState<string | null>(null);
+
+  const handleEnterCanvas = useCallback(
+    (taskId: string) => {
+      navigate(`/tools/image/canvas?taskId=${encodeURIComponent(taskId)}`);
+    },
+    [navigate],
+  );
+
+  const handleEnterAdvanced = useCallback(() => {
+    navigate("/tools/image/canvas");
+  }, [navigate]);
 
   return (
     <div className="image-tool-page">
@@ -37,6 +48,15 @@ export function ImageToolPage() {
           <h1>图片创作</h1>
           <p>选择生成方式，上传参考图，描述你的需求</p>
         </header>
+
+        <div className="image-tool-mode-tabs">
+          <button type="button" className="image-tool-tab active">
+            基础模式
+          </button>
+          <button type="button" className="image-tool-tab" onClick={handleEnterAdvanced}>
+            高级模式
+          </button>
+        </div>
 
         <section className="image-tool-presets">
           {PRESETS.map((preset) => (
@@ -52,20 +72,11 @@ export function ImageToolPage() {
           ))}
         </section>
 
-        {activePreset && isAuthenticated && (
-          <ImageGeneratePanel presetId={activePreset} />
+        {activePreset && (
+          <ImageGeneratePanel presetId={activePreset} onEnterCanvas={handleEnterCanvas} />
         )}
 
-        {activePreset && !isAuthenticated && (
-          <div className="image-tool-login-hint">
-            <p>请先登录 GGOO 账号后使用图片生成</p>
-            <button type="button" onClick={() => setLoginOpen(true)}>
-              去登录
-            </button>
-          </div>
-        )}
-
-        {isAuthenticated && <ImageHistoryList />}
+        <ImageHistoryList />
       </main>
 
       {loginOpen && (

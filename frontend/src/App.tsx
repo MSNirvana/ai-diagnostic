@@ -16,6 +16,7 @@ import { ProjectWorkspaceShell } from "./components/Project/ProjectWorkspaceShel
 import { PlatformHomePage } from "./platform/PlatformHomePage";
 import { AllToolsPage } from "./platform/AllToolsPage";
 import { ImageToolPage } from "./components/ImageTool/ImageToolPage";
+import { CanvasStage } from "./components/ImageTool/canvas/CanvasStage";
 import "./App.css";
 
 function ProjectDiagnoseRedirect() {
@@ -251,13 +252,21 @@ export default function App() {
       <Route path="/tools" element={<AllToolsPage />} />
       <Route path="/tools/diagnostic" element={<Navigate to="/projects" replace />} />
       <Route
-        path="/tools/image"
-        element={
-          <ProtectedRoute>
-            <ImageToolPage />
-          </ProtectedRoute>
-        }
-      />
+            path="/tools/image"
+            element={
+              <ProtectedRoute>
+                <ImageToolPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/tools/image/canvas"
+            element={
+              <ProtectedRoute>
+                <CanvasStage />
+              </ProtectedRoute>
+            }
+          />
       <Route
         path="/projects"
         element={
