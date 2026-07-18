@@ -773,9 +773,11 @@ export interface CreateImageTaskResponse {
   quote_points: number | null;
 }
 
-// ── 画布节点类型 ──────────────────────────────────────────────────────────────
+// ── 画布场景类型（Konva 素材导演台） ──────────────────────────────────────────
+// 按文档《AIBuild 构建交接文档》画布技术选型：Konva 优先，自由摆放、框选、分组、图层。
+// 节点之间不连线，画布只负责交互与呈现；执行顺序由后端任务模型决定。
 
-export type CanvasNodeKind =
+export type CanvasItemKind =
   | "requirement"
   | "asset"
   | "reversePrompt"
@@ -783,24 +785,46 @@ export type CanvasNodeKind =
   | "model"
   | "generate"
   | "result"
+  | "bundle"
   | "export";
 
-export interface CanvasNodeData {
-  kind: CanvasNodeKind;
-  label: string;
-  // Optional payload fields used by individual node renderers.
+export interface CanvasItemMetadata {
   presetName?: string;
   userIntent?: string;
-  assetName?: string;
-  assetThumbUrl?: string;
+  prompt?: string;
   reversePrompt?: string;
   assembledPrompt?: string;
   modelName?: string;
   generationMode?: "text2image" | "image2image";
   taskStatus?: string;
-  resultImageUrl?: string;
-  // Index signature required by @xyflow/react v12 Node<T> constraint.
-  [key: string]: unknown;
+  taskError?: string;
+}
+
+export interface CanvasItem {
+  id: string;
+  kind: CanvasItemKind;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation?: number;
+  zIndex: number;
+  assetId?: string;
+  imageUrl?: string;
+  label: string;
+  metadata?: CanvasItemMetadata;
+}
+
+export interface CanvasViewport {
+  x: number;
+  y: number;
+  scale: number;
+}
+
+export interface CanvasScene {
+  items: CanvasItem[];
+  viewport: CanvasViewport;
+  version: number;
 }
 
 // ── 案例库类型 ────────────────────────────────────────────────────────────────

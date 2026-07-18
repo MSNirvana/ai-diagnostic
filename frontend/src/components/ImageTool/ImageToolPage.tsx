@@ -3,7 +3,7 @@ import { PlatformNav } from "../../platform/PlatformNav";
 import { LoginPage } from "../Auth/LoginPage";
 import { ImageGeneratePanel } from "./ImageGeneratePanel";
 import { ImageHistoryList } from "./ImageHistoryList";
-import { CanvasMode } from "./CanvasMode";
+import { CanvasStage } from "./canvas/CanvasStage";
 import "./ImageToolPage.css";
 
 const PRESETS = [
@@ -96,7 +96,7 @@ export function ImageToolPage() {
         )}
 
         {mode === "advanced" && (
-          <CanvasMode taskId={canvasTaskId} onBack={handleBackToBasic} />
+          <CanvasStage taskId={canvasTaskId} onBack={handleBackToBasic} />
         )}
       </main>
 

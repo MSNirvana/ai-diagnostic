@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { PlatformNav } from "../../../platform/PlatformNav";
 import { getImageTask } from "../../../api/client";
 import type {
-  CanvasEdge,
-  CanvasGroup,
   CanvasItem,
   CanvasScene,
-  CanvasViewport,
   ImageTaskStatus,
 } from "../../../types";
 import { CanvasBoard } from "./CanvasBoard";
-import { Minimap } from "./Minimap";
 import "./CanvasStage.css";
+
+interface CanvasStageProps {
+  taskId?: string | null;
+  onBack?: () => void;
+}
 
 const PRESET_NAMES: Record<string, string> = {
   promo: "一键生成宣传图",
@@ -25,9 +26,10 @@ const GAP = 24;
 const ORIGIN_X = 40;
 const ORIGIN_Y = 40;
 
+// 从基础模式任务还原画布初始场景：按文档节点顺序横排摆放，但不连线。
+// 节点之间是自由摆放的卡片，用户可拖动、缩放、旋转。
 function buildSceneFromTask(task: ImageTaskStatus): CanvasScene {
   const items: CanvasItem[] = [];
-  const edges: CanvasEdge[] = [];
   let x = ORIGIN_X;
   const y = ORIGIN_Y;
   let zIndex = 1;
@@ -95,25 +97,8 @@ function buildSceneFromTask(task: ImageTaskStatus): CanvasScene {
     imageUrl: task.result_image_url ?? undefined,
   });
 
-  if (task.reference_asset_id) {
-    edges.push({
-      id: "edge-asset-generate",
-      fromId: "asset",
-      toId: "generate",
-      label: "输入",
-    });
-  }
-  edges.push({
-    id: "edge-generate-result",
-    fromId: "generate",
-    toId: "result",
-    label: "输出",
-  });
-
   return {
     items,
-    edges,
-    groups: [],
     viewport: { x: 0, y: 0, scale: 1 },
     version: 1,
   };
@@ -134,13 +119,12 @@ function buildEmptyScene(): CanvasScene {
         metadata: { userIntent: "从左侧选择节点类型添加到画布" },
       },
     ],
-    edges: [],
-    groups: [],
     viewport: { x: 0, y: 0, scale: 1 },
     version: 1,
   };
 }
 
+// 左侧节点工具箱：点击后向画布追加一个该类型的卡片
 const PALETTE: { kind: CanvasItem["kind"]; label: string; desc: string }[] = [
   { kind: "requirement", label: "需求/模板", desc: "用途、产品事实、渠道" },
   { kind: "asset", label: "素材", desc: "产品图、参考图、品牌资产" },
@@ -166,33 +150,27 @@ const KIND_DEFAULT_LABEL: Record<CanvasItem["kind"], string> = {
 };
 
 function findNextPosition(items: CanvasItem[]): { x: number; y: number } {
+  // 简单策略：在画布右下方依次堆叠，避免覆盖现有节点
   if (items.length === 0) return { x: ORIGIN_X, y: ORIGIN_Y };
   const last = items[items.length - 1];
   const nextX = last.x + CARD_W + GAP;
+  // 防止超出常见画布宽度，超过则换行
   if (nextX + CARD_W > 1200) {
     return { x: ORIGIN_X, y: last.y + CARD_H + GAP };
   }
   return { x: nextX, y: last.y };
 }
 
-export function CanvasStage() {
-  const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const taskId = searchParams.get("taskId");
-
+export function CanvasStage({ taskId, onBack }: CanvasStageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
   const [scene, setScene] = useState<CanvasScene>(() => buildEmptyScene());
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [viewport, setViewport] = useState<CanvasViewport>({ x: 0, y: 0, scale: 1 });
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [leftPanelOpen, setLeftPanelOpen] = useState(true);
-  const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const nextIdRef = useRef(1);
-  const nextEdgeIdRef = useRef(1);
-  const nextGroupIdRef = useRef(1);
 
+  // 监听容器尺寸变化，同步给 Konva Stage
   useEffect(() => {
     if (!containerRef.current) return;
     const el = containerRef.current;
@@ -205,10 +183,11 @@ export function CanvasStage() {
     return () => observer.disconnect();
   }, []);
 
+  // 任务 ID 变化时拉取任务详情并还原画布
   useEffect(() => {
     if (!taskId) {
       setScene(buildEmptyScene());
-      setSelectedIds([]);
+      setSelectedId(null);
       return;
     }
     let cancelled = false;
@@ -218,7 +197,7 @@ export function CanvasStage() {
       .then((task) => {
         if (!cancelled) {
           setScene(buildSceneFromTask(task));
-          setSelectedIds([]);
+          setSelectedId(null);
         }
       })
       .catch((e) => {
@@ -239,15 +218,6 @@ export function CanvasStage() {
     }));
   }, []);
 
-  const handleMoveMany = useCallback((ids: string[], dx: number, dy: number) => {
-    setScene((s) => ({
-      ...s,
-      items: s.items.map((it) =>
-        ids.includes(it.id) ? { ...it, x: it.x + dx, y: it.y + dy } : it
-      ),
-    }));
-  }, []);
-
   const handleResize = useCallback(
     (id: string, width: number, height: number, rotation: number) => {
       setScene((s) => ({
@@ -259,20 +229,6 @@ export function CanvasStage() {
     },
     []
   );
-
-  const handleConnect = useCallback((fromId: string, toId: string) => {
-    setScene((s) => {
-      if (s.edges.some((e) => e.fromId === fromId && e.toId === toId)) {
-        return s;
-      }
-      const edge: CanvasEdge = {
-        id: `edge-${nextEdgeIdRef.current++}`,
-        fromId,
-        toId,
-      };
-      return { ...s, edges: [...s.edges, edge] };
-    });
-  }, []);
 
   const handleAddNode = useCallback((kind: CanvasItem["kind"]) => {
     setScene((s) => {
@@ -294,325 +250,105 @@ export function CanvasStage() {
   }, []);
 
   const handleDeleteSelected = useCallback(() => {
-    if (selectedIds.length === 0) return;
+    if (!selectedId) return;
     setScene((s) => ({
       ...s,
-      items: s.items.filter((it) => !selectedIds.includes(it.id)),
-      edges: s.edges.filter(
-        (e) => !selectedIds.includes(e.fromId) && !selectedIds.includes(e.toId)
-      ),
+      items: s.items.filter((it) => it.id !== selectedId),
     }));
-    setSelectedIds([]);
-  }, [selectedIds]);
+    setSelectedId(null);
+  }, [selectedId]);
 
-  const handleGroupSelected = useCallback(() => {
-    if (selectedIds.length < 2) return;
-    setScene((s) => {
-      const groupId = `group-${nextGroupIdRef.current++}`;
-      const group: CanvasGroup = {
-        id: groupId,
-        name: `分组 ${nextGroupIdRef.current - 1}`,
-        itemIds: selectedIds,
-        color: "#6366f1",
-      };
-      return {
-        ...s,
-        groups: [...s.groups, group],
-        items: s.items.map((it) =>
-          selectedIds.includes(it.id) ? { ...it, groupId } : it
-        ),
-      };
-    });
-    setSelectedIds([]);
-  }, [selectedIds]);
-
-  const handleUngroupSelected = useCallback(() => {
-    if (selectedIds.length === 0) return;
-    setScene((s) => {
-      const groupIds = new Set(
-        selectedIds
-          .map((id) => s.items.find((it) => it.id === id)?.groupId)
-          .filter(Boolean) as string[]
-      );
-      return {
-        ...s,
-        groups: s.groups.filter((g) => !groupIds.has(g.id)),
-        items: s.items.map((it) =>
-          it.groupId && groupIds.has(it.groupId)
-            ? { ...it, groupId: undefined }
-            : it
-        ),
-      };
-    });
-  }, [selectedIds]);
-
-  const handleToggleLock = useCallback(() => {
-    if (selectedIds.length === 0) return;
-    setScene((s) => ({
-      ...s,
-      items: s.items.map((it) =>
-        selectedIds.includes(it.id) ? { ...it, locked: !it.locked } : it
-      ),
-    }));
-  }, [selectedIds]);
-
-  const handleToggleHidden = useCallback(() => {
-    if (selectedIds.length === 0) return;
-    setScene((s) => ({
-      ...s,
-      items: s.items.map((it) =>
-        selectedIds.includes(it.id) ? { ...it, hidden: !it.hidden } : it
-      ),
-    }));
-  }, [selectedIds]);
-
-  const handleBringToFront = useCallback(() => {
-    if (selectedIds.length === 0) return;
-    setScene((s) => {
-      const maxZ = Math.max(...s.items.map((it) => it.zIndex), 0);
-      return {
-        ...s,
-        items: s.items.map((it) =>
-          selectedIds.includes(it.id) ? { ...it, zIndex: maxZ + 1 } : it
-        ),
-      };
-    });
-  }, [selectedIds]);
-
-  const handleSendToBack = useCallback(() => {
-    if (selectedIds.length === 0) return;
-    setScene((s) => {
-      const minZ = Math.min(...s.items.map((it) => it.zIndex), 0);
-      return {
-        ...s,
-        items: s.items.map((it) =>
-          selectedIds.includes(it.id) ? { ...it, zIndex: minZ - 1 } : it
-        ),
-      };
-    });
-  }, [selectedIds]);
-
-  const selectedItems = useMemo(
-    () => scene.items.filter((i) => selectedIds.includes(i.id)),
-    [scene, selectedIds]
+  const selectedItem = useMemo(
+    () => scene.items.find((i) => i.id === selectedId) ?? null,
+    [scene, selectedId]
   );
 
-  const selectedItem = selectedItems.length === 1 ? selectedItems[0] : null;
-
-  const handleBack = useCallback(() => {
-    navigate("/tools/image");
-  }, [navigate]);
-
   return (
-    <div className="canvas-fullscreen">
-      {/* 顶部浮动工具栏 */}
-      <div className="canvas-toolbar">
-        <button
-          type="button"
-          className="canvas-toolbar__back"
-          onClick={handleBack}
-          title="返回基础模式"
-        >
-          ← 返回
-        </button>
-        <div className="canvas-toolbar__title">
-          {taskId ? "图片创作 · 高级工作台" : "图片创作 · 空白画布"}
-        </div>
-        <div className="canvas-toolbar__actions">
-          <button
-            type="button"
-            className="canvas-toolbar__toggle"
-            onClick={() => setLeftPanelOpen(!leftPanelOpen)}
-            title={leftPanelOpen ? "收起左侧面板" : "展开左侧面板"}
-          >
-            {leftPanelOpen ? "◀" : "▶"} 工具箱
-          </button>
-          <button
-            type="button"
-            className="canvas-toolbar__toggle"
-            onClick={() => setRightPanelOpen(!rightPanelOpen)}
-            title={rightPanelOpen ? "收起右侧面板" : "展开右侧面板"}
-          >
-            属性 {rightPanelOpen ? "▶" : "◀"}
-          </button>
-        </div>
-      </div>
+    <div className="canvas-stage-page">
+      <PlatformNav />
+      <main className="canvas-stage-main">
+        <header className="canvas-stage-header">
+          <div>
+            <h1>图片创作 · 高级工作台</h1>
+            <p>
+              {taskId
+                ? "已从基础模式任务还原工作流，可自由拖拽、缩放、旋转卡片"
+                : "空白画布，从左侧节点工具箱开始搭建素材导演台"}
+            </p>
+          </div>
+          {onBack && (
+            <button type="button" className="canvas-stage-back" onClick={onBack}>
+              返回基础模式
+            </button>
+          )}
+        </header>
 
-      {loading && <div className="canvas-loading">加载任务中…</div>}
-      {error && <div className="canvas-error">{error}</div>}
+        {loading && <p className="canvas-stage-loading">加载任务中…</p>}
+        {error && <p className="canvas-stage-error">{error}</p>}
 
-      {/* 主画布区域 */}
-      <div className="canvas-main" ref={containerRef}>
-        <CanvasBoard
-          items={scene.items}
-          edges={scene.edges}
-          selectedIds={selectedIds}
-          onSelect={setSelectedIds}
-          onMove={handleMove}
-          onMoveMany={handleMoveMany}
-          onResize={handleResize}
-          onConnect={handleConnect}
-          viewport={viewport}
-          onViewportChange={setViewport}
-          width={stageSize.width}
-          height={stageSize.height}
-        />
-        {/* Minimap 总览 */}
-        <Minimap
-          items={scene.items}
-          viewport={viewport}
-          stageWidth={stageSize.width}
-          stageHeight={stageSize.height}
-          onViewportChange={setViewport}
-        />
-      </div>
-
-      {/* 左侧浮动面板：节点工具箱 + 图层 */}
-      {leftPanelOpen && (
-        <div className="canvas-panel canvas-panel--left">
-          <div className="canvas-panel__section">
+        <div className="canvas-stage-layout">
+          {/* 左侧：节点工具箱 */}
+          <aside className="canvas-stage-left">
             <h3>节点工具箱</h3>
-            <p className="canvas-panel__hint">点击向画布追加节点</p>
-            <ul className="canvas-palette">
+            <p className="canvas-stage-left__hint">点击向画布追加节点</p>
+            <ul className="canvas-stage-palette">
               {PALETTE.map((p) => (
                 <li key={p.kind}>
                   <button
                     type="button"
-                    className="canvas-palette__item"
+                    className="canvas-stage-palette__item"
                     onClick={() => handleAddNode(p.kind)}
                   >
-                    <span className="canvas-palette__label">{p.label}</span>
-                    <span className="canvas-palette__desc">{p.desc}</span>
+                    <span className="canvas-stage-palette__label">{p.label}</span>
+                    <span className="canvas-stage-palette__desc">{p.desc}</span>
                   </button>
                 </li>
               ))}
             </ul>
-          </div>
+          </aside>
 
-          <div className="canvas-panel__section">
-            <h3>图层</h3>
-            <ul className="canvas-layers">
-              {scene.items
-                .slice()
-                .sort((a, b) => b.zIndex - a.zIndex)
-                .map((item) => (
-                  <li
-                    key={item.id}
-                    className={`canvas-layer ${
-                      selectedIds.includes(item.id) ? "canvas-layer--selected" : ""
-                    } ${item.hidden ? "canvas-layer--hidden" : ""}`}
-                    onClick={() => setSelectedIds([item.id])}
-                  >
-                    <span className="canvas-layer__label">{item.label}</span>
-                    <span className="canvas-layer__kind">
-                      {KIND_DEFAULT_LABEL[item.kind]}
-                    </span>
-                    <div className="canvas-layer__actions">
-                      <button
-                        type="button"
-                        title={item.locked ? "解锁" : "锁定"}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setScene((s) => ({
-                            ...s,
-                            items: s.items.map((it) =>
-                              it.id === item.id ? { ...it, locked: !it.locked } : it
-                            ),
-                          }));
-                        }}
-                      >
-                        {item.locked ? "🔒" : "🔓"}
-                      </button>
-                      <button
-                        type="button"
-                        title={item.hidden ? "显示" : "隐藏"}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setScene((s) => ({
-                            ...s,
-                            items: s.items.map((it) =>
-                              it.id === item.id ? { ...it, hidden: !it.hidden } : it
-                            ),
-                          }));
-                        }}
-                      >
-                        {item.hidden ? "👁" : "👁‍🗨"}
-                      </button>
-                    </div>
-                  </li>
-                ))}
-            </ul>
-          </div>
-        </div>
-      )}
+          {/* 中间：Konva 画布 */}
+          <section className="canvas-stage-center" ref={containerRef}>
+            <CanvasBoard
+              items={scene.items}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              onMove={handleMove}
+              onResize={handleResize}
+              width={stageSize.width}
+              height={stageSize.height}
+            />
+          </section>
 
-      {/* 右侧浮动面板：属性 + 批量操作 */}
-      {rightPanelOpen && (
-        <div className="canvas-panel canvas-panel--right">
-          {selectedIds.length > 0 && (
-            <div className="canvas-panel__section">
-              <h3>批量操作</h3>
-              <p className="canvas-panel__hint">
-                已选中 {selectedIds.length} 个节点
-              </p>
-              <div className="canvas-batch">
-                <button type="button" onClick={handleGroupSelected}>
-                  分组
-                </button>
-                <button type="button" onClick={handleUngroupSelected}>
-                  取消分组
-                </button>
-                <button type="button" onClick={handleToggleLock}>
-                  锁定/解锁
-                </button>
-                <button type="button" onClick={handleToggleHidden}>
-                  显示/隐藏
-                </button>
-                <button type="button" onClick={handleBringToFront}>
-                  置顶
-                </button>
-                <button type="button" onClick={handleSendToBack}>
-                  置底
-                </button>
-                <button
-                  type="button"
-                  className="canvas-batch__delete"
-                  onClick={handleDeleteSelected}
-                >
-                  删除
-                </button>
-              </div>
-            </div>
-          )}
-
-          {selectedItem ? (
-            <div className="canvas-panel__section">
-              <h3>属性</h3>
-              <div className="canvas-props">
-                <div className="canvas-props__row">
+          {/* 右侧：选中节点的业务字段 */}
+          <aside className="canvas-stage-right">
+            <h3>属性面板</h3>
+            {selectedItem ? (
+              <div className="canvas-stage-props">
+                <div className="canvas-stage-props__row">
                   <span>类型</span>
                   <strong>{KIND_DEFAULT_LABEL[selectedItem.kind]}</strong>
                 </div>
-                <div className="canvas-props__row">
+                <div className="canvas-stage-props__row">
                   <span>位置</span>
                   <span>
                     x={Math.round(selectedItem.x)} y={Math.round(selectedItem.y)}
                   </span>
                 </div>
-                <div className="canvas-props__row">
+                <div className="canvas-stage-props__row">
                   <span>尺寸</span>
                   <span>
                     {selectedItem.width}×{selectedItem.height}
                   </span>
                 </div>
                 {selectedItem.metadata?.presetName && (
-                  <div className="canvas-props__row">
+                  <div className="canvas-stage-props__row">
                     <span>预设</span>
                     <span>{selectedItem.metadata.presetName}</span>
                   </div>
                 )}
                 {selectedItem.metadata?.userIntent && (
-                  <div className="canvas-props__row canvas-props__row--column">
+                  <div className="canvas-stage-props__row canvas-stage-props__row--column">
                     <span>用户意图</span>
                     <textarea
                       value={selectedItem.metadata.userIntent}
@@ -622,7 +358,7 @@ export function CanvasStage() {
                   </div>
                 )}
                 {selectedItem.metadata?.reversePrompt && (
-                  <div className="canvas-props__row canvas-props__row--column">
+                  <div className="canvas-stage-props__row canvas-stage-props__row--column">
                     <span>反推提示词</span>
                     <textarea
                       value={selectedItem.metadata.reversePrompt}
@@ -632,7 +368,7 @@ export function CanvasStage() {
                   </div>
                 )}
                 {selectedItem.metadata?.assembledPrompt && (
-                  <div className="canvas-props__row canvas-props__row--column">
+                  <div className="canvas-stage-props__row canvas-stage-props__row--column">
                     <span>组装后提示词</span>
                     <textarea
                       value={selectedItem.metadata.assembledPrompt}
@@ -642,13 +378,13 @@ export function CanvasStage() {
                   </div>
                 )}
                 {selectedItem.metadata?.modelName && (
-                  <div className="canvas-props__row">
+                  <div className="canvas-stage-props__row">
                     <span>模型</span>
                     <span>{selectedItem.metadata.modelName}</span>
                   </div>
                 )}
                 {selectedItem.metadata?.generationMode && (
-                  <div className="canvas-props__row">
+                  <div className="canvas-stage-props__row">
                     <span>生成方式</span>
                     <span>
                       {selectedItem.metadata.generationMode === "image2image"
@@ -658,13 +394,13 @@ export function CanvasStage() {
                   </div>
                 )}
                 {selectedItem.metadata?.taskStatus && (
-                  <div className="canvas-props__row">
+                  <div className="canvas-stage-props__row">
                     <span>任务状态</span>
                     <span>{selectedItem.metadata.taskStatus}</span>
                   </div>
                 )}
                 {selectedItem.imageUrl && (
-                  <div className="canvas-props__row">
+                  <div className="canvas-stage-props__row">
                     <span>图片</span>
                     <a
                       href={selectedItem.imageUrl}
@@ -675,28 +411,31 @@ export function CanvasStage() {
                     </a>
                   </div>
                 )}
+                <button
+                  type="button"
+                  className="canvas-stage-props__delete"
+                  onClick={handleDeleteSelected}
+                >
+                  删除节点
+                </button>
               </div>
-            </div>
-          ) : selectedIds.length === 0 ? (
-            <div className="canvas-panel__section">
-              <p className="canvas-props__empty">
-                选中画布上的节点查看业务字段。Shift+拖拽框选多个节点，Shift+点击切换选中。
+            ) : (
+              <p className="canvas-stage-props__empty">
+                选中画布上的节点查看业务字段。节点之间不连线，画布只负责交互与呈现，执行顺序由后端任务模型决定。
               </p>
-            </div>
-          ) : null}
+            )}
+          </aside>
         </div>
-      )}
 
-      {/* 底部状态栏 */}
-      <div className="canvas-statusbar">
-        <span>节点数：{scene.items.length}</span>
-        <span>连线数：{scene.edges.length}</span>
-        <span>分组数：{scene.groups.length}</span>
-        <span>缩放：{Math.round(viewport.scale * 100)}%</span>
-        <span className="canvas-statusbar__hint">
-          滚轮缩放 · 拖拽空白平移 · Shift+拖拽框选 · 拖端口连线 · 右下角 Minimap 定位
-        </span>
-      </div>
+        {/* 底部：状态栏（占位，后续接入生成队列/历史版本/积分） */}
+        <footer className="canvas-stage-footer">
+          <span>节点数：{scene.items.length}</span>
+          <span>缩放：{Math.round(scene.viewport.scale * 100)}%</span>
+          <span className="canvas-stage-footer__hint">
+            滚轮缩放 · 拖拽空白平移 · 选中后可调整大小/旋转
+          </span>
+        </footer>
+      </main>
     </div>
   );
 }
