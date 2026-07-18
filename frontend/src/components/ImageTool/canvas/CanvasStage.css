@@ -239,3 +239,140 @@
   margin-left: auto;
   color: #9ca3af;
 }
+
+/* 图层管理 */
+.canvas-stage-left__section {
+  margin-top: 20px;
+  padding-top: 12px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.canvas-stage-layers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.canvas-stage-layer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 0.15s;
+}
+
+.canvas-stage-layer:hover {
+  background: #f3f4f6;
+}
+
+.canvas-stage-layer--selected {
+  background: #eef2ff;
+  border-left: 2px solid #6366f1;
+}
+
+.canvas-stage-layer--hidden {
+  opacity: 0.5;
+}
+
+.canvas-stage-layer__label {
+  flex: 1;
+  color: #1f2937;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.canvas-stage-layer__kind {
+  color: #9ca3af;
+  font-size: 11px;
+}
+
+.canvas-stage-layer__actions {
+  display: flex;
+  gap: 2px;
+}
+
+.canvas-stage-layer__actions button {
+  padding: 2px 4px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+
+.canvas-stage-layer__actions button:hover {
+  opacity: 1;
+}
+
+/* 批量操作 */
+.canvas-stage-batch {
+  margin-bottom: 16px;
+  padding: 10px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+}
+
+.canvas-stage-batch__count {
+  font-size: 12px;
+  color: #6b7280;
+  margin: 0 0 8px;
+}
+
+.canvas-stage-batch__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.canvas-stage-batch__actions button {
+  padding: 4px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  color: #374151;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.canvas-stage-batch__actions button:hover {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+}
+
+.canvas-stage-batch__delete {
+  border-color: #fca5a5 !important;
+  color: #dc2626 !important;
+}
+
+.canvas-stage-batch__delete:hover {
+  background: #fef2f2 !important;
+  border-color: #dc2626 !important;
+}
+
+/* Minimap 总览 */
+.canvas-minimap {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.canvas-minimap canvas {
+  display: block;
+}

@@ -775,7 +775,7 @@ export interface CreateImageTaskResponse {
 
 // ── 画布场景类型（Konva 素材导演台） ──────────────────────────────────────────
 // 按文档《AIBuild 构建交接文档》画布技术选型：Konva 优先，自由摆放、框选、分组、图层。
-// 节点之间不连线，画布只负责交互与呈现；执行顺序由后端任务模型决定。
+// 简单链路不强行连线，但用户可手动连线表达数据流向；执行顺序由后端任务模型决定。
 
 export type CanvasItemKind =
   | "requirement"
@@ -813,6 +813,31 @@ export interface CanvasItem {
   imageUrl?: string;
   label: string;
   metadata?: CanvasItemMetadata;
+  /** 所属分组 ID；未分组为 undefined */
+  groupId?: string;
+  /** 是否锁定（锁定后不可拖拽/缩放/旋转） */
+  locked?: boolean;
+  /** 是否隐藏 */
+  hidden?: boolean;
+}
+
+/** 画布连线：表达数据流向（如 素材 → 生成） */
+export interface CanvasEdge {
+  id: string;
+  fromId: string;
+  toId: string;
+  /** 连线标签（可选，如 "输入"、"参考"） */
+  label?: string;
+}
+
+/** 画布分组：多个卡片归为一组（如 "一套宣传图"） */
+export interface CanvasGroup {
+  id: string;
+  name: string;
+  /** 分组内卡片 ID 列表 */
+  itemIds: string[];
+  /** 分组边框颜色 */
+  color?: string;
 }
 
 export interface CanvasViewport {
@@ -823,6 +848,8 @@ export interface CanvasViewport {
 
 export interface CanvasScene {
   items: CanvasItem[];
+  edges: CanvasEdge[];
+  groups: CanvasGroup[];
   viewport: CanvasViewport;
   version: number;
 }

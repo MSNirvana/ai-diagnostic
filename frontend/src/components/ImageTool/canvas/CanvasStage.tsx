@@ -2,11 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PlatformNav } from "../../../platform/PlatformNav";
 import { getImageTask } from "../../../api/client";
 import type {
+  CanvasEdge,
+  CanvasGroup,
   CanvasItem,
   CanvasScene,
+  CanvasViewport,
   ImageTaskStatus,
 } from "../../../types";
 import { CanvasBoard } from "./CanvasBoard";
+import { Minimap } from "./Minimap";
 import "./CanvasStage.css";
 
 interface CanvasStageProps {
@@ -26,10 +30,9 @@ const GAP = 24;
 const ORIGIN_X = 40;
 const ORIGIN_Y = 40;
 
-// 从基础模式任务还原画布初始场景：按文档节点顺序横排摆放，但不连线。
-// 节点之间是自由摆放的卡片，用户可拖动、缩放、旋转。
 function buildSceneFromTask(task: ImageTaskStatus): CanvasScene {
   const items: CanvasItem[] = [];
+  const edges: CanvasEdge[] = [];
   let x = ORIGIN_X;
   const y = ORIGIN_Y;
   let zIndex = 1;
@@ -97,8 +100,26 @@ function buildSceneFromTask(task: ImageTaskStatus): CanvasScene {
     imageUrl: task.result_image_url ?? undefined,
   });
 
+  // 自动连线：表达数据流向（素材 → 生成，生成 → 结果）
+  if (task.reference_asset_id) {
+    edges.push({
+      id: "edge-asset-generate",
+      fromId: "asset",
+      toId: "generate",
+      label: "输入",
+    });
+  }
+  edges.push({
+    id: "edge-generate-result",
+    fromId: "generate",
+    toId: "result",
+    label: "输出",
+  });
+
   return {
     items,
+    edges,
+    groups: [],
     viewport: { x: 0, y: 0, scale: 1 },
     version: 1,
   };
@@ -119,12 +140,13 @@ function buildEmptyScene(): CanvasScene {
         metadata: { userIntent: "从左侧选择节点类型添加到画布" },
       },
     ],
+    edges: [],
+    groups: [],
     viewport: { x: 0, y: 0, scale: 1 },
     version: 1,
   };
 }
 
-// 左侧节点工具箱：点击后向画布追加一个该类型的卡片
 const PALETTE: { kind: CanvasItem["kind"]; label: string; desc: string }[] = [
   { kind: "requirement", label: "需求/模板", desc: "用途、产品事实、渠道" },
   { kind: "asset", label: "素材", desc: "产品图、参考图、品牌资产" },
@@ -150,11 +172,9 @@ const KIND_DEFAULT_LABEL: Record<CanvasItem["kind"], string> = {
 };
 
 function findNextPosition(items: CanvasItem[]): { x: number; y: number } {
-  // 简单策略：在画布右下方依次堆叠，避免覆盖现有节点
   if (items.length === 0) return { x: ORIGIN_X, y: ORIGIN_Y };
   const last = items[items.length - 1];
   const nextX = last.x + CARD_W + GAP;
-  // 防止超出常见画布宽度，超过则换行
   if (nextX + CARD_W > 1200) {
     return { x: ORIGIN_X, y: last.y + CARD_H + GAP };
   }
@@ -165,12 +185,14 @@ export function CanvasStage({ taskId, onBack }: CanvasStageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
   const [scene, setScene] = useState<CanvasScene>(() => buildEmptyScene());
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [viewport, setViewport] = useState<CanvasViewport>({ x: 0, y: 0, scale: 1 });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const nextIdRef = useRef(1);
+  const nextEdgeIdRef = useRef(1);
+  const nextGroupIdRef = useRef(1);
 
-  // 监听容器尺寸变化，同步给 Konva Stage
   useEffect(() => {
     if (!containerRef.current) return;
     const el = containerRef.current;
@@ -183,11 +205,10 @@ export function CanvasStage({ taskId, onBack }: CanvasStageProps) {
     return () => observer.disconnect();
   }, []);
 
-  // 任务 ID 变化时拉取任务详情并还原画布
   useEffect(() => {
     if (!taskId) {
       setScene(buildEmptyScene());
-      setSelectedId(null);
+      setSelectedIds([]);
       return;
     }
     let cancelled = false;
@@ -197,7 +218,7 @@ export function CanvasStage({ taskId, onBack }: CanvasStageProps) {
       .then((task) => {
         if (!cancelled) {
           setScene(buildSceneFromTask(task));
-          setSelectedId(null);
+          setSelectedIds([]);
         }
       })
       .catch((e) => {
@@ -218,6 +239,15 @@ export function CanvasStage({ taskId, onBack }: CanvasStageProps) {
     }));
   }, []);
 
+  const handleMoveMany = useCallback((ids: string[], dx: number, dy: number) => {
+    setScene((s) => ({
+      ...s,
+      items: s.items.map((it) =>
+        ids.includes(it.id) ? { ...it, x: it.x + dx, y: it.y + dy } : it
+      ),
+    }));
+  }, []);
+
   const handleResize = useCallback(
     (id: string, width: number, height: number, rotation: number) => {
       setScene((s) => ({
@@ -229,6 +259,21 @@ export function CanvasStage({ taskId, onBack }: CanvasStageProps) {
     },
     []
   );
+
+  const handleConnect = useCallback((fromId: string, toId: string) => {
+    setScene((s) => {
+      // 避免重复连线
+      if (s.edges.some((e) => e.fromId === fromId && e.toId === toId)) {
+        return s;
+      }
+      const edge: CanvasEdge = {
+        id: `edge-${nextEdgeIdRef.current++}`,
+        fromId,
+        toId,
+      };
+      return { ...s, edges: [...s.edges, edge] };
+    });
+  }, []);
 
   const handleAddNode = useCallback((kind: CanvasItem["kind"]) => {
     setScene((s) => {
@@ -250,18 +295,110 @@ export function CanvasStage({ taskId, onBack }: CanvasStageProps) {
   }, []);
 
   const handleDeleteSelected = useCallback(() => {
-    if (!selectedId) return;
+    if (selectedIds.length === 0) return;
     setScene((s) => ({
       ...s,
-      items: s.items.filter((it) => it.id !== selectedId),
+      items: s.items.filter((it) => !selectedIds.includes(it.id)),
+      edges: s.edges.filter(
+        (e) => !selectedIds.includes(e.fromId) && !selectedIds.includes(e.toId)
+      ),
     }));
-    setSelectedId(null);
-  }, [selectedId]);
+    setSelectedIds([]);
+  }, [selectedIds]);
 
-  const selectedItem = useMemo(
-    () => scene.items.find((i) => i.id === selectedId) ?? null,
-    [scene, selectedId]
+  const handleGroupSelected = useCallback(() => {
+    if (selectedIds.length < 2) return;
+    setScene((s) => {
+      const groupId = `group-${nextGroupIdRef.current++}`;
+      const group: CanvasGroup = {
+        id: groupId,
+        name: `分组 ${nextGroupIdRef.current - 1}`,
+        itemIds: selectedIds,
+        color: "#6366f1",
+      };
+      return {
+        ...s,
+        groups: [...s.groups, group],
+        items: s.items.map((it) =>
+          selectedIds.includes(it.id) ? { ...it, groupId } : it
+        ),
+      };
+    });
+    setSelectedIds([]);
+  }, [selectedIds]);
+
+  const handleUngroupSelected = useCallback(() => {
+    if (selectedIds.length === 0) return;
+    setScene((s) => {
+      const groupIds = new Set(
+        selectedIds
+          .map((id) => s.items.find((it) => it.id === id)?.groupId)
+          .filter(Boolean) as string[]
+      );
+      return {
+        ...s,
+        groups: s.groups.filter((g) => !groupIds.has(g.id)),
+        items: s.items.map((it) =>
+          it.groupId && groupIds.has(it.groupId)
+            ? { ...it, groupId: undefined }
+            : it
+        ),
+      };
+    });
+  }, [selectedIds]);
+
+  const handleToggleLock = useCallback(() => {
+    if (selectedIds.length === 0) return;
+    setScene((s) => ({
+      ...s,
+      items: s.items.map((it) =>
+        selectedIds.includes(it.id) ? { ...it, locked: !it.locked } : it
+      ),
+    }));
+  }, [selectedIds]);
+
+  const handleToggleHidden = useCallback(() => {
+    if (selectedIds.length === 0) return;
+    setScene((s) => ({
+      ...s,
+      items: s.items.map((it) =>
+        selectedIds.includes(it.id) ? { ...it, hidden: !it.hidden } : it
+      ),
+    }));
+  }, [selectedIds]);
+
+  const handleBringToFront = useCallback(() => {
+    if (selectedIds.length === 0) return;
+    setScene((s) => {
+      const maxZ = Math.max(...s.items.map((it) => it.zIndex), 0);
+      return {
+        ...s,
+        items: s.items.map((it) =>
+          selectedIds.includes(it.id) ? { ...it, zIndex: maxZ + 1 } : it
+        ),
+      };
+    });
+  }, [selectedIds]);
+
+  const handleSendToBack = useCallback(() => {
+    if (selectedIds.length === 0) return;
+    setScene((s) => {
+      const minZ = Math.min(...s.items.map((it) => it.zIndex), 0);
+      return {
+        ...s,
+        items: s.items.map((it) =>
+          selectedIds.includes(it.id) ? { ...it, zIndex: minZ - 1 } : it
+        ),
+      };
+    });
+  }, [selectedIds]);
+
+  const selectedItems = useMemo(
+    () => scene.items.filter((i) => selectedIds.includes(i.id)),
+    [scene, selectedIds]
   );
+
+  const selectedItem = selectedItems.length === 1 ? selectedItems[0] : null;
 
   return (
     <div className="canvas-stage-page">
@@ -272,7 +409,7 @@ export function CanvasStage({ taskId, onBack }: CanvasStageProps) {
             <h1>图片创作 · 高级工作台</h1>
             <p>
               {taskId
-                ? "已从基础模式任务还原工作流，可自由拖拽、缩放、旋转卡片"
+                ? "已从基础模式任务还原工作流，可自由拖拽、缩放、旋转、连线、分组"
                 : "空白画布，从左侧节点工具箱开始搭建素材导演台"}
             </p>
           </div>
@@ -305,24 +442,126 @@ export function CanvasStage({ taskId, onBack }: CanvasStageProps) {
                 </li>
               ))}
             </ul>
+
+            {/* 图层管理 */}
+            <h3 className="canvas-stage-left__section">图层</h3>
+            <ul className="canvas-stage-layers">
+              {scene.items
+                .slice()
+                .sort((a, b) => b.zIndex - a.zIndex)
+                .map((item) => (
+                  <li
+                    key={item.id}
+                    className={`canvas-stage-layer ${
+                      selectedIds.includes(item.id) ? "canvas-stage-layer--selected" : ""
+                    } ${item.hidden ? "canvas-stage-layer--hidden" : ""}`}
+                    onClick={() => setSelectedIds([item.id])}
+                  >
+                    <span className="canvas-stage-layer__label">{item.label}</span>
+                    <span className="canvas-stage-layer__kind">
+                      {KIND_DEFAULT_LABEL[item.kind]}
+                    </span>
+                    <div className="canvas-stage-layer__actions">
+                      <button
+                        type="button"
+                        title={item.locked ? "解锁" : "锁定"}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setScene((s) => ({
+                            ...s,
+                            items: s.items.map((it) =>
+                              it.id === item.id ? { ...it, locked: !it.locked } : it
+                            ),
+                          }));
+                        }}
+                      >
+                        {item.locked ? "🔒" : "🔓"}
+                      </button>
+                      <button
+                        type="button"
+                        title={item.hidden ? "显示" : "隐藏"}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setScene((s) => ({
+                            ...s,
+                            items: s.items.map((it) =>
+                              it.id === item.id ? { ...it, hidden: !it.hidden } : it
+                            ),
+                          }));
+                        }}
+                      >
+                        {item.hidden ? "👁" : "👁‍🗨"}
+                      </button>
+                    </div>
+                  </li>
+                ))}
+            </ul>
           </aside>
 
           {/* 中间：Konva 画布 */}
           <section className="canvas-stage-center" ref={containerRef}>
             <CanvasBoard
               items={scene.items}
-              selectedId={selectedId}
-              onSelect={setSelectedId}
+              edges={scene.edges}
+              selectedIds={selectedIds}
+              onSelect={setSelectedIds}
               onMove={handleMove}
+              onMoveMany={handleMoveMany}
               onResize={handleResize}
+              onConnect={handleConnect}
+              viewport={viewport}
+              onViewportChange={setViewport}
               width={stageSize.width}
               height={stageSize.height}
             />
+            {/* Minimap 总览 */}
+            <Minimap
+              items={scene.items}
+              viewport={viewport}
+              stageWidth={stageSize.width}
+              stageHeight={stageSize.height}
+              onViewportChange={setViewport}
+            />
           </section>
 
-          {/* 右侧：选中节点的业务字段 */}
+          {/* 右侧：属性面板 + 批量操作 */}
           <aside className="canvas-stage-right">
             <h3>属性面板</h3>
+            {selectedIds.length > 0 && (
+              <div className="canvas-stage-batch">
+                <p className="canvas-stage-batch__count">
+                  已选中 {selectedIds.length} 个节点
+                </p>
+                <div className="canvas-stage-batch__actions">
+                  <button type="button" onClick={handleGroupSelected}>
+                    分组
+                  </button>
+                  <button type="button" onClick={handleUngroupSelected}>
+                    取消分组
+                  </button>
+                  <button type="button" onClick={handleToggleLock}>
+                    锁定/解锁
+                  </button>
+                  <button type="button" onClick={handleToggleHidden}>
+                    显示/隐藏
+                  </button>
+                  <button type="button" onClick={handleBringToFront}>
+                    置顶
+                  </button>
+                  <button type="button" onClick={handleSendToBack}>
+                    置底
+                  </button>
+                  <button
+                    type="button"
+                    className="canvas-stage-batch__delete"
+                    onClick={handleDeleteSelected}
+                  >
+                    删除
+                  </button>
+                </div>
+              </div>
+            )}
+
             {selectedItem ? (
               <div className="canvas-stage-props">
                 <div className="canvas-stage-props__row">
@@ -411,28 +650,23 @@ export function CanvasStage({ taskId, onBack }: CanvasStageProps) {
                     </a>
                   </div>
                 )}
-                <button
-                  type="button"
-                  className="canvas-stage-props__delete"
-                  onClick={handleDeleteSelected}
-                >
-                  删除节点
-                </button>
               </div>
-            ) : (
+            ) : selectedIds.length === 0 ? (
               <p className="canvas-stage-props__empty">
-                选中画布上的节点查看业务字段。节点之间不连线，画布只负责交互与呈现，执行顺序由后端任务模型决定。
+                选中画布上的节点查看业务字段。Shift+拖拽框选多个节点，Shift+点击切换选中。
               </p>
-            )}
+            ) : null}
           </aside>
         </div>
 
-        {/* 底部：状态栏（占位，后续接入生成队列/历史版本/积分） */}
+        {/* 底部：状态栏 */}
         <footer className="canvas-stage-footer">
           <span>节点数：{scene.items.length}</span>
-          <span>缩放：{Math.round(scene.viewport.scale * 100)}%</span>
+          <span>连线数：{scene.edges.length}</span>
+          <span>分组数：{scene.groups.length}</span>
+          <span>缩放：{Math.round(viewport.scale * 100)}%</span>
           <span className="canvas-stage-footer__hint">
-            滚轮缩放 · 拖拽空白平移 · 选中后可调整大小/旋转
+            滚轮缩放 · 拖拽空白平移 · Shift+拖拽框选 · 拖端口连线 · 右下角 Minimap 定位
           </span>
         </footer>
       </main>
