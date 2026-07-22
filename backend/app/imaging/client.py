@@ -39,7 +39,9 @@ class GGOOImageClient:
         model: str | None = None,
         n: int = 1,
         reference_image_url: str | None = None,
-    ) -> str:
+        quality: str | None = None,
+        background: str | None = None,
+    ) -> str | list[str]:
         """Generate an image and return its URL.
 
         When `reference_image_url` is provided, runs in image-to-image mode:
@@ -59,7 +61,7 @@ class GGOOImageClient:
             path = f"/{path}"
         url = f"{self._gateway_base_url}{path}"
 
-        resolved_model = model or os.environ.get("GGOO_IMAGE_MODEL", "image2.0").strip()
+        resolved_model = model or os.environ.get("GGOO_IMAGE_MODEL", "gpt-image-2").strip()
         body: dict[str, Any] = {
             "model": resolved_model,
             "prompt": prompt,
@@ -69,6 +71,10 @@ class GGOOImageClient:
         if reference_image_url:
             ref_field = os.environ.get("GGOO_IMAGE_REFERENCE_FIELD", "image").strip() or "image"
             body[ref_field] = reference_image_url
+        if quality:
+            body["quality"] = quality
+        if background:
+            body["background"] = background
 
         response = await self._client.post(
             url,
@@ -97,10 +103,23 @@ class GGOOImageClient:
             raise GGOOError("图片生成结果格式异常", status_code=502) from exc
 
         field = os.environ.get("GGOO_IMAGE_RESPONSE_URL_FIELD", "data.0.url").strip()
-        image_url = _lookup_dotted(payload, field)
-        if not isinstance(image_url, str) or not image_url.strip():
+        field_parts = field.split(".")
+        list_path = ".".join(field_parts[:-2]) if len(field_parts) >= 3 else ""
+        urls_value = _lookup_dotted(payload, list_path) if n > 1 and list_path else None
+        if isinstance(urls_value, list):
+            urls = [
+                item["url"].strip()
+                for item in urls_value
+                if isinstance(item, dict)
+                and isinstance(item.get("url"), str)
+                and item["url"].strip()
+            ]
+        else:
+            image_url = _lookup_dotted(payload, field)
+            urls = [image_url.strip()] if isinstance(image_url, str) and image_url.strip() else []
+        if not urls:
             raise GGOOError("图片生成结果格式异常", status_code=502)
-        return image_url.strip()
+        return urls[0] if n == 1 else urls
 
 
 def _lookup_dotted(data: Any, dotted: str) -> Any:

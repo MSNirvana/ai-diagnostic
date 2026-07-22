@@ -1,4 +1,5 @@
 """GGOOImageClient: generate_image with mocked httpx responses."""
+import json
 import httpx
 import pytest
 
@@ -26,6 +27,20 @@ async def test_generate_image_returns_url_on_success():
     client = _make_client(handler)
     url = await client.generate_image(prompt="a cat", size="1024x1024")
     assert url == "https://img.example.com/1.png"
+
+
+@pytest.mark.asyncio
+async def test_generate_image_returns_all_urls_for_multiple_candidates():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert json.loads(request.content)["n"] == 3
+        return httpx.Response(200, json={"data": [
+            {"url": "https://img.example.com/1.png"},
+            {"url": "https://img.example.com/2.png"},
+        ]})
+
+    client = _make_client(handler)
+    urls = await client.generate_image(prompt="a cat", size="1024x1024", n=3)
+    assert urls == ["https://img.example.com/1.png", "https://img.example.com/2.png"]
 
 
 @pytest.mark.asyncio

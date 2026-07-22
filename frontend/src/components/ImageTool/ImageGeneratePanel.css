@@ -40,6 +40,92 @@
   border-color: #6366f1;
 }
 
+.image-generate-options {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.image-generate-field select {
+  width: 100%;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #fff;
+  color: #333;
+  font: inherit;
+}
+
+.image-generate-field select:focus {
+  outline: none;
+  border-color: #6366f1;
+}
+
+.image-generate-style-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.image-generate-style {
+  border: 1px solid #d9d9e2;
+  border-radius: 8px;
+  background: #fff;
+  color: #4b4b61;
+  cursor: pointer;
+  padding: 9px 14px;
+  font-size: 13px;
+}
+
+.image-generate-style:hover,
+.image-generate-style.selected {
+  border-color: #6366f1;
+  background: #eef2ff;
+  color: #4f46e5;
+}
+
+.image-generate-capability-note {
+  margin: -4px 0 16px;
+  color: #777;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.image-generate-ratio-conflict {
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  border-radius: 8px;
+  color: #9a3412;
+  margin: -4px 0 18px;
+  padding: 12px;
+}
+
+.image-generate-ratio-conflict p {
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0 0 10px;
+}
+
+.image-generate-ratio-conflict div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.image-generate-ratio-conflict button {
+  background: #fff;
+  border: 1px solid #fb923c;
+  border-radius: 6px;
+  color: #9a3412;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 6px 9px;
+}
+
+.image-generate-ratio-conflict button:hover {
+  background: #ffedd5;
+}
+
 .image-generate-assets {
   display: flex;
   flex-wrap: wrap;
@@ -175,9 +261,16 @@
 }
 
 .image-generate-result img {
-  max-width: 100%;
+  width: 100%;
   border-radius: 8px;
   margin-bottom: 16px;
+}
+
+.image-generate-result-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 4px;
 }
 
 .image-generate-failed {
@@ -199,4 +292,10 @@
   padding: 10px 24px;
   font-size: 14px;
   cursor: pointer;
+}
+
+@media (max-width: 760px) {
+  .image-generate-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }

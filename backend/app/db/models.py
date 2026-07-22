@@ -461,3 +461,15 @@ class ToolTask(SQLModel, table=True):
     idempotency_key: str | None = Field(default=None, unique=True, index=True)
     error_message: str = ""
     payload_json: str = "{}"                           # 任务上下文快照（工具自定义结构）
+
+class CanvasScene(SQLModel, table=True):
+    """Versioned Konva scene snapshot owned by one user and optionally one image task."""
+
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    user_id: str = Field(foreign_key="user.id", index=True)
+    task_id: str | None = Field(default=None, foreign_key="tooltask.id", index=True)
+    name: str = Field(default="未命名画布")
+    version: int = Field(default=1, index=True)
+    scene_json: str = "{}"
+    created_at: datetime = Field(default_factory=_now)
+    updated_at: datetime = Field(default_factory=_now)

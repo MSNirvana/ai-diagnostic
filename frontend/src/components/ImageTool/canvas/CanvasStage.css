@@ -29,6 +29,43 @@
   font-size: 14px;
 }
 
+.canvas-stage-persistence {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  margin-left: auto;
+  margin-right: 16px;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.canvas-stage-persistence__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.canvas-stage-persistence button {
+  padding: 6px 10px;
+  border: 1px solid #c7d2fe;
+  border-radius: 6px;
+  background: #eef2ff;
+  color: #3730a3;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.canvas-stage-persistence__actions button:first-child {
+  border-color: #ddd6fe;
+  background: #f5f3ff;
+  color: #6d28d9;
+}
+
+.canvas-stage-persistence button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
 .canvas-stage-back {
   padding: 6px 14px;
   border: 1px solid #d1d5db;
@@ -51,6 +88,11 @@
 
 .canvas-stage-error {
   color: #dc2626;
+}
+
+.canvas-stage-message {
+  padding: 12px;
+  color: #166534;
 }
 
 /* 四区布局 */
@@ -123,6 +165,102 @@
   font-size: 11px;
   color: #6b7280;
   margin-top: 2px;
+}
+
+.canvas-stage-planner {
+  margin-top: 18px;
+  padding-top: 12px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.canvas-stage-planner__label {
+  display: block;
+  margin: 8px 0 4px;
+  color: #6b7280;
+  font-size: 11px;
+}
+
+.canvas-stage-planner select,
+.canvas-stage-planner input,
+.canvas-stage-planner textarea,
+.canvas-stage-planner__frame input,
+.canvas-stage-planner__frame textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #e5e7eb;
+  border-radius: 5px;
+  padding: 6px 7px;
+  background: #fff;
+  color: #374151;
+  font: inherit;
+  font-size: 12px;
+}
+
+.canvas-stage-planner textarea,
+.canvas-stage-planner__frame textarea {
+  resize: vertical;
+}
+
+.canvas-stage-planner__primary,
+.canvas-stage-planner__secondary {
+  width: 100%;
+  margin-top: 8px;
+  padding: 7px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.canvas-stage-planner__primary {
+  border: 1px solid #6366f1;
+  background: #6366f1;
+  color: #fff;
+}
+
+.canvas-stage-planner__secondary {
+  border: 1px solid #c7d2fe;
+  background: #eef2ff;
+  color: #3730a3;
+}
+
+.canvas-stage-planner__note {
+  margin: 8px 0 0;
+  color: #9ca3af;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.canvas-stage-planner__summary {
+  margin-top: 8px;
+  color: #4f46e5;
+  font-size: 11px;
+}
+
+.canvas-stage-planner__frames {
+  margin-top: 18px;
+  padding-top: 12px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.canvas-stage-planner__frame {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 10px;
+  padding: 8px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+}
+
+.canvas-stage-planner__frame strong {
+  color: #1f2937;
+  font-size: 12px;
+}
+
+.canvas-stage-planner__frame span {
+  color: #6b7280;
+  font-size: 10px;
 }
 
 /* 中间画布容器 */
@@ -220,6 +358,156 @@
   color: #9ca3af;
   line-height: 1.6;
 }
+
+.canvas-stage-props__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin-bottom: 12px;
+  color: #8b92a1;
+  font-size: 11px;
+}
+
+.canvas-stage-props__meta a {
+  color: #4f46e5;
+  text-decoration: none;
+}
+
+.canvas-stage-props__meta a:hover {
+  text-decoration: underline;
+}
+
+.canvas-node-inspector {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.canvas-node-inspector__identity {
+  align-items: center;
+  display: flex;
+  gap: 7px;
+  margin-bottom: 2px;
+}
+
+.canvas-node-inspector__identity input,
+.canvas-node-inspector__field input,
+.canvas-node-inspector__field select,
+.canvas-node-inspector__field textarea {
+  background: #fff;
+  border: 1px solid #dfe3ea;
+  border-radius: 6px;
+  box-sizing: border-box;
+  color: #273244;
+  font: inherit;
+  font-size: 12px;
+  min-width: 0;
+  padding: 7px 8px;
+  width: 100%;
+}
+
+.canvas-node-inspector__identity input:focus,
+.canvas-node-inspector__field input:focus,
+.canvas-node-inspector__field select:focus,
+.canvas-node-inspector__field textarea:focus {
+  border-color: #818cf8;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.12);
+}
+
+.canvas-node-inspector__kind {
+  background: #f1f5f9;
+  border-radius: 5px;
+  color: #64748b;
+  flex: 0 0 auto;
+  font: 10px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+  padding: 5px 6px;
+}
+
+.canvas-node-inspector__field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.canvas-node-inspector__field > span,
+.canvas-node-inspector__upload > span,
+.canvas-node-inspector__sources > span {
+  color: #667085;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.canvas-node-inspector__field textarea {
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.canvas-node-inspector__checkbox {
+  align-items: center;
+  color: #344054;
+  display: flex;
+  gap: 7px;
+  font-size: 12px;
+}
+
+.canvas-node-inspector__checkbox input {
+  accent-color: #6366f1;
+}
+
+.canvas-node-inspector__upload {
+  border: 1px dashed #c7d2fe;
+  border-radius: 7px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 9px;
+}
+
+.canvas-node-inspector__upload input {
+  color: #64748b;
+  font-size: 11px;
+  width: 100%;
+}
+
+.canvas-node-inspector__sources {
+  border-top: 1px solid #eef0f4;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+}
+
+.canvas-node-inspector__primary {
+  background: #6366f1;
+  border: 1px solid #6366f1;
+  border-radius: 6px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 8px 10px;
+}
+
+.canvas-node-inspector__primary:hover {
+  background: #4f46e5;
+}
+
+.canvas-node-inspector__hint,
+.canvas-node-inspector__success,
+.canvas-node-inspector__error,
+.canvas-node-inspector__warning,
+.canvas-node-inspector__status {
+  font-size: 11px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.canvas-node-inspector__hint { color: #98a2b3; }
+.canvas-node-inspector__success { color: #15803d; }
+.canvas-node-inspector__error { color: #dc2626; }
+.canvas-node-inspector__warning { background: #fff7ed; border-radius: 6px; color: #c2410c; padding: 8px; }
+.canvas-node-inspector__status { background: #f8fafc; border-radius: 6px; color: #475569; padding: 8px; }
 
 /* 底部状态栏 */
 .canvas-stage-footer {

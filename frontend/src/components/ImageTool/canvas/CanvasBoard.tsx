@@ -10,8 +10,9 @@ import {
   Transformer,
 } from "react-konva";
 import type Konva from "konva";
-import type { CanvasEdge, CanvasItem, CanvasItemKind } from "../../../types";
+import type { CanvasEdge, CanvasItem, CanvasItemKind, CanvasPortDefinition } from "../../../types";
 import { useCanvasImage } from "./useCanvasImage";
+import { getCanvasNodeDefinition } from "./canvasNodeRegistry";
 
 interface CanvasBoardProps {
   items: CanvasItem[];
@@ -21,7 +22,7 @@ interface CanvasBoardProps {
   onMove: (id: string, x: number, y: number) => void;
   onMoveMany: (ids: string[], dx: number, dy: number) => void;
   onResize: (id: string, width: number, height: number, rotation: number) => void;
-  onConnect: (fromId: string, toId: string) => void;
+  onConnect: (fromId: string, toId: string, fromPortId?: string, toPortId?: string) => void;
   viewport: { x: number; y: number; scale: number };
   onViewportChange: (viewport: { x: number; y: number; scale: number }) => void;
   width: number;
@@ -31,24 +32,32 @@ interface CanvasBoardProps {
 const KIND_COLOR: Record<CanvasItemKind, string> = {
   requirement: "#3b82f6",
   asset: "#10b981",
+  reference: "#0f766e",
   reversePrompt: "#8b5cf6",
   prompt: "#f59e0b",
   model: "#6366f1",
   generate: "#ec4899",
   result: "#14b8a6",
+  edit: "#f97316",
+  upscale: "#0891b2",
   bundle: "#64748b",
+  bundleCard: "#db2777",
   export: "#6b7280",
 };
 
 const KIND_TITLE: Record<CanvasItemKind, string> = {
   requirement: "需求/模板",
   asset: "素材",
+  reference: "参考节点",
   reversePrompt: "反推提示词",
   prompt: "提示词",
   model: "图片模型",
   generate: "图片生成",
   result: "结果",
+  edit: "修改/重绘",
+  upscale: "超分辨率",
   bundle: "分组/版式",
+  bundleCard: "套图卡片",
   export: "导出",
 };
 
@@ -66,13 +75,22 @@ interface CardNodeProps {
   selected: boolean;
   onSelect: (id: string, shiftKey: boolean) => void;
   onMove: (id: string, x: number, y: number) => void;
-  onPortMouseDown: (id: string, e: Konva.KonvaEventObject<MouseEvent>) => void;
+  onPortMouseDown: (id: string, portId: string, e: Konva.KonvaEventObject<MouseEvent>) => void;
 }
+
+const PORT_LABELS: Record<string, string> = {
+  image: "图片", prompt: "提示词", requirement: "需求", config: "配置",
+  result: "结果", "reference-prompt": "反推", bundle: "套图",
+};
 
 function CardNode({ item, selected, onSelect, onMove, onPortMouseDown }: CardNodeProps) {
   const accent = KIND_COLOR[item.kind];
   const title = KIND_TITLE[item.kind];
   const image = useCanvasImage(item.imageUrl);
+  const ports = getCanvasNodeDefinition(item.kind).ports;
+  const inputPorts = ports.filter((port) => port.direction === "input");
+  const outputPorts = ports.filter((port) => port.direction === "output");
+  const portY = (index: number, count: number) => HEADER_H + 12 + ((item.height - HEADER_H - 24) * (index + 1)) / (count + 1);
 
   const handleDragEnd = (e: Konva.KonvaEventObject<DragEvent>) => {
     onMove(item.id, e.target.x(), e.target.y());
@@ -82,11 +100,26 @@ function CardNode({ item, selected, onSelect, onMove, onPortMouseDown }: CardNod
   if (!image) {
     const meta = item.metadata ?? {};
     if (meta.presetName) bodyLines.push(truncate(meta.presetName, 22));
+    if (meta.demandType) bodyLines.push(`需求: ${truncate(meta.demandType, 18)}`);
+    if (meta.productFacts) bodyLines.push(truncate(meta.productFacts, 22));
+    if (meta.referenceRole) bodyLines.push(`来源: ${meta.referenceRole}`);
+    if (meta.assetName) bodyLines.push(truncate(meta.assetName, 22));
+    if (meta.reversePromptEnabled !== undefined) bodyLines.push(meta.reversePromptEnabled ? "已启用反推" : "未启用反推");
+    if (meta.reversePromptModel) bodyLines.push(`反推模型: ${meta.reversePromptModel}`);
+    if (meta.reversePromptFocus) bodyLines.push(`反推重点: ${truncate(meta.reversePromptFocus, 16)}`);
     if (meta.userIntent) bodyLines.push(truncate(meta.userIntent, 22));
     if (meta.reversePrompt) bodyLines.push(truncate(meta.reversePrompt, 22));
     if (meta.assembledPrompt) bodyLines.push(truncate(meta.assembledPrompt, 22));
     if (meta.prompt) bodyLines.push(truncate(meta.prompt, 22));
     if (meta.modelName) bodyLines.push(`模型: ${meta.modelName}`);
+    if (meta.aspectRatio) bodyLines.push(`比例: ${meta.aspectRatio}`);
+    if (meta.size) bodyLines.push(`尺寸: ${meta.size}`);
+    if (meta.quality) bodyLines.push(`画质: ${meta.quality}`);
+    if (meta.generationCount) bodyLines.push(`套图: ${meta.generationCount} 张`);
+    if (meta.cardIndex && meta.cardType) bodyLines.push(`${meta.cardIndex}. ${meta.cardType}`);
+    if (meta.cardPurpose) bodyLines.push(truncate(meta.cardPurpose, 22));
+    if (meta.copySuggestion) bodyLines.push(truncate(meta.copySuggestion, 22));
+    if (meta.sourceNodeIds?.length) bodyLines.push(`参考来源: ${meta.sourceNodeIds.length} 个`);
     if (meta.generationMode) {
       bodyLines.push(meta.generationMode === "image2image" ? "图生图" : "文生图");
     }
@@ -162,34 +195,19 @@ function CardNode({ item, selected, onSelect, onMove, onPortMouseDown }: CardNod
           />
         ))
       )}
-      {/* 输出端口（右侧中点）：按住拖出连线 */}
-      <Rect
-        name="output-port"
-        x={item.width - PORT_R}
-        y={item.height / 2 - PORT_R}
-        width={PORT_R * 2}
-        height={PORT_R * 2}
-        cornerRadius={PORT_R}
-        fill={accent}
-        stroke="#ffffff"
-        strokeWidth={1.5}
-        onMouseDown={(e) => {
-          e.cancelBubble = true;
-          onPortMouseDown(item.id, e);
-        }}
-      />
-      {/* 输入端口（左侧中点）：连线落点 */}
-      <Rect
-        name="input-port"
-        x={-PORT_R}
-        y={item.height / 2 - PORT_R}
-        width={PORT_R * 2}
-        height={PORT_R * 2}
-        cornerRadius={PORT_R}
-        fill="#ffffff"
-        stroke={accent}
-        strokeWidth={1.5}
-      />
+      {inputPorts.map((port, index) => (
+        <Group key={`in-${port.id}`} name={`input-port-${port.id}`} x={0} y={portY(index, inputPorts.length)}>
+          <Rect x={-PORT_R} y={-PORT_R} width={PORT_R * 2} height={PORT_R * 2} cornerRadius={PORT_R} fill="#ffffff" stroke={accent} strokeWidth={1.5} />
+          <Text x={8} y={-7} text={PORT_LABELS[port.id] ?? port.id} fontSize={9} fill="#64748b" />
+        </Group>
+      ))}
+      {outputPorts.map((port, index) => (
+        <Group key={`out-${port.id}`} name={`output-port-${port.id}`} x={item.width} y={portY(index, outputPorts.length)}
+          onMouseDown={(e) => { e.cancelBubble = true; onPortMouseDown(item.id, port.id, e); }}>
+          <Rect x={-PORT_R} y={-PORT_R} width={PORT_R * 2} height={PORT_R * 2} cornerRadius={PORT_R} fill={accent} stroke="#ffffff" strokeWidth={1.5} />
+          <Text x={-48} y={-7} width={38} align="right" text={PORT_LABELS[port.id] ?? port.id} fontSize={9} fill="#64748b" />
+        </Group>
+      ))}
     </Group>
   );
 }
@@ -218,6 +236,7 @@ export function CanvasBoard({
   } | null>(null);
   const [connecting, setConnecting] = useState<{
     fromId: string;
+    fromPortId: string;
     toX: number;
     toY: number;
   } | null>(null);
@@ -338,14 +357,14 @@ export function CanvasBoard({
 
   // 连线开始：从输出端口拖出
   const handlePortMouseDown = useCallback(
-    (fromId: string, e: Konva.KonvaEventObject<MouseEvent>) => {
+    (fromId: string, fromPortId: string, e: Konva.KonvaEventObject<MouseEvent>) => {
       const stage = stageRef.current;
       if (!stage) return;
       const pointer = stage.getPointerPosition();
       if (!pointer) return;
       const canvasX = (pointer.x - viewport.x) / viewport.scale;
       const canvasY = (pointer.y - viewport.y) / viewport.scale;
-      setConnecting({ fromId, toX: canvasX, toY: canvasY });
+      setConnecting({ fromId, fromPortId, toX: canvasX, toY: canvasY });
     },
     [viewport]
   );
@@ -372,17 +391,24 @@ export function CanvasBoard({
     const canvasX = (pointer.x - viewport.x) / viewport.scale;
     const canvasY = (pointer.y - viewport.y) / viewport.scale;
 
-    // 查找落点附近的输入端口
-    const targetItem = items.find((item) => {
+    // 查找落点附近的具体输入端口
+    let targetItem: CanvasItem | undefined;
+    let targetPort: CanvasPortDefinition | undefined;
+    items.forEach((item) => {
       if (item.hidden || item.id === connecting.fromId) return false;
-      const portX = item.x;
-      const portY = item.y + item.height / 2;
-      const dist = Math.hypot(canvasX - portX, canvasY - portY);
-      return dist < 20;
+      const inputPorts = getCanvasNodeDefinition(item.kind).ports.filter((port) => port.direction === "input");
+      inputPorts.forEach((port, index) => {
+        const portX = item.x;
+        const portY = item.y + HEADER_H + 12 + ((item.height - HEADER_H - 24) * (index + 1)) / (inputPorts.length + 1);
+        if (Math.hypot(canvasX - portX, canvasY - portY) < 20) {
+          targetItem = item;
+          targetPort = port;
+        }
+      });
     });
 
-    if (targetItem) {
-      onConnect(connecting.fromId, targetItem.id);
+    if (targetItem && targetPort) {
+      onConnect(connecting.fromId, targetItem.id, connecting.fromPortId, targetPort.id);
     }
     setConnecting(null);
   }, [connecting, items, onConnect, viewport]);
@@ -443,10 +469,16 @@ export function CanvasBoard({
       const fromItem = items.find((i) => i.id === edge.fromId);
       const toItem = items.find((i) => i.id === edge.toId);
       if (!fromItem || !toItem) return null;
+      const fromPort = edge.fromPort ?? getCanvasNodeDefinition(fromItem.kind).ports.find((port) => port.direction === "output")?.id;
+      const toPort = edge.toPort ?? getCanvasNodeDefinition(toItem.kind).ports.find((port) => port.direction === "input")?.id;
+      const fromPorts = getCanvasNodeDefinition(fromItem.kind).ports.filter((port) => port.direction === "output");
+      const toPorts = getCanvasNodeDefinition(toItem.kind).ports.filter((port) => port.direction === "input");
+      const fromIndex = Math.max(0, fromPorts.findIndex((port) => port.id === fromPort));
+      const toIndex = Math.max(0, toPorts.findIndex((port) => port.id === toPort));
+      const fromY = fromItem.y + HEADER_H + 12 + ((fromItem.height - HEADER_H - 24) * (fromIndex + 1)) / (fromPorts.length + 1);
       const fromX = fromItem.x + fromItem.width;
-      const fromY = fromItem.y + fromItem.height / 2;
       const toX = toItem.x;
-      const toY = toItem.y + toItem.height / 2;
+      const toY = toItem.y + HEADER_H + 12 + ((toItem.height - HEADER_H - 24) * (toIndex + 1)) / (toPorts.length + 1);
       return { fromX, fromY, toX, toY };
     },
     [items]
@@ -520,10 +552,8 @@ export function CanvasBoard({
         {connecting && (
           <Arrow
             points={[
-              items.find((i) => i.id === connecting.fromId)?.x ?? 0 +
-                (items.find((i) => i.id === connecting.fromId)?.width ?? 0),
-              (items.find((i) => i.id === connecting.fromId)?.y ?? 0) +
-                (items.find((i) => i.id === connecting.fromId)?.height ?? 0) / 2,
+              (items.find((i) => i.id === connecting.fromId)?.x ?? 0) + (items.find((i) => i.id === connecting.fromId)?.width ?? 0),
+              (items.find((i) => i.id === connecting.fromId)?.y ?? 0) + (items.find((i) => i.id === connecting.fromId)?.height ?? 0) / 2,
               connecting.toX,
               connecting.toY,
             ]}

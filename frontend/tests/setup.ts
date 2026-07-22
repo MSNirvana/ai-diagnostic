@@ -13,6 +13,7 @@ vi.mock("react-konva", () => ({
   Image: () => null,
   Transformer: () => null,
   Line: () => null,
+  Arrow: () => null,
   Circle: () => null,
   Label: ({ children }: { children?: React.ReactNode }) => children ?? null,
   Tag: () => null,
@@ -22,3 +23,18 @@ vi.mock("konva", () => ({
   default: {},
   Util: { getRandomColor: () => "#000000" },
 }));
+
+class ResizeObserverStub {
+  observe() {}
+  disconnect() {}
+}
+
+Object.defineProperty(globalThis, "ResizeObserver", {
+  configurable: true,
+  value: ResizeObserverStub,
+});
+
+Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
+  configurable: true,
+  value: () => null,
+});

@@ -50,6 +50,11 @@ import type {
   ImageAssetOut,
   ImageTaskStatus,
   CreateImageTaskResponse,
+  ImageModelCapability,
+  EcommerceSkillCatalog,
+  CanvasScene,
+  CanvasSceneResponse,
+  ImageTemplateCatalog,
 } from "../types";
 import { clearToken, getToken, setToken } from "../auth/authStore";
 
@@ -925,12 +930,24 @@ export async function deleteImageAsset(assetId: string): Promise<void> {
 
 export async function createImageTask(req: {
   preset_id: string;
+  template_id?: string;
   user_intent: string;
   reference_asset_id?: string;
   style?: string;
   size?: string;
+  model?: string;
+  aspect_ratio?: string;
+  quality?: string;
+  background?: string;
+  generation_count?: number;
+  model_version?: string;
   generation_mode?: "text2image" | "image2image";
   edited_description?: string;
+  scene_id?: string;
+  conversion_driver?: string;
+  product_category?: string;
+  market_scope?: string;
+  style_variant?: string;
   idempotency_key?: string;
 }): Promise<CreateImageTaskResponse> {
   const resp = await fetch(`${BASE}/image-tool/tasks`, {
@@ -940,6 +957,30 @@ export async function createImageTask(req: {
   });
   if (!resp.ok) throw new Error(await errorMessage(resp, "创建图片生成任务失败"));
   return (await resp.json()) as CreateImageTaskResponse;
+}
+
+export async function getEcommerceSkillCatalog(): Promise<EcommerceSkillCatalog> {
+  const resp = await fetch(BASE + "/image-tool/skill-catalog", {
+    headers: { ...authHeaders() },
+  });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "获取电商视觉模板失败"));
+  return (await resp.json()) as EcommerceSkillCatalog;
+}
+
+export async function getImageTemplateCatalog(): Promise<ImageTemplateCatalog> {
+  const resp = await fetch(BASE + "/image-tool/template-catalog", {
+    headers: { ...authHeaders() },
+  });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "获取图片模板失败"));
+  return (await resp.json()) as ImageTemplateCatalog;
+}
+
+export async function getImageModelCapabilities(): Promise<ImageModelCapability[]> {
+  const resp = await fetch(`${BASE}/image-tool/capabilities`, {
+    headers: { ...authHeaders() },
+  });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "获取图片模型能力失败"));
+  return (await resp.json()) as ImageModelCapability[];
 }
 
 export async function confirmImageTask(taskId: string): Promise<ImageTaskStatus> {
@@ -965,6 +1006,29 @@ export async function listImageTasks(limit = 50): Promise<ImageTaskStatus[]> {
   });
   if (!resp.ok) throw new Error(await errorMessage(resp, "获取图片任务列表失败"));
   return (await resp.json()) as ImageTaskStatus[];
+}
+
+export async function saveCanvasScene(req: {
+  task_id?: string | null;
+  name?: string;
+  scene: CanvasScene;
+}): Promise<CanvasSceneResponse> {
+  const resp = await fetch(`${BASE}/image-tool/scenes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(req),
+  });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "保存画布失败"));
+  return (await resp.json()) as CanvasSceneResponse;
+}
+
+export async function getLatestCanvasScene(taskId: string): Promise<CanvasSceneResponse> {
+  const resp = await fetch(
+    `${BASE}/image-tool/scenes/latest?task_id=${encodeURIComponent(taskId)}`,
+    { headers: { ...authHeaders() } },
+  );
+  if (!resp.ok) throw new Error(await errorMessage(resp, "加载最近画布版本失败"));
+  return (await resp.json()) as CanvasSceneResponse;
 }
 
 export async function fetchCaseProjects(

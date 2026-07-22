@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { AUTH_TOKEN_CHANGED, getToken, setToken, clearToken } from "./authStore";
+import { DEV_AUTH_BYPASS } from "./devAuth";
 
 interface AuthContextType {
   token: string | null;
@@ -35,7 +36,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ token, isAuthenticated: !!token, login, logout }}>
+    <AuthContext.Provider value={{ token, isAuthenticated: !!token || DEV_AUTH_BYPASS, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

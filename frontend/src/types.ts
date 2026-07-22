@@ -756,21 +756,83 @@ export interface ImageTaskStatus {
   actual_points: number | null;
   error: string | null;
   result_image_url: string | null;
+  result_image_urls?: string[];
+  result_asset_ids?: string[];
   created_at: string;
   updated_at: string;
   // Canvas-relevant payload fields (optional; populated after job runs).
   preset_id?: string | null;
+  template_id?: string | null;
   user_intent?: string | null;
   reference_asset_id?: string | null;
   reverse_prompt?: string | null;
   assembled_prompt?: string | null;
   generation_mode?: "text2image" | "image2image" | null;
+  model?: string | null;
+  model_version?: string | null;
+  aspect_ratio?: string | null;
+  size?: string | null;
+  quality?: string | null;
+  background?: string | null;
+  generation_count?: number;
 }
 
 export interface CreateImageTaskResponse {
   task_id: string;
   status: string;
   quote_points: number | null;
+}
+
+export interface ImageModelCapabilityOption {
+  value: string;
+  label: string;
+  aspect_ratio?: string;
+}
+
+export interface ImageModelCapability {
+  model: string;
+  label: string;
+  sizes: ImageModelCapabilityOption[];
+  aspect_ratios: ImageModelCapabilityOption[];
+  qualities: ImageModelCapabilityOption[];
+  backgrounds: ImageModelCapabilityOption[];
+  generation_counts: number[];
+  max_count: number;
+}
+
+export interface EcommerceScene {
+  id: string;
+  name: string;
+  description: string;
+  keywords: string[];
+  default_ratio: string;
+  composition: string;
+  lighting: string;
+  negative_constraints: string[];
+}
+
+export interface EcommerceSkillCatalog {
+  skill_id: string;
+  skill_version: string;
+  scenes: EcommerceScene[];
+  styles: Array<{ id: string; name: string; prompt: string }>;
+  categories: Array<{ id: string; name: string; prompt: string }>;
+  market_scopes?: Array<{ id: string; name: string; prompt: string }>;
+  conversion_drivers: Array<{ id: string; name: string; prompt: string }>;
+}
+
+export interface ImageTemplate {
+  id: string;
+  preset_id: "promo" | "ecommerce" | "template";
+  name: string;
+  description: string;
+  recommended_ratio: string;
+  scene_id: string | null;
+}
+
+export interface ImageTemplateCatalog {
+  version: string;
+  templates: ImageTemplate[];
 }
 
 // ── 画布场景类型（Konva 素材导演台） ──────────────────────────────────────────
@@ -780,24 +842,69 @@ export interface CreateImageTaskResponse {
 export type CanvasItemKind =
   | "requirement"
   | "asset"
+  | "reference"
   | "reversePrompt"
   | "prompt"
   | "model"
   | "generate"
   | "result"
+  | "edit"
+  | "upscale"
   | "bundle"
+  | "bundleCard"
   | "export";
 
+export type CanvasBundleCardType =
+  | "hero"
+  | "detail"
+  | "feature"
+  | "parameter"
+  | "lifestyle"
+  | "comparison"
+  | "custom";
+
 export interface CanvasItemMetadata {
+  presetId?: string;
+  templateId?: string;
   presetName?: string;
   userIntent?: string;
+  demandType?: string;
+  productFacts?: string;
+  channel?: string;
+  audience?: string;
+  referenceRole?: "product" | "style" | "parameter" | "layout" | "copy" | "other";
+  assetName?: string;
+  uploadStatus?: "idle" | "uploading" | "uploaded" | "failed";
   prompt?: string;
   reversePrompt?: string;
+  reversePromptEnabled?: boolean;
+  reversePromptFocus?: string;
+  reversePromptModel?: string;
+  reversePromptStatus?: "idle" | "ready" | "running" | "succeeded" | "failed";
   assembledPrompt?: string;
   modelName?: string;
+  modelVersion?: string;
+  aspectRatio?: string;
+  size?: string;
+  quality?: string;
+  background?: string;
+  generationCount?: number;
   generationMode?: "text2image" | "image2image";
   taskStatus?: string;
   taskError?: string;
+  taskId?: string;
+  resultAssetIds?: string[];
+  editPrompt?: string;
+  editMode?: "full" | "masked";
+  upscaleFactor?: "2x" | "4x";
+  executionNote?: string;
+  containerId?: string;
+  cardIndex?: number;
+  cardType?: CanvasBundleCardType;
+  cardPurpose?: string;
+  copySuggestion?: string;
+  sourceNodeIds?: string[];
+  conflictMessage?: string;
 }
 
 export interface CanvasItem {
@@ -821,11 +928,33 @@ export interface CanvasItem {
   hidden?: boolean;
 }
 
-/** 画布连线：表达数据流向（如 素材 → 生成） */
+export type CanvasDataType =
+  | "image"
+  | "prompt"
+  | "requirement"
+  | "model-config"
+  | "bundle"
+  | "result";
+
+export interface CanvasPortDefinition {
+  id: string;
+  direction: "input" | "output";
+  dataType: CanvasDataType;
+  /** 输入端口是否允许多个来源。 */
+  multiple?: boolean;
+  /** 输入端口是否必须有来源才能执行。 */
+  required?: boolean;
+}
+
+/** 画布连线：表达具体端口之间的数据流向。 */
 export interface CanvasEdge {
   id: string;
+  /** 旧版本仅保存这两个字段，读取时继续兼容。 */
   fromId: string;
   toId: string;
+  fromPort?: string;
+  toPort?: string;
+  dataType?: CanvasDataType;
   /** 连线标签（可选，如 "输入"、"参考"） */
   label?: string;
 }
@@ -852,6 +981,40 @@ export interface CanvasScene {
   groups: CanvasGroup[];
   viewport: CanvasViewport;
   version: number;
+  planner_plan?: PlannerPlan | null;
+}
+
+export interface PlannerFrame {
+  id: string;
+  index: number;
+  purpose: string;
+  layout: string;
+  copy_suggestion: string;
+  prompt: string;
+  card_type?: CanvasBundleCardType;
+  status: "draft" | "ready" | "running" | "succeeded" | "failed";
+  task_id?: string | null;
+}
+
+export interface PlannerPlan {
+  id: string;
+  version: number;
+  status: "draft" | "confirmed";
+  slot_count: number;
+  planner_model: string | null;
+  source_context: string;
+  frames: PlannerFrame[];
+}
+
+export interface CanvasSceneResponse {
+  id: string;
+  task_id: string | null;
+  name: string;
+  /** 持久化快照版本，不等同于 CanvasScene.version。 */
+  version: number;
+  scene: CanvasScene;
+  created_at: string;
+  updated_at: string;
 }
 
 // ── 案例库类型 ────────────────────────────────────────────────────────────────
