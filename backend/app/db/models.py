@@ -422,7 +422,7 @@ class ImageAsset(SQLModel, table=True):
     """图片工具的素材资产（用户上传的参考图）。
 
     与诊断工具的 UploadedFile 分离：不绑 session，是平台级资产。
-    生成结果不落此表，塞 ToolTask.payload_json。
+    参考图和生成结果都落此表，便于素材复用、配额统计和后续清理。
     """
     id: str = Field(default_factory=_uuid, primary_key=True)
     user_id: str = Field(foreign_key="user.id", index=True)
@@ -431,6 +431,9 @@ class ImageAsset(SQLModel, table=True):
     content_type: str
     vision_description: str = ""
     vision_status: str = "pending"
+    asset_kind: str = Field(default="reference", index=True)  # reference | generated
+    last_used_at: datetime | None = Field(default=None, index=True)
+    deleted_at: datetime | None = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=_now)
 
 
@@ -471,5 +474,26 @@ class CanvasScene(SQLModel, table=True):
     name: str = Field(default="未命名画布")
     version: int = Field(default=1, index=True)
     scene_json: str = "{}"
+    created_at: datetime = Field(default_factory=_now)
+    updated_at: datetime = Field(default_factory=_now)
+
+
+class CanvasExecution(SQLModel, table=True):
+    """一次 AI 节点执行的不可变上下文和结果记录。
+
+    前端拖动、连线只留在本地；用户执行 AI 节点时，把当时的画布快照
+    和素材引用写入这里，保证异步任务或失败重试都有完整上下文。
+    """
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    user_id: str = Field(foreign_key="user.id", index=True)
+    scene_id: str | None = Field(default=None, foreign_key="canvasscene.id", index=True)
+    node_id: str = Field(index=True)
+    operation: str = Field(index=True)  # reverse_prompt | generate | edit | copy
+    status: str = Field(default="queued", index=True)  # queued | running | succeeded | failed
+    input_asset_ids_json: str = "[]"
+    scene_snapshot_json: str = "{}"
+    input_json: str = "{}"
+    output_json: str = "{}"
+    error_message: str = ""
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)

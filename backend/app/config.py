@@ -31,7 +31,9 @@ async def get_llm_client(
     # 不是 GGOO 的模型凭证。若配置了离线服务 key，避免把本地 JWT 误送到
     # GGOO；离线 key 只用于让上传、画布保存等本地流程继续工作，真实模型
     # 调用仍由 GGOO 网关按正常失败语义返回。
-    if raw and legacy_local_auth_enabled():
+    if os.environ.get("BUILD_TEST_API_BYPASS", "").strip().lower() == "true":
+        token = os.environ.get("GGOO_SERVICE_API_KEY", "").strip()
+    elif raw and legacy_local_auth_enabled():
         try:
             _decode_user_id(token)
         except HTTPException:

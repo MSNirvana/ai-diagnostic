@@ -44,6 +44,22 @@ async def test_generate_image_returns_all_urls_for_multiple_candidates():
 
 
 @pytest.mark.asyncio
+async def test_generate_image_sends_multiple_reference_images_as_a_list():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        assert body["image"] == ["data:image/png;base64,one", "data:image/png;base64,two"]
+        return httpx.Response(200, json={"data": [{"url": "https://img.example.com/edited.png"}]})
+
+    client = _make_client(handler)
+    url = await client.generate_image(
+        prompt="商品场景图",
+        size="1024x1024",
+        reference_image_urls=["data:image/png;base64,one", "data:image/png;base64,two"],
+    )
+    assert url == "https://img.example.com/edited.png"
+
+
+@pytest.mark.asyncio
 async def test_generate_image_raises_auth_error_on_401():
     async def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(401, json={"error": "unauthorized"})
@@ -81,6 +97,31 @@ async def test_generate_image_raises_on_missing_url_field():
     client = _make_client(handler)
     with pytest.raises(GGOOError, match="格式异常"):
         await client.generate_image(prompt="a cat", size="1024x1024")
+
+
+@pytest.mark.asyncio
+async def test_generate_image_maps_provider_connection_error():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connect failed", request=request)
+
+    client = _make_client(handler)
+    with pytest.raises(GGOOError, match="无法连接 GGOO 图片接口") as exc_info:
+        await client.generate_image(prompt="a cat", size="1024x1024")
+    assert exc_info.value.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_generate_image_accepts_base64_png_result():
+    import base64
+
+    png = base64.b64encode(b"\x89PNG\r\n\x1a\n").decode()
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"data": [{"b64_json": png}]})
+
+    client = _make_client(handler)
+    result = await client.generate_image(prompt="a cat", size="1024x1024")
+    assert result == f"data:image/png;base64,{png}"
 
 
 @pytest.mark.asyncio

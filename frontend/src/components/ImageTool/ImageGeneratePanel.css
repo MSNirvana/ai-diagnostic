@@ -136,12 +136,31 @@
   background: #f0f0f4;
   border: 2px solid transparent;
   border-radius: 8px;
-  padding: 8px 12px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.image-generate-asset__select {
+  background: transparent;
+  border: 0;
+  padding: 8px 30px 8px 12px;
   font-size: 13px;
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: 6px;
+  min-height: 52px;
+}
+
+.image-generate-asset__select img {
+  width: 34px;
+  height: 34px;
+  object-fit: cover;
+  border-radius: 5px;
+  background: #e5e7eb;
 }
 
 .image-generate-asset.selected {
@@ -149,9 +168,29 @@
   background: #eef2ff;
 }
 
-.image-generate-asset small {
+.image-generate-asset__select small {
   color: #6366f1;
   font-size: 11px;
+}
+
+.image-generate-asset__remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 50%;
+  background: #fff;
+  color: #6b7280;
+  cursor: pointer;
+  line-height: 18px;
+  padding: 0;
+}
+
+.image-generate-asset__remove:hover {
+  background: #fee2e2;
+  color: #b91c1c;
 }
 
 .image-generate-upload {
@@ -264,6 +303,50 @@
   width: 100%;
   border-radius: 8px;
   margin-bottom: 16px;
+}
+
+.image-generate-mode-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.image-generate-mode-options button {
+  border: 1px solid #d9d9e2;
+  border-radius: 8px;
+  background: #fff;
+  color: #4b4b61;
+  cursor: pointer;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.image-generate-mode-options button.selected {
+  border-color: #6366f1;
+  background: #eef2ff;
+  color: #4338ca;
+  font-weight: 600;
+}
+
+.image-generate-hint {
+  color: #777783;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 8px 0 0;
+}
+
+.image-generate-storage-notice {
+  display: grid;
+  gap: 3px;
+  margin: 6px 0 8px;
+  color: #6b6b7a;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.image-generate-storage-notice strong {
+  color: #b45309;
+  font-weight: 600;
 }
 
 .image-generate-result-grid {

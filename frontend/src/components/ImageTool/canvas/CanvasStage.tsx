@@ -3,8 +3,13 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { PlatformNav } from "../../../platform/PlatformNav";
 import {
   createImageTask,
+  executeCanvasNode,
+  exportCanvasProject,
+  getImageModelCapabilities,
   getImageTask,
+  getImageAssetPreviewUrl,
   getLatestCanvasScene,
+  importCanvasProject,
   saveCanvasScene,
   uploadImageAsset,
 } from "../../../api/client";
@@ -33,12 +38,10 @@ interface CanvasStageProps {
 const PRESET_NAMES: Record<string, string> = {
   promo: "生成宣传海报",
   ecommerce: "生成电商套图",
+  content: "生成内容配图",
   template: "从模板开始",
 };
 
-const IMAGE2_RATIOS = ["1:1", "3:2", "2:3", "16:9", "9:16", "auto"];
-const IMAGE2_SIZES = ["1024x1024", "1536x1024", "1024x1536", "2048x2048", "2048x1152", "3840x2160", "2160x3840", "auto"];
-const IMAGE2_QUALITIES = ["low", "medium", "high", "auto"];
 const CARD_TYPE_SEQUENCE = ["hero", "detail", "feature", "parameter", "lifestyle", "comparison"] as const;
 
 const CARD_W = 220;
@@ -82,10 +85,23 @@ function buildSceneFromTask(task: ImageTaskStatus): CanvasScene {
     },
   });
 
-  push("asset", "asset", "素材", {
-    assetId: task.reference_asset_id ?? undefined,
-    metadata: task.reference_asset_id ? {} : { userIntent: "未上传参考图" },
-  });
+  const referenceEntries = task.reference_assets?.length
+    ? task.reference_assets
+    : (task.reference_asset_ids ?? (task.reference_asset_id ? [task.reference_asset_id] : [])).map((assetId, index) => ({
+      asset_id: assetId,
+      role: index === 0 ? "product" : "detail",
+    }));
+  if (referenceEntries.length === 0) {
+    push("asset", "asset", "素材", { metadata: { userIntent: "未上传参考图" } });
+  } else {
+    referenceEntries.forEach((reference, index) => {
+      const role = reference.role || (index === 0 ? "product" : "detail");
+      push(`asset-${index + 1}`, "asset", `素材 · ${role}`, {
+        assetId: reference.asset_id,
+        metadata: { referenceRole: role as CanvasItemMetadata["referenceRole"] },
+      });
+    });
+  }
 
   if (task.reverse_prompt) {
     push("reversePrompt", "reversePrompt", "反推提示词", {
@@ -128,19 +144,36 @@ function buildSceneFromTask(task: ImageTaskStatus): CanvasScene {
   });
 
   // 自动连线：表达数据流向（素材 → 生成，生成 → 结果）
-  if (task.reference_asset_id) {
+  referenceEntries.forEach((reference, index) => {
     edges.push({
-      id: "edge-asset-generate",
-      fromId: "asset",
+      id: `edge-asset-${index + 1}-generate`,
+      fromId: `asset-${index + 1}`,
       toId: "generate",
-      label: "输入",
+      fromPort: "image",
+      toPort: "image",
+      dataType: "image",
+      label: reference.role || "参考",
     });
-  }
+  });
+  edges.push({ fromId: "prompt", toId: "generate", fromPort: "prompt", toPort: "prompt", dataType: "prompt", id: "edge-prompt-generate", label: "提示词" });
+  edges.push({ fromId: "model", toId: "generate", fromPort: "config", toPort: "config", dataType: "model-config", id: "edge-model-generate", label: "规格" });
   edges.push({
     id: "edge-generate-result",
     fromId: "generate",
     toId: "result",
+    fromPort: "image",
+    toPort: "image",
+    dataType: "image",
     label: "输出",
+  });
+  edges.push({
+    id: "edge-result-export",
+    fromId: "result",
+    toId: "export",
+    fromPort: "image",
+    toPort: "image",
+    dataType: "image",
+    label: "导出",
   });
 
   return {
@@ -251,8 +284,8 @@ function buildEmptyScene(): CanvasScene {
       { id: "starter-edge-requirement-prompt", fromId: "starter-requirement", toId: "starter-prompt", label: "需求" },
       { id: "starter-edge-reference-reverse", fromId: "starter-reference", toId: "starter-reverse", label: "参考" },
       { id: "starter-edge-reverse-prompt", fromId: "starter-reverse", toId: "starter-prompt", label: "反推结果" },
-      { id: "starter-edge-prompt-model", fromId: "starter-prompt", toId: "starter-model", label: "提示词" },
-      { id: "starter-edge-model-generate", fromId: "starter-model", toId: "starter-generate", label: "规格" },
+      { id: "starter-edge-prompt-generate", fromId: "starter-prompt", toId: "starter-generate", fromPort: "prompt", toPort: "prompt", dataType: "prompt", label: "提示词" },
+      { id: "starter-edge-model-generate", fromId: "starter-model", toId: "starter-generate", fromPort: "config", toPort: "config", dataType: "model-config", label: "规格" },
     ],
     groups: [],
     viewport: { x: 0, y: 0, scale: 1 },
@@ -351,6 +384,18 @@ function cloneScene(scene: CanvasScene): CanvasScene {
   return JSON.parse(JSON.stringify(scene)) as CanvasScene;
 }
 
+function sceneWithoutTransientPreviews(scene: CanvasScene): CanvasScene {
+  const next = cloneScene(scene);
+  next.items = next.items.map((item) => {
+    if (item.imageUrl?.startsWith("blob:")) {
+      const { imageUrl: _imageUrl, ...withoutPreview } = item;
+      return withoutPreview;
+    }
+    return item;
+  });
+  return next;
+}
+
 function autoLayoutScene(scene: CanvasScene): CanvasScene {
   const visibleItems = scene.items.filter((item) => !item.hidden);
   const itemIds = new Set(visibleItems.map((item) => item.id));
@@ -422,6 +467,10 @@ export function CanvasStage({ taskId, onBack }: CanvasStageProps) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [persistedVersion, setPersistedVersion] = useState<number | null>(null);
+  const [persistedSceneId, setPersistedSceneId] = useState<string | null>(null);
+  const [imageCapabilities, setImageCapabilities] = useState<import("../../../types").ImageModelCapability[]>([]);
+  const projectFileInputRef = useRef<HTMLInputElement>(null);
+  const assetPreviewUrlsRef = useRef<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [plannerPlan, setPlannerPlan] = useState<PlannerPlan | null>(null);
@@ -437,6 +486,42 @@ export function CanvasStage({ taskId, onBack }: CanvasStageProps) {
   const nextIdRef = useRef(1);
   const nextEdgeIdRef = useRef(1);
   const nextGroupIdRef = useRef(1);
+
+  const hydrateSceneAssetPreviews = useCallback(async (sourceScene: CanvasScene): Promise<CanvasScene> => {
+    const assetIds = Array.from(
+      new Set(
+        sourceScene.items.flatMap((item) => [
+          item.assetId,
+          ...(item.metadata?.resultAssetIds ?? []),
+        ].filter((assetId): assetId is string => Boolean(assetId))),
+      ),
+    );
+    if (!assetIds.length) return sourceScene;
+    const entries = await Promise.all(assetIds.map(async (assetId) => {
+      const url = await getImageAssetPreviewUrl(assetId).catch(() => null);
+      return [assetId, url] as const;
+    }));
+    const previews = new Map(entries.filter((entry): entry is readonly [string, string] => Boolean(entry[1])));
+    previews.forEach((url) => assetPreviewUrlsRef.current.push(url));
+    if (!previews.size) return sourceScene;
+    return {
+      ...sourceScene,
+      items: sourceScene.items.map((item) => {
+        const assetId = item.assetId ?? item.metadata?.resultAssetIds?.[0];
+        const preview = assetId ? previews.get(assetId) : undefined;
+        return preview ? { ...item, imageUrl: preview } : item;
+      }),
+    };
+  }, []);
+
+  useEffect(() => () => {
+    assetPreviewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    assetPreviewUrlsRef.current = [];
+  }, []);
+
+  useEffect(() => {
+    getImageModelCapabilities().then(setImageCapabilities).catch(() => setImageCapabilities([]));
+  }, []);
 
   useEffect(() => {
     if (loading) {
@@ -481,6 +566,7 @@ export function CanvasStage({ taskId, onBack }: CanvasStageProps) {
       setViewport(emptyScene.viewport);
       setSelectedIds([]);
       setPersistedVersion(null);
+      setPersistedSceneId(null);
       setPlannerPlan(null);
       setPlannerSource("");
       return;
@@ -490,23 +576,28 @@ export function CanvasStage({ taskId, onBack }: CanvasStageProps) {
     setError(null);
     setMessage(null);
     getImageTask(activeTaskId)
-      .then((task) => {
+      .then(async (task) => {
         if (cancelled) return;
         const fallbackScene = buildSceneFromTask(task);
-        setScene(fallbackScene);
-        setViewport(fallbackScene.viewport);
-        setPlannerPlan(fallbackScene.planner_plan ?? null);
-        setPlannerSource(fallbackScene.items.find((item) => item.kind === "requirement")?.metadata?.userIntent ?? "");
+        const hydratedFallback = await hydrateSceneAssetPreviews(fallbackScene);
+        if (cancelled) return;
+        setScene(hydratedFallback);
+        setViewport(hydratedFallback.viewport);
+        setPlannerPlan(hydratedFallback.planner_plan ?? null);
+        setPlannerSource(hydratedFallback.items.find((item) => item.kind === "requirement")?.metadata?.userIntent ?? "");
         setSelectedIds([]);
         return getLatestCanvasScene(activeTaskId)
-          .then((response) => {
+          .then(async (response) => {
             if (cancelled) return;
-            setScene(response.scene);
-            setViewport(response.scene.viewport);
-            setPlannerPlan(response.scene.planner_plan ?? null);
-            setPlannerSource(response.scene.planner_plan?.source_context ?? "");
+            const hydratedScene = await hydrateSceneAssetPreviews(response.scene);
+            if (cancelled) return;
+            setScene(hydratedScene);
+            setViewport(hydratedScene.viewport);
+            setPlannerPlan(hydratedScene.planner_plan ?? null);
+            setPlannerSource(hydratedScene.planner_plan?.source_context ?? "");
             setSelectedIds([]);
             setPersistedVersion(response.version);
+            setPersistedSceneId(response.id);
           })
           .catch((e) => {
             if (!cancelled && !isNotFoundError(e)) {
@@ -523,7 +614,7 @@ export function CanvasStage({ taskId, onBack }: CanvasStageProps) {
     return () => {
       cancelled = true;
     };
-  }, [activeTaskId]);
+  }, [activeTaskId, hydrateSceneAssetPreviews]);
 
   const handleCreatePlannerDraft = useCallback(() => {
     const draft = buildPlannerPlan(plannerCount, plannerSource || scene.items.find((item) => item.kind === "requirement")?.metadata?.userIntent || "");
@@ -653,10 +744,11 @@ export function CanvasStage({ taskId, onBack }: CanvasStageProps) {
       const response = await saveCanvasScene({
         task_id: activeTaskId,
         name: "未命名画布",
-        scene: { ...scene, viewport },
+        scene: sceneWithoutTransientPreviews({ ...scene, viewport }),
       });
       setScene((current) => ({ ...current, viewport }));
       setPersistedVersion(response.version);
+      setPersistedSceneId(response.id);
       setMessage(`画布已保存，版本：${response.version}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "保存画布失败");
@@ -679,6 +771,7 @@ export function CanvasStage({ taskId, onBack }: CanvasStageProps) {
       setViewport(response.scene.viewport);
       setSelectedIds([]);
       setPersistedVersion(response.version);
+      setPersistedSceneId(response.id);
       setMessage(`已加载画布版本：${response.version}`);
     } catch (e) {
       if (isNotFoundError(e)) {
@@ -688,6 +781,54 @@ export function CanvasStage({ taskId, onBack }: CanvasStageProps) {
       }
     } finally {
       setLoading(false);
+    }
+  }, [activeTaskId]);
+
+  const handleExportProject = useCallback(async () => {
+    if (!persistedSceneId) {
+      setError("请先保存画布，再导出后端项目 JSON");
+      return;
+    }
+    try {
+      const project = await exportCanvasProject(persistedSceneId);
+      const url = URL.createObjectURL(new Blob([JSON.stringify(project, null, 2)], { type: "application/json" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "image-workflow.json";
+      link.click();
+      URL.revokeObjectURL(url);
+      setMessage("项目 JSON 已从后端导出");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "导出项目失败");
+    }
+  }, [persistedSceneId]);
+
+  const handleImportProject = useCallback(async (file: File) => {
+    try {
+      const parsed = JSON.parse(await file.text()) as { schema_version?: string; name?: string; task_id?: string | null; scene?: CanvasScene };
+      if (parsed.schema_version && parsed.schema_version !== "image-workbench.project.v1") {
+        throw new Error("不支持的画布 JSON 版本");
+      }
+      if (!parsed.scene || !Array.isArray(parsed.scene.items) || !Array.isArray(parsed.scene.edges)) {
+        throw new Error("JSON 不是有效的图片工作流项目");
+      }
+      const response = await importCanvasProject({
+        schema_version: parsed.schema_version,
+        name: parsed.name ?? "导入的图片工作流",
+        task_id: activeTaskId,
+        scene: parsed.scene,
+      });
+      setScene(response.scene);
+      setViewport(response.scene.viewport);
+      setSelectedIds([]);
+      setPersistedVersion(response.version);
+      setPersistedSceneId(response.id);
+      setMessage(`项目 JSON 已导入并保存，版本：${response.version}`);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "导入项目失败");
+    } finally {
+      if (projectFileInputRef.current) projectFileInputRef.current.value = "";
     }
   }, [activeTaskId]);
 
@@ -843,7 +984,9 @@ export function CanvasStage({ taskId, onBack }: CanvasStageProps) {
     handleUpdateNodeMetadata(id, { assetName: file.name, uploadStatus: "uploading" });
     try {
       const asset = await uploadImageAsset(file);
-      handleUpdateNode(id, { assetId: asset.id, label: asset.original_name });
+      const previewUrl = await getImageAssetPreviewUrl(asset.id);
+      assetPreviewUrlsRef.current.push(previewUrl);
+      handleUpdateNode(id, { assetId: asset.id, imageUrl: previewUrl, label: asset.original_name });
       handleUpdateNodeMetadata(id, { assetName: asset.original_name, uploadStatus: "uploaded" });
       setMessage(`参考素材已上传：${asset.original_name}`);
     } catch (e) {
@@ -875,6 +1018,7 @@ export function CanvasStage({ taskId, onBack }: CanvasStageProps) {
         preset_id: "template",
         user_intent: prompt,
         reference_asset_id: assetId,
+        workspace_mode: "canvas",
         generation_mode: "image2image",
         edited_description: prompt,
         model: editNode.metadata?.modelName ?? imageSource?.metadata?.modelName ?? "gpt-image-2",
@@ -892,7 +1036,12 @@ export function CanvasStage({ taskId, onBack }: CanvasStageProps) {
       const resultEdge = scene.edges.find((edge) => edge.fromId === editId && (edge.fromPort ?? "image") === "image");
       const resultId = resultEdge?.toId;
       const resultAssetId = status.result_asset_ids?.[0];
-      const resultUrl = status.result_image_url ?? undefined;
+      const resultUrl = resultAssetId
+        ? await getImageAssetPreviewUrl(resultAssetId).then((url) => {
+          assetPreviewUrlsRef.current.push(url);
+          return url;
+        }).catch(() => status.result_image_url ?? undefined)
+        : status.result_image_url ?? undefined;
       setScene((current) => ({ ...current, items: current.items.map((item) => {
         if (item.id === editId) return { ...item, metadata: { ...item.metadata, taskId: task.task_id, taskStatus: "已完成", resultAssetIds: status.result_asset_ids ?? [] }, imageUrl: resultUrl, assetId: resultAssetId };
         if (resultId && item.id === resultId) return { ...item, imageUrl: resultUrl, assetId: resultAssetId, metadata: { ...item.metadata, taskId: task.task_id, taskStatus: "已完成", resultAssetIds: status.result_asset_ids ?? [] } };
@@ -906,31 +1055,168 @@ export function CanvasStage({ taskId, onBack }: CanvasStageProps) {
     }
   }, [scene, handleUpdateNodeMetadata]);
 
-  const handleGenerateReverseDraft = useCallback((id: string) => {
-    setScene((s) => {
-      const node = s.items.find((item) => item.id === id);
-      if (!node) return s;
-      const sources = (node.metadata?.sourceNodeIds ?? [])
-        .map((sourceId) => s.items.find((item) => item.id === sourceId))
-        .filter(Boolean) as CanvasItem[];
-      const sourceNames = sources.map((source) => source.metadata?.assetName || source.label).join("、") || "已连接参考素材";
-      const focus = node.metadata?.reversePromptFocus === "style"
-        ? "视觉风格与版式"
-        : node.metadata?.reversePromptFocus === "product"
-          ? "产品特征与材质"
-          : node.metadata?.reversePromptFocus === "copy"
-            ? "文案结构与卖点"
-            : "风格、版式、产品特征和文案结构";
-      const draft = `反推对象：${sourceNames}\n反推重点：${focus}\n请仅依据参考素材中可确认的视觉事实，整理主体、构图、光线、材质、色彩和文案层级；不要虚构产品参数、品牌信息或授权。`;
-      return {
-        ...s,
-        items: s.items.map((item) => item.id === id
-          ? { ...item, metadata: { ...item.metadata, reversePrompt: draft, reversePromptStatus: "ready" } }
+  const handleExecuteGenerate = useCallback(async (generateId: string) => {
+    const generateNode = scene.items.find((item) => item.id === generateId && item.kind === "generate");
+    if (!generateNode) return;
+    const incoming = scene.edges.filter((edge) => edge.toId === generateId);
+    const promptSources = incoming
+      .filter((edge) => edge.toPort === "prompt" || (!edge.toPort && edge.dataType === "prompt"))
+      .map((edge) => scene.items.find((item) => item.id === edge.fromId))
+      .filter(Boolean) as CanvasItem[];
+    const prompt = [
+      generateNode.metadata?.prompt,
+      ...promptSources.flatMap((source) => [
+        source.metadata?.prompt,
+        source.metadata?.assembledPrompt,
+        source.metadata?.reversePrompt,
+        source.metadata?.userIntent,
+        source.metadata?.productFacts,
+        ...(source.metadata?.sourceNodeIds ?? []).flatMap((sourceId) => {
+          const upstream = scene.items.find((item) => item.id === sourceId);
+          return [upstream?.metadata?.prompt, upstream?.metadata?.reversePrompt, upstream?.metadata?.assembledPrompt];
+        }),
+      ]),
+    ].filter(Boolean).join("\n").trim();
+    if (!prompt) {
+      setError("图片生成节点需要连接提示词节点，或先填写提示词内容。");
+      return;
+    }
+    const referenceAssets = incoming
+      .filter((edge) => edge.toPort === "image" || (!edge.toPort && edge.dataType === "image"))
+      .map((edge) => scene.items.find((item) => item.id === edge.fromId))
+      .filter(Boolean)
+      .map((source) => source as CanvasItem)
+      .map((source, index) => ({
+        asset_id: source.assetId ?? source.metadata?.resultAssetIds?.[0] ?? "",
+        role: source.metadata?.referenceRole ?? (index === 0 ? "product" : "detail"),
+      }))
+      .filter((reference) => reference.asset_id);
+    const configSource = incoming
+      .filter((edge) => edge.toPort === "config" || (!edge.toPort && edge.dataType === "model-config"))
+      .map((edge) => scene.items.find((item) => item.id === edge.fromId))
+      .find(Boolean);
+    const config = configSource?.metadata ?? generateNode.metadata ?? {};
+    handleUpdateNodeMetadata(generateId, { taskStatus: "创建中", taskError: undefined });
+    try {
+      const task = await createImageTask({
+        preset_id: "template",
+        user_intent: prompt,
+        reference_asset_ids: referenceAssets.map((reference) => reference.asset_id),
+        reference_assets: referenceAssets,
+        workspace_mode: "canvas",
+        generation_mode: referenceAssets.length ? "image2image" : "text2image",
+        model: config.modelName ?? "gpt-image-2",
+        size: config.size ?? "1024x1024",
+        aspect_ratio: config.aspectRatio ?? "1:1",
+        quality: config.quality ?? "auto",
+        generation_count: config.generationCount ?? 1,
+      });
+      handleUpdateNodeMetadata(generateId, { taskId: task.task_id, taskStatus: "处理中" });
+      let status = await getImageTask(task.task_id);
+      while (["quoted", "reserved", "running"].includes(status.status)) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1200));
+        status = await getImageTask(task.task_id);
+      }
+      if (status.status !== "succeeded") throw new Error(status.error || "图片生成任务失败");
+      const resultAssetId = status.result_asset_ids?.[0];
+      const resultUrl = resultAssetId
+        ? await getImageAssetPreviewUrl(resultAssetId).then((url) => {
+          assetPreviewUrlsRef.current.push(url);
+          return url;
+        }).catch(() => status.result_image_url ?? undefined)
+        : status.result_image_url ?? undefined;
+      setScene((current) => ({
+        ...current,
+        items: current.items.map((item) => {
+          if (item.id === generateId) {
+            return { ...item, assetId: resultAssetId, imageUrl: resultUrl, metadata: { ...item.metadata, taskId: task.task_id, taskStatus: "已完成", resultAssetIds: status.result_asset_ids ?? [], resultImageUrls: status.result_image_urls ?? [] } };
+          }
+          if (current.edges.some((edge) => edge.fromId === generateId && edge.toId === item.id && (edge.fromPort ?? "image") === "image")) {
+            return { ...item, assetId: resultAssetId, imageUrl: resultUrl, metadata: { ...item.metadata, taskId: task.task_id, taskStatus: "已完成", resultAssetIds: status.result_asset_ids ?? [], resultImageUrls: status.result_image_urls ?? [] } };
+          }
+          return item;
+        }),
+      }));
+      setMessage(`图片生成完成，${status.result_asset_ids?.length ?? 0} 个真实图片资产已回流。`);
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : "图片生成任务失败";
+      handleUpdateNodeMetadata(generateId, { taskStatus: "失败", taskError: detail });
+      setError(detail);
+    }
+  }, [scene, handleUpdateNodeMetadata]);
+
+  const handleGenerateReverseDraft = useCallback(async (id: string) => {
+    const node = scene.items.find((item) => item.id === id && item.kind === "reversePrompt");
+    if (!node) return;
+    const connectedIds = new Set([
+      ...(node.metadata?.sourceNodeIds ?? []),
+      ...scene.edges.filter((edge) => edge.toId === id).map((edge) => edge.fromId),
+    ]);
+    const sources = scene.items.filter((item) => connectedIds.has(item.id));
+    const assetIds = Array.from(new Set(
+      sources.flatMap((source) => [source.assetId, ...(source.metadata?.resultAssetIds ?? [])])
+        .filter((assetId): assetId is string => Boolean(assetId)),
+    ));
+    if (assetIds.length === 0) {
+      setError("AI 反推提示词需要先连接一个真实图片素材节点。");
+      return;
+    }
+    if (assetIds.length > 1) {
+      setError("当前反推节点一次需要一张参考图片，请先只保留一个图片来源。");
+      return;
+    }
+    const focus = node.metadata?.reversePromptFocus ?? "all";
+    const snapshot = sceneWithoutTransientPreviews({ ...scene, viewport });
+    setScene((current) => ({
+      ...current,
+      items: current.items.map((item) => item.id === id
+        ? { ...item, metadata: { ...item.metadata, reversePromptStatus: "running", taskError: undefined } }
+        : item),
+    }));
+    setError(null);
+    setMessage("正在保存当前画布快照并调用图片识别接口…");
+    try {
+      const execution = await executeCanvasNode({
+        node_id: id,
+        operation: "reverse_prompt",
+        scene: snapshot,
+        scene_id: persistedSceneId,
+        task_id: activeTaskId,
+        input_asset_ids: assetIds,
+        input: { focus, model: node.metadata?.reversePromptModel ?? "auto" },
+      });
+      const reversePrompt = execution.result.reverse_prompt;
+      if (typeof reversePrompt !== "string" || !reversePrompt.trim()) {
+        throw new Error("图片识别接口没有返回有效提示词");
+      }
+      setScene((current) => ({
+        ...current,
+        items: current.items.map((item) => item.id === id
+          ? {
+            ...item,
+            metadata: {
+              ...item.metadata,
+              reversePrompt: reversePrompt.trim(),
+              reversePromptStatus: "succeeded",
+              executionNote: `执行记录：${execution.execution_id}`,
+            },
+          }
           : item),
-      };
-    });
-    setMessage("已根据连接的参考节点生成可编辑的反推草稿；接入平台视觉模型后可替换为模型结果。");
-  }, []);
+      }));
+      setPersistedSceneId(execution.scene_id);
+      setPersistedVersion(execution.scene_version);
+      setMessage("AI 反推提示词已完成，并已记录本次执行时的画布快照。");
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : "AI 反推提示词失败";
+      setScene((current) => ({
+        ...current,
+        items: current.items.map((item) => item.id === id
+          ? { ...item, metadata: { ...item.metadata, reversePromptStatus: "failed", taskError: detail } }
+          : item),
+      }));
+      setError(detail);
+    }
+  }, [activeTaskId, persistedSceneId, scene, viewport]);
 
   const handleAddNode = useCallback((kind: CanvasItem["kind"]) => {
     setScene((s) => {
@@ -1217,6 +1503,22 @@ export function CanvasStage({ taskId, onBack }: CanvasStageProps) {
               <button type="button" onClick={handleLoadLatest} disabled={loading}>
                 加载最近版本
               </button>
+              <button type="button" onClick={handleExportProject}>
+                导出项目 JSON
+              </button>
+              <button type="button" onClick={() => projectFileInputRef.current?.click()}>
+                导入项目 JSON
+              </button>
+              <input
+                ref={projectFileInputRef}
+                type="file"
+                accept="application/json,.json"
+                hidden
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) void handleImportProject(file);
+                }}
+              />
             </div>
             {persistedVersion !== null && <span>画布版本：{persistedVersion}</span>}
           </div>
@@ -1438,9 +1740,10 @@ export function CanvasStage({ taskId, onBack }: CanvasStageProps) {
                     <a href={selectedItem.imageUrl} target="_blank" rel="noreferrer">查看真实结果</a>
                   )}
                 </div>
-                <CanvasNodeInspector
-                  item={selectedItem}
-                  items={scene.items}
+            <CanvasNodeInspector
+              item={selectedItem}
+              items={scene.items}
+              capabilities={imageCapabilities}
                   onUpdate={handleUpdateNode}
                   onUpdateMetadata={handleUpdateNodeMetadata}
                   onUpload={handleUploadNodeAsset}
@@ -1450,6 +1753,7 @@ export function CanvasStage({ taskId, onBack }: CanvasStageProps) {
                   onGenerateBundleCards={handleGenerateBundleCards}
                   onCreateFollowup={handleCreateFollowup}
                   onExecuteEdit={handleExecuteEdit}
+                  onExecuteGenerate={handleExecuteGenerate}
                 />
               </>
             ) : selectedIds.length === 0 ? (

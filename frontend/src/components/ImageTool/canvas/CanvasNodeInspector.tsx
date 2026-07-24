@@ -1,5 +1,5 @@
 import type { ChangeEvent } from "react";
-import type { CanvasBundleCardType, CanvasItem, CanvasItemMetadata } from "../../../types";
+import type { CanvasBundleCardType, CanvasItem, CanvasItemMetadata, ImageModelCapability } from "../../../types";
 
 interface CanvasNodeInspectorProps {
   item: CanvasItem;
@@ -13,6 +13,8 @@ interface CanvasNodeInspectorProps {
   onGenerateBundleCards: (id: string) => void;
   onCreateFollowup: (id: string, kind: "edit" | "upscale") => void;
   onExecuteEdit: (id: string) => void;
+  onExecuteGenerate: (id: string) => void;
+  capabilities: ImageModelCapability[];
 }
 
 const DEMAND_OPTIONS = [
@@ -24,7 +26,10 @@ const DEMAND_OPTIONS = [
 
 const REFERENCE_ROLES = [
   ["product", "产品事实"],
+  ["detail", "产品细节"],
   ["style", "视觉风格"],
+  ["scene", "使用场景"],
+  ["brand", "品牌资产"],
   ["parameter", "参数来源"],
   ["layout", "版式参考"],
   ["copy", "文案参考"],
@@ -40,19 +45,6 @@ const CARD_TYPES: Array<[CanvasBundleCardType, string]> = [
   ["comparison", "对比说明图"],
   ["custom", "自定义图片"],
 ];
-
-const IMAGE2_RATIOS = ["1:1", "3:2", "2:3", "16:9", "9:16", "auto"];
-const IMAGE2_SIZES = [
-  ["1024x1024", "1K 方图"],
-  ["1536x1024", "1K 横图"],
-  ["1024x1536", "1K 竖图"],
-  ["2048x2048", "2K 方图"],
-  ["2048x1152", "2K 横图"],
-  ["3840x2160", "4K 横图"],
-  ["2160x3840", "4K 竖图"],
-  ["auto", "自动"],
-] as const;
-const IMAGE2_QUALITIES = ["low", "medium", "high", "auto"] as const;
 
 function TextField({
   label,
@@ -115,11 +107,32 @@ export function CanvasNodeInspector({
   onGenerateBundleCards,
   onCreateFollowup,
   onExecuteEdit,
+  onExecuteGenerate,
+  capabilities,
 }: CanvasNodeInspectorProps) {
   const metadata = item.metadata ?? {};
   const update = (patch: Partial<CanvasItemMetadata>) => onUpdateMetadata(item.id, patch);
   const connectedSourceIds = new Set(metadata.sourceNodeIds ?? []);
   const sourceCandidates = items.filter((candidate) => candidate.id !== item.id && candidate.kind !== "bundleCard");
+  const capability = capabilities.find((entry) => entry.model === (metadata.modelName ?? "gpt-image-2")) ?? capabilities[0];
+  const modelOptions = capabilities.map((entry) => [entry.model, entry.label] as const);
+  const ratioOptions = capability?.aspect_ratios.map((option) => [option.value, `${option.label}（${option.value}）`] as const) ?? [];
+  const selectedRatio = metadata.aspectRatio ?? capability?.aspect_ratios[0]?.value ?? "auto";
+  const compatibleSizes = capability?.sizes.filter((option) =>
+    !selectedRatio || selectedRatio === "auto" || option.value === "auto" || !option.aspect_ratio || option.aspect_ratio === "auto" || option.aspect_ratio === selectedRatio,
+  ) ?? [];
+  const sizeOptions = compatibleSizes.map((option) => [option.value, `${option.label}（${option.value}）`] as const);
+  const selectedSize = compatibleSizes.some((option) => option.value === metadata.size)
+    ? metadata.size!
+    : compatibleSizes[0]?.value ?? "auto";
+  const qualityOptions = capability?.qualities.map((option) => [option.value, option.label] as const) ?? [];
+
+  const handleRatioChange = (value: string) => {
+    const nextSize = capability?.sizes.find((option) =>
+      option.value === "auto" || !option.aspect_ratio || option.aspect_ratio === "auto" || option.aspect_ratio === value,
+    )?.value;
+    update({ aspectRatio: value, ...(nextSize ? { size: nextSize } : {}) });
+  };
 
   const handleFile = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -177,9 +190,9 @@ export function CanvasNodeInspector({
           />
           <TextField label="反推结果（可编辑）" value={metadata.reversePrompt ?? ""} multiline placeholder="反推结果会作为后续提示词节点的输入" onChange={(value) => update({ reversePrompt: value })} />
           <button type="button" className="canvas-node-inspector__primary" onClick={() => onGenerateReverseDraft(item.id)}>
-            从已连接素材生成反推草稿
+            调用 AI 反推提示词
           </button>
-          <p className="canvas-node-inspector__hint">模型调用会使用上方选择的低成本视觉模型；当前未确认具体供应商接口，不伪造模型返回。</p>
+          <p className="canvas-node-inspector__hint">执行时会保存当前画布快照，并使用已连接的真实图片素材调用平台视觉接口。</p>
         </>
       )}
 
@@ -193,10 +206,11 @@ export function CanvasNodeInspector({
 
       {item.kind === "model" && (
         <>
-          <SelectField label="图片生成模型" value={metadata.modelName ?? "gpt-image-2"} options={[["gpt-image-2", "gpt-image-2"]]} onChange={(value) => update({ modelName: value, modelVersion: value })} />
-          <SelectField label="比例" value={metadata.aspectRatio ?? "1:1"} options={IMAGE2_RATIOS} onChange={(value) => update({ aspectRatio: value })} />
-          <SelectField label="分辨率" value={metadata.size ?? "1024x1024"} options={IMAGE2_SIZES} onChange={(value) => update({ size: value })} />
-          <SelectField label="画质" value={metadata.quality ?? "auto"} options={IMAGE2_QUALITIES} onChange={(value) => update({ quality: value })} />
+          <SelectField label="图片生成模型" value={metadata.modelName ?? capability?.model ?? "gpt-image-2"} options={modelOptions} onChange={(value) => update({ modelName: value, modelVersion: value })} />
+          <SelectField label="比例" value={selectedRatio} options={ratioOptions} onChange={handleRatioChange} />
+          <SelectField label="分辨率" value={selectedSize} options={sizeOptions} onChange={(value) => update({ size: value })} />
+          <SelectField label="画质" value={metadata.quality ?? capability?.qualities[0]?.value ?? "auto"} options={qualityOptions} onChange={(value) => update({ quality: value })} />
+          {!capability && <p className="canvas-node-inspector__hint">尚未读取服务端模型能力，暂不能修改规格。</p>}
         </>
       )}
 
@@ -206,9 +220,9 @@ export function CanvasNodeInspector({
             <span>套图数量（可配置）</span>
             <input type="number" min="1" step="1" value={metadata.generationCount ?? 6} onChange={(event) => update({ generationCount: Math.max(1, Number(event.target.value) || 1) })} />
           </label>
-          <SelectField label="统一比例" value={metadata.aspectRatio ?? "1:1"} options={IMAGE2_RATIOS} onChange={(value) => update({ aspectRatio: value })} />
-          <SelectField label="统一分辨率" value={metadata.size ?? "1024x1024"} options={IMAGE2_SIZES} onChange={(value) => update({ size: value })} />
-          <SelectField label="统一画质" value={metadata.quality ?? "auto"} options={IMAGE2_QUALITIES} onChange={(value) => update({ quality: value })} />
+          <SelectField label="统一比例" value={selectedRatio} options={ratioOptions} onChange={handleRatioChange} />
+          <SelectField label="统一分辨率" value={selectedSize} options={sizeOptions} onChange={(value) => update({ size: value })} />
+          <SelectField label="统一画质" value={metadata.quality ?? capability?.qualities[0]?.value ?? "auto"} options={qualityOptions} onChange={(value) => update({ quality: value })} />
           <TextField label="套图规则" value={metadata.cardPurpose ?? "主图、细节图、卖点图、参数图"} multiline onChange={(value) => update({ cardPurpose: value })} />
           <p className="canvas-node-inspector__hint">修改数量后，点击“按配置生成卡片”更新容器中的图片卡片。</p>
           <button type="button" className="canvas-node-inspector__primary" onClick={() => onGenerateBundleCards(item.id)}>
@@ -241,9 +255,13 @@ export function CanvasNodeInspector({
 
       {item.kind === "generate" && (
         <>
-          <SelectField label="生成模型" value={metadata.modelName ?? "gpt-image-2"} options={[["gpt-image-2", "gpt-image-2"]]} onChange={(value) => update({ modelName: value, modelVersion: value })} />
+          <SelectField label="生成模型" value={metadata.modelName ?? capability?.model ?? "gpt-image-2"} options={modelOptions} onChange={(value) => update({ modelName: value, modelVersion: value })} />
           <p className="canvas-node-inspector__hint">生成节点会读取已连接的提示词、模型、版式和参考来源，真实任务创建仍由后端任务接口负责。</p>
           <div className="canvas-node-inspector__status">当前状态：{metadata.taskStatus ?? "待连接输入"}</div>
+          {metadata.taskError && <p className="canvas-node-inspector__error">{metadata.taskError}</p>}
+          <button type="button" className="canvas-node-inspector__primary" onClick={() => onExecuteGenerate(item.id)}>
+            执行图片生成
+          </button>
         </>
       )}
 

@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useState } from "react";
-import { listImageTasks } from "../../api/client";
+import { getImageAssetPreviewUrl, listImageTasks } from "../../api/client";
 import type { ImageTaskStatus } from "../../types";
 import "./ImageHistoryList.css";
 
@@ -47,6 +47,9 @@ function downloadMaterialPack(tasks: ImageTaskStatus[]) {
       task_id: task.id,
       status: task.status,
       result_image_url: task.result_image_url,
+      result_image_urls: task.result_image_urls,
+      result_asset_ids: task.result_asset_ids,
+      result_asset_urls: task.result_asset_urls,
       created_at: task.created_at,
     })),
   };
@@ -63,20 +66,49 @@ export function ImageHistoryList() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<ResultFilter>("all");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [previewUrls, setPreviewUrls] = useState<Record<string, string[]>>({});
 
   useEffect(() => {
+    let cancelled = false;
     listImageTasks()
-      .then(setTasks)
+      .then((nextTasks) => {
+        if (!cancelled) setTasks(nextTasks);
+      })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let loadedUrls: string[] = [];
+    const load = async () => {
+      const entries = await Promise.all(tasks.flatMap((task) =>
+        (task.result_asset_ids ?? []).map(async (assetId) => [task.id, await getImageAssetPreviewUrl(assetId).catch(() => null)] as const)
+      ));
+      const next: Record<string, string[]> = {};
+      for (const [taskId, url] of entries) {
+        if (!url) continue;
+        loadedUrls.push(url);
+        (next[taskId] ??= []).push(url);
+      }
+      if (!cancelled) setPreviewUrls(next);
+    };
+    void load();
+    return () => {
+      cancelled = true;
+      loadedUrls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [tasks]);
 
   const visibleTasks = useMemo(
     () => tasks.filter((task) => matchesFilter(task, filter)),
     [filter, tasks]
   );
   const selectedTasks = useMemo(
-    () => tasks.filter((task) => selectedIds.has(task.id) && task.result_image_url),
+    () => tasks.filter((task) => selectedIds.has(task.id) && (task.result_image_url || task.result_asset_ids?.length)),
     [selectedIds, tasks]
   );
 
@@ -144,10 +176,10 @@ export function ImageHistoryList() {
                     {new Date(task.created_at).toLocaleString("zh-CN")}
                   </span>
                 </div>
-                {task.result_image_url && (
+                {(previewUrls[task.id]?.[0] || task.result_image_url) && (
                   <div className="image-history-item__delivery">
                     <img
-                      src={task.result_image_url}
+                      src={previewUrls[task.id]?.[0] ?? task.result_image_url ?? ""}
                       alt="生成结果"
                       className="image-history-thumb"
                     />
@@ -158,7 +190,7 @@ export function ImageHistoryList() {
                       <button
                         type="button"
                         onClick={() =>
-                          downloadUrl(task.result_image_url!, "aibuild-" + task.id + ".png")
+                          downloadUrl(previewUrls[task.id]?.[0] ?? task.result_image_url ?? "", "aibuild-" + task.id + ".png")
                         }
                       >
                         下载

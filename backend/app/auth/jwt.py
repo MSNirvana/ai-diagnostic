@@ -54,9 +54,18 @@ def _decode_user_id(token: str) -> str:
 
 
 async def get_current_user(
-    authorization: str = Header(...),
+    authorization: str | None = Header(default=None),
     session: AsyncSession = Depends(get_session),
 ) -> User:
+    # Local-only test mode: the frontend can use a provider API key directly
+    # without opening the GGOO login flow. This is deliberately opt-in and
+    # must never be enabled in a deployed environment.
+    if test_api_bypass_enabled():
+        token = _extract_optional_bearer_token(authorization)
+        return await _get_or_create_test_user(session)
+
+    if not authorization:
+        raise HTTPException(status_code=401, detail="请先登录 GGOO")
     token = _extract_bearer_token(authorization)
 
     if legacy_local_auth_enabled():
@@ -106,6 +115,35 @@ def legacy_local_auth_enabled() -> bool:
         "yes",
         "on",
     }
+
+
+def test_api_bypass_enabled() -> bool:
+    return os.environ.get("BUILD_TEST_API_BYPASS", "false").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+async def _get_or_create_test_user(session: AsyncSession) -> User:
+    email = os.environ.get("BUILD_TEST_USER_EMAIL", "local-image-test@ggoo.local").strip()
+    user = await session.scalar(select(User).where(func.lower(User.email) == email.lower()))
+    if user is None:
+        user = User(email=email, hashed_password="!local-test-only", is_admin=True)
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+    return user
+
+
+def _extract_optional_bearer_token(authorization: str | None) -> str | None:
+    if not authorization:
+        return None
+    scheme, _, token = authorization.strip().partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
+        raise HTTPException(status_code=401, detail="无效的测试 API 凭据")
+    return token.strip()
 
 
 def _extract_bearer_token(authorization: str) -> str:

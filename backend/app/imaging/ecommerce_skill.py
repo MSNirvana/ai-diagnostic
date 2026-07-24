@@ -26,8 +26,8 @@ SCENES: tuple[EcommerceScene, ...] = (
     EcommerceScene("usage-steps", "使用步骤图", "降低理解成本，展示 3-4 步使用流程", ("步骤", "怎么用", "使用方法"), "2:3", "编号步骤或时间线布局，每步一个动作，最终效果作为收束", "明亮清晰的说明性光线", ("缺失步骤", "虚构功能", "大段文字", "假 logo")),
     EcommerceScene("size-spec", "尺寸规格图", "展示尺寸、容量、材质或规格关系", ("尺寸", "规格", "参数"), "2:3", "产品配尺寸标注、比例参照或简洁规格表，保持移动端可读", "均匀光线，避免遮挡测量区域", ("虚构尺寸", "虚构参数", "密集小字", "假认证")),
     EcommerceScene("before-after", "前后对比图", "用可观察差异表达产品解决的问题", ("对比", "前后", "before after"), "2:3", "清晰对照布局，前后状态可比较，产品或使用动作作为证据中心", "一致的光线和视角，避免夸张效果", ("医疗承诺", "虚构效果", "虚构数据", "误导性标签")),
-    EcommerceScene("ugc", "UGC 真实使用图", "适合社媒、买家秀和真实使用语境", ("UGC", "买家秀", "真实使用"), "4:5", "手机拍摄感，轻微不完美构图，商品在真实环境中自然出现", "手机环境光，轻微噪点和自然色偏", ("棚拍感", "过度磨皮", "完美无瑕", "虚构评价")),
-    EcommerceScene("poster-social", "海报与社媒推广图", "用于活动、上新和社交媒体传播", ("海报", "Banner", "社媒", "促销"), "4:5", "产品占画面约 40%，保留标题、卖点和行动区域的清晰层级", "具有方向性的商业广告光线", ("虚构价格", "虚构活动时间", "假 logo", "密集文字")),
+    EcommerceScene("ugc", "UGC 真实使用图", "适合社媒、买家秀和真实使用语境", ("UGC", "买家秀", "真实使用"), "2:3", "手机拍摄感，轻微不完美构图，商品在真实环境中自然出现", "手机环境光，轻微噪点和自然色偏", ("棚拍感", "过度磨皮", "完美无瑕", "虚构评价")),
+    EcommerceScene("poster-social", "海报与社媒推广图", "用于活动、上新和社交媒体传播", ("海报", "Banner", "社媒", "促销"), "2:3", "产品占画面约 40%，保留标题、卖点和行动区域的清晰层级", "具有方向性的商业广告光线", ("虚构价格", "虚构活动时间", "假 logo", "密集文字")),
 )
 
 STYLE_VARIANTS = {
@@ -129,14 +129,16 @@ def get_market_scope(scope: str | None) -> dict[str, str]:
 
 
 def skill_catalog() -> dict[str, object]:
+    # Public catalog data contains labels only. Prompt guidance is assembled
+    # in the backend job and must not become a client-controlled contract.
     return {
         "skill_id": SKILL_ID,
         "skill_version": SKILL_VERSION,
         "scenes": [_catalog_item(scene) for scene in SCENES],
-        "styles": [{"id": key, **value} for key, value in STYLE_VARIANTS.items()],
-        "categories": [{"id": key, "name": CATEGORY_LABELS[key], "prompt": value} for key, value in CATEGORY_TIPS.items()],
-        "market_scopes": [{"id": key, **value} for key, value in MARKET_SCOPES.items()],
-        "conversion_drivers": [{"id": key, **value} for key, value in CONVERSION_DRIVERS.items()],
+        "styles": [{"id": key, "name": value["name"]} for key, value in STYLE_VARIANTS.items()],
+        "categories": [{"id": key, "name": CATEGORY_LABELS[key]} for key in CATEGORY_TIPS],
+        "market_scopes": [{"id": key, "name": value["name"]} for key, value in MARKET_SCOPES.items()],
+        "conversion_drivers": [{"id": key, "name": value["name"]} for key, value in CONVERSION_DRIVERS.items()],
     }
 
 

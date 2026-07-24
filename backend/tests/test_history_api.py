@@ -42,7 +42,7 @@ def _diagnose(token: str) -> None:
 
 def test_history_requires_auth(db_session):
     resp = client.get("/history/")
-    assert resp.status_code == 422  # 缺 Authorization header
+    assert resp.status_code == 401  # 缺 Authorization header
 
 
 def test_history_lists_own_records(db_session):

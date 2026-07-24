@@ -4,6 +4,7 @@ import asyncio
 import base64
 import os
 import time
+from pathlib import Path
 
 from dataclasses import dataclass
 from typing import Any
@@ -11,6 +12,22 @@ from typing import Any
 import httpx
 
 from app.llm.base import LLMClient
+
+
+def _load_local_env() -> None:
+    """Load ignored local settings when the server is started outside uvicorn's launcher."""
+    env_path = Path(__file__).resolve().parents[2] / ".env"
+    if not env_path.exists():
+        return
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        name, value = line.split("=", 1)
+        os.environ.setdefault(name.strip(), value.strip())
+
+
+_load_local_env()
 
 
 RETRYABLE_STATUS_CODES = {429, 502, 503, 504}

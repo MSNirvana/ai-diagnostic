@@ -6,7 +6,7 @@ import { ImageGeneratePanel } from "./ImageGeneratePanel";
 import { ImageHistoryList } from "./ImageHistoryList";
 import "./ImageToolPage.css";
 
-type PresetId = "promo" | "ecommerce" | "template";
+type PresetId = "promo" | "ecommerce" | "content" | "template";
 
 type TemplateCase = {
   id: string;
@@ -36,6 +36,12 @@ const PRESETS: Array<{
     name: "生成电商套图",
     tagline: "主图、场景图、卖点图一套生成",
     detail: "围绕商品展示和转化组织画面",
+  },
+  {
+    id: "content",
+    name: "生成内容配图",
+    tagline: "小红书、公众号、短视频封面",
+    detail: "按移动端传播场景组织视觉层级",
   },
   {
     id: "template",
@@ -77,6 +83,26 @@ const TEMPLATE_CASES: Record<PresetId, TemplateCase[]> = {
       previewTitle: "节日限定",
       previewMeta: "把好心意带回家",
     },
+    {
+      id: "promo-live",
+      name: "直播间促销图",
+      description: "突出直播活动、利益点和行动区域",
+      style: "强促销视觉",
+      previewClass: "is-promo-warm",
+      previewKicker: "LIVE PROMO",
+      previewTitle: "直播限时福利",
+      previewMeta: "现在进入直播间",
+    },
+    {
+      id: "promo-social",
+      name: "社交媒体宣传图",
+      description: "适合社交平台发布和内容传播",
+      style: "社交媒体风",
+      previewClass: "is-promo-clean",
+      previewKicker: "SOCIAL POST",
+      previewTitle: "今天分享一个好物",
+      previewMeta: "首屏主体 · 轻量信息",
+    },
   ],
   ecommerce: [
     {
@@ -108,6 +134,48 @@ const TEMPLATE_CASES: Record<PresetId, TemplateCase[]> = {
       previewKicker: "DETAILS",
       previewTitle: "细节看得见",
       previewMeta: "材质 · 功能 · 规格",
+    },
+    {
+      id: "ecommerce-usage",
+      name: "使用场景图",
+      description: "展示商品在真实环境中的使用方式",
+      style: "真实使用",
+      previewClass: "is-ecommerce-life",
+      previewKicker: "HOW TO USE",
+      previewTitle: "放进真实生活",
+      previewMeta: "动作清楚 · 商品为主",
+    },
+    {
+      id: "ecommerce-spec",
+      name: "尺寸参数图",
+      description: "展示尺寸、容量、材质或规格关系",
+      style: "结构信息",
+      previewClass: "is-ecommerce-detail",
+      previewKicker: "SPECIFICATION",
+      previewTitle: "规格一眼看懂",
+      previewMeta: "尺寸 · 容量 · 材质",
+    },
+    {
+      id: "ecommerce-comparison",
+      name: "对比效果图",
+      description: "用清晰对照表达产品解决的问题",
+      style: "前后对比",
+      previewClass: "is-ecommerce-detail",
+      previewKicker: "BEFORE / AFTER",
+      previewTitle: "差异看得见",
+      previewMeta: "一致视角 · 可观察变化",
+    },
+  ],
+  content: [
+    {
+      id: "content-cover",
+      name: "内容平台封面",
+      description: "适合小红书、公众号和短视频封面",
+      style: "清晰易读",
+      previewClass: "is-content-cover",
+      previewKicker: "CONTENT COVER",
+      previewTitle: "一张图讲清卖点",
+      previewMeta: "移动端首屏 · 标题清晰",
     },
   ],
   template: [
@@ -151,8 +219,8 @@ export function ImageToolPage() {
   const [activeTemplateId, setActiveTemplateId] = useState<string | null>(null);
   const [caseCategory, setCaseCategory] = useState<PresetId>("promo");
 
-  const handleEnterCanvas = useCallback((taskId: string) => {
-    navigate(`/tools/image/canvas?taskId=${encodeURIComponent(taskId)}`);
+  const handleEnterCanvas = useCallback((taskId?: string | null) => {
+    navigate(taskId ? `/tools/image/canvas?taskId=${encodeURIComponent(taskId)}` : "/tools/image/canvas");
   }, [navigate]);
 
   const handlePresetClick = (presetId: PresetId) => {
@@ -235,7 +303,7 @@ export function ImageToolPage() {
                 className={caseCategory === preset.id ? "active" : ""}
                 onClick={() => setCaseCategory(preset.id)}
               >
-                {preset.id === "promo" ? "宣传海报" : preset.id === "ecommerce" ? "电商套图" : "品牌模板"}
+                {preset.id === "promo" ? "营销视觉" : preset.id === "ecommerce" ? "电商套图" : preset.id === "content" ? "内容配图" : "品牌模板"}
               </button>
             ))}
           </div>

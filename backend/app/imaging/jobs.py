@@ -3,6 +3,7 @@
 Runs after the API returns 202; transitions the ToolTask through
 running -> succeeded/failed with billing ledger integration.
 """
+import base64
 import json
 import os
 from pathlib import Path
@@ -10,15 +11,55 @@ from pathlib import Path
 import httpx
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlmodel import select
 
 from app.billing.ledger import transition_task
 from app.db.models import ImageAsset, ToolTask
+from app.api.image_assets import MAX_GENERATED_ASSETS, MAX_GENERATED_BYTES
 from app.imaging.client import GGOOImageClient
-from app.imaging.ecommerce_skill import build_ecommerce_prompt
+from app.imaging.ecommerce_skill import build_ecommerce_prompt, get_style_variant
 from app.imaging.prompts import build_generate_prompt
 from app.imaging.presets import get_preset
 from app.imaging.template_catalog import get_template
 from app.integrations.ggoo import ggoo_client
+
+
+def _bearer_token(authorization: str) -> str:
+    """Strip the HTTP auth scheme before handing a provider key to GGOO."""
+    scheme, _, token = authorization.strip().partition(" ")
+    if scheme.lower() == "bearer" and token.strip():
+        return token.strip()
+    return authorization.strip()
+
+
+def _provider_token(authorization: str) -> str:
+    """Use the configured test key for every local AI request.
+
+    The browser token is only a local-session credential in test mode and may
+    be stale after changing the provider key. Production requests continue to
+    use the authenticated bearer token.
+    """
+    configured = _local_setting("GGOO_SERVICE_API_KEY")
+    if configured:
+        # A local provider key is authoritative for this test environment;
+        # never let a stale browser token reach the image gateway.
+        return configured
+    return _bearer_token(authorization)
+
+
+def _local_setting(name: str) -> str:
+    """Read a local ignored setting even when the process was launched without env loading."""
+    value = os.environ.get(name, "").strip().strip('"')
+    if value:
+        return value
+    env_path = Path(__file__).resolve().parents[2] / ".env"
+    if not env_path.exists():
+        return ""
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if line.startswith(f"{name}="):
+            return line.split("=", 1)[1].strip().strip('"')
+    return ""
 
 
 def _build_reference_url(asset_id: str) -> str | None:
@@ -34,6 +75,21 @@ def _build_reference_url(asset_id: str) -> str | None:
     return f"{base}/image-assets/{asset_id}/file"
 
 
+def _build_local_reference_data_url(asset: ImageAsset | None) -> str | None:
+    """Use a local asset directly for localhost image-to-image testing."""
+    if asset is None or not asset.stored_path:
+        return None
+    path = Path(asset.stored_path)
+    if not path.exists():
+        return None
+    try:
+        encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+    except OSError:
+        return None
+    content_type = asset.content_type or "image/png"
+    return f"data:{content_type};base64,{encoded}"
+
+
 async def _persist_generated_asset(
     session: AsyncSession,
     user_id: str,
@@ -41,29 +97,51 @@ async def _persist_generated_asset(
     index: int,
 ) -> str | None:
     """Best-effort materialization of a provider result into a platform asset."""
-    if not image_url.startswith(("http://", "https://")):
-        return None
     try:
-        async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
-            response = await client.get(image_url)
-            response.raise_for_status()
-        content_type = response.headers.get("content-type", "image/png").split(";", 1)[0]
+        if image_url.startswith("data:image/"):
+            header, encoded = image_url.split(",", 1)
+            content_type = header[5:].split(";", 1)[0]
+            content = base64.b64decode(encoded, validate=True)
+        elif image_url.startswith(("http://", "https://")):
+            async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
+                response = await client.get(image_url)
+                response.raise_for_status()
+            content_type = response.headers.get("content-type", "image/png").split(";", 1)[0]
+            content = response.content
+        else:
+            return None
         if not content_type.startswith("image/"):
             return None
         suffix = {"image/jpeg": ".jpg", "image/webp": ".webp", "image/gif": ".gif"}.get(content_type, ".png")
+        existing_result = await session.execute(
+            select(ImageAsset).where(
+                ImageAsset.user_id == user_id,
+                ImageAsset.asset_kind == "generated",
+                ImageAsset.deleted_at.is_(None),
+            )
+        )
+        generated_assets = existing_result.scalars().all()
+        generated_bytes = sum(
+            Path(item.stored_path).stat().st_size
+            for item in generated_assets
+            if item.stored_path and Path(item.stored_path).exists()
+        )
+        if len(generated_assets) >= MAX_GENERATED_ASSETS or generated_bytes + len(content) > MAX_GENERATED_BYTES:
+            return None
         asset = ImageAsset(
             user_id=user_id,
             stored_path="",
             original_name=f"生成结果-{index + 1}{suffix}",
             content_type=content_type,
             vision_status="not_requested",
+            asset_kind="generated",
         )
         session.add(asset)
         await session.flush()
         upload_dir = Path("data/image-assets") / user_id
         upload_dir.mkdir(parents=True, exist_ok=True)
         path = upload_dir / f"{asset.id}_generated{suffix}"
-        path.write_bytes(response.content)
+        path.write_bytes(content)
         asset.stored_path = str(path)
         return asset.id
     except Exception:
@@ -92,11 +170,33 @@ async def run_image_generation_job(
 
             anchor_description = ""
             reference_asset_id = payload.get("reference_asset_id")
+            reference_asset_ids = payload.get("reference_asset_ids") or ([reference_asset_id] if reference_asset_id else [])
             asset = None
             if reference_asset_id:
                 asset = await session.get(ImageAsset, reference_asset_id)
                 if asset is not None:
                     anchor_description = asset.vision_description
+
+            # Keep the relationship between secondary references and their
+            # roles in the task snapshot while forwarding every selected image
+            # to the configured multi-reference gateway field.
+            secondary_facts: list[str] = []
+            for asset_id in reference_asset_ids[1:]:
+                secondary = await session.get(ImageAsset, asset_id)
+                if secondary is not None and secondary.vision_description:
+                    role = next(
+                        (
+                            item.get("role", "辅助参考图")
+                            for item in payload.get("reference_assets", [])
+                            if item.get("asset_id") == asset_id
+                        ),
+                        "辅助参考图",
+                    )
+                    secondary_facts.append(f"{role}: {secondary.vision_description}")
+            if secondary_facts:
+                anchor_description = "\n".join(
+                    part for part in [anchor_description, *secondary_facts] if part
+                )
 
             # Prefer user-edited reverse prompt as the anchor when provided.
             edited = payload.get("edited_description")
@@ -119,10 +219,14 @@ async def run_image_generation_job(
                 prompt_components["template_id"] = template.id
                 payload["prompt_components"] = prompt_components
             else:
+                style = payload.get("style", preset.default_style)
+                style_variant = payload.get("style_variant")
+                if style_variant:
+                    style = f"{style}; {get_style_variant(style_variant)['prompt']}"
                 display_prompt = build_generate_prompt(
                     anchor_description=anchor_description,
                     user_intent=payload.get("user_intent", ""),
-                    style=payload.get("style", preset.default_style),
+                    style=style,
                     size=payload.get("size", preset.default_size),
                     prompt_skeleton=preset.prompt_skeleton,
                 )
@@ -131,32 +235,43 @@ async def run_image_generation_job(
             payload["assembled_prompt"] = display_prompt
 
             mode = payload.get("generation_mode", "text2image")
-            reference_image_url: str | None = None
-            if mode == "image2image" and reference_asset_id:
-                reference_image_url = _build_reference_url(reference_asset_id)
-                if reference_image_url is None:
-                    # No public base URL configured — fall back to text2image.
-                    mode = "text2image"
-                    payload["generation_mode"] = mode
-                    payload["fallback_reason"] = "image2image_unavailable_no_public_url"
+            reference_image_urls: list[str] = []
+            if mode == "image2image" and reference_asset_ids:
+                for asset_id in reference_asset_ids:
+                    reference = await session.get(ImageAsset, asset_id)
+                    reference_url = _build_reference_url(asset_id)
+                    if reference_url is None:
+                        reference_url = _build_local_reference_data_url(reference)
+                    if reference_url is None:
+                        raise ValueError("参考图片文件不可用，无法执行图片二次创作")
+                    reference_image_urls.append(reference_url)
+                if not reference_image_urls:
+                    raise ValueError("参考图片文件不可用，无法执行图片二次创作")
 
-            api_key = await ggoo_client.get_or_create_active_key(authorization)
+            configured_key = _local_setting("GGOO_SERVICE_API_KEY")
+            api_key = configured_key or await ggoo_client.get_or_create_active_key(_provider_token(authorization))
+            gateway_base_url = _local_setting("GGOO_GATEWAY_BASE_URL") or ggoo_client.gateway_base_url()
             image_client = GGOOImageClient(
                 client=ggoo_client._client,
                 api_key=api_key,
-                gateway_base_url=ggoo_client.gateway_base_url(),
+                gateway_base_url=gateway_base_url,
             )
-            image_result = await image_client.generate_image(
-                prompt=prompt,
-                size=payload.get("size", preset.default_size),
-                model=payload.get("model"),
-                n=int(payload.get("generation_count") or 1),
-                quality=payload.get("quality"),
-                background=payload.get("background"),
-                reference_image_url=reference_image_url if mode == "image2image" else None,
-            )
-
-            image_urls = image_result if isinstance(image_result, list) else [image_result]
+            requested_count = max(1, int(payload.get("generation_count") or 1))
+            image_urls: list[str] = []
+            for _ in range(requested_count):
+                image_result = await image_client.generate_image(
+                    prompt=prompt,
+                    size=payload.get("size", preset.default_size),
+                    model=payload.get("model"),
+                    # GGOO deployments may expose only one-image requests;
+                    # independent calls keep multi-candidate behavior stable.
+                    n=1,
+                    quality=payload.get("quality"),
+                    background=payload.get("background"),
+                    reference_image_urls=reference_image_urls if mode == "image2image" else None,
+                )
+                image_urls.extend(image_result if isinstance(image_result, list) else [image_result])
+            image_urls = image_urls[:requested_count]
             payload["result_image_urls"] = image_urls
             payload["result_image_url"] = image_urls[0] if image_urls else None
             result_asset_ids: list[str] = []

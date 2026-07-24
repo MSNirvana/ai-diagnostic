@@ -48,12 +48,14 @@ import type {
   ArchiveExtractionPreview,
   CreditsBalance,
   ImageAssetOut,
+  ImageAssetUsage,
   ImageTaskStatus,
   CreateImageTaskResponse,
   ImageModelCapability,
   EcommerceSkillCatalog,
   CanvasScene,
   CanvasSceneResponse,
+  CanvasExecutionResponse,
   ImageTemplateCatalog,
 } from "../types";
 import { clearToken, getToken, setToken } from "../auth/authStore";
@@ -933,6 +935,9 @@ export async function createImageTask(req: {
   template_id?: string;
   user_intent: string;
   reference_asset_id?: string;
+  reference_asset_ids?: string[];
+  reference_assets?: Array<{ asset_id: string; role: string }>;
+  workspace_mode?: "basic" | "canvas";
   style?: string;
   size?: string;
   model?: string;
@@ -957,6 +962,20 @@ export async function createImageTask(req: {
   });
   if (!resp.ok) throw new Error(await errorMessage(resp, "创建图片生成任务失败"));
   return (await resp.json()) as CreateImageTaskResponse;
+}
+
+export async function getImageAssetUsage(): Promise<ImageAssetUsage> {
+  const resp = await fetch(`${BASE}/image-assets/usage`, { headers: { ...authHeaders() } });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "获取素材库用量失败"));
+  return (await resp.json()) as ImageAssetUsage;
+}
+
+export async function getImageAssetPreviewUrl(assetId: string): Promise<string> {
+  const resp = await fetch(`${BASE}/image-assets/${encodeURIComponent(assetId)}/file`, {
+    headers: { ...authHeaders() },
+  });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "加载图片缩略图失败"));
+  return URL.createObjectURL(await resp.blob());
 }
 
 export async function getEcommerceSkillCatalog(): Promise<EcommerceSkillCatalog> {
@@ -1029,6 +1048,59 @@ export async function getLatestCanvasScene(taskId: string): Promise<CanvasSceneR
   );
   if (!resp.ok) throw new Error(await errorMessage(resp, "加载最近画布版本失败"));
   return (await resp.json()) as CanvasSceneResponse;
+}
+
+export async function exportCanvasProject(sceneId: string): Promise<{
+  schema_version: string;
+  exported_at: string;
+  name: string;
+  task_id: string | null;
+  scene: CanvasScene;
+}> {
+  const resp = await fetch(`${BASE}/image-tool/projects/${encodeURIComponent(sceneId)}`, {
+    headers: { ...authHeaders() },
+  });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "导出画布项目失败"));
+  return (await resp.json()) as {
+    schema_version: string;
+    exported_at: string;
+    name: string;
+    task_id: string | null;
+    scene: CanvasScene;
+  };
+}
+
+export async function importCanvasProject(req: {
+  schema_version?: string;
+  name?: string;
+  task_id?: string | null;
+  scene: CanvasScene;
+}): Promise<CanvasSceneResponse> {
+  const resp = await fetch(`${BASE}/image-tool/projects/import`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ schema_version: "image-workbench.project.v1", ...req }),
+  });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "导入画布项目失败"));
+  return (await resp.json()) as CanvasSceneResponse;
+}
+
+export async function executeCanvasNode(req: {
+  node_id: string;
+  operation: "reverse_prompt" | "generate" | "edit" | "copy";
+  scene: CanvasScene;
+  scene_id?: string | null;
+  task_id?: string | null;
+  input_asset_ids?: string[];
+  input?: Record<string, unknown>;
+}): Promise<CanvasExecutionResponse> {
+  const resp = await fetch(`${BASE}/image-tool/executions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(req),
+  });
+  if (!resp.ok) throw new Error(await errorMessage(resp, "执行画布节点失败"));
+  return (await resp.json()) as CanvasExecutionResponse;
 }
 
 export async function fetchCaseProjects(

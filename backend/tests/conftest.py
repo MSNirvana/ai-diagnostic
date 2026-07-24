@@ -36,6 +36,12 @@ def _bypass_ggoo_model_gateway():
 
 
 @pytest.fixture(autouse=True)
+def _disable_local_api_bypass(monkeypatch):
+    """Keep API tests user-isolated even when the developer .env enables local UI bypass."""
+    monkeypatch.setenv("BUILD_TEST_API_BYPASS", "false")
+
+
+@pytest.fixture(autouse=True)
 def _bypass_admin_gate():
     """默认放行运营后台门，让历史 /admin 用例零改动通过。
 

@@ -50,6 +50,17 @@ vi.mock("../src/api/client", () => ({
     ],
   })),
   listImageAssets: vi.fn(async () => []),
+  getImageAssetUsage: vi.fn(async () => ({
+    reference_count: 0,
+    reference_bytes: 0,
+    reference_count_limit: 50,
+    reference_bytes_limit: 500 * 1024 * 1024,
+    generated_count: 0,
+    generated_bytes: 0,
+    generated_count_limit: 100,
+    generated_bytes_limit: 1024 * 1024 * 1024,
+    warning: false,
+  })),
   createImageTask: vi.fn(),
   confirmImageTask: vi.fn(),
   getImageTask: vi.fn(),
@@ -121,6 +132,7 @@ describe("image tool page", () => {
 
     expect(await screen.findByText("生成宣传海报")).toBeTruthy();
     expect(screen.getByText("生成电商套图")).toBeTruthy();
+    expect(screen.getByText("生成内容配图")).toBeTruthy();
     expect(screen.getByText("从模板开始")).toBeTruthy();
     expect(screen.getByText("模板库 · 案例预览")).toBeTruthy();
     expect(screen.getByText("周末门店活动")).toBeTruthy();
@@ -163,7 +175,7 @@ describe("image tool page", () => {
     });
 
     expect(submit.className).toContain("image-generate-submit");
-    expect(submit.textContent).toBe("\u751F\u6210\u56FE\u7247");
+    expect(submit.textContent).toBe("\u4EC5\u7528\u6587\u5B57\u751F\u6210");
     expect(submit.textContent).not.toBe("\u83B7\u53D6\u62A5\u4EF7");
   });
 
@@ -220,10 +232,10 @@ describe("image generation specifications", () => {
     renderAt("/tools/image");
     fireEvent.click(await screen.findByText("生成宣传海报"));
     await waitFor(() => expect((screen.getByLabelText("图片模型") as HTMLSelectElement).disabled).toBe(false));
-    fireEvent.click(screen.getByRole("button", { name: "电影质感" }));
+    fireEvent.click(screen.getByRole("button", { name: "高级质感" }));
     fireEvent.change(screen.getByLabelText("需求描述"), { target: { value: "新品主图" } });
-    fireEvent.change(screen.getByLabelText("生成数量"), { target: { value: "3" } });
-    fireEvent.click(screen.getByRole("button", { name: "生成图片" }));
+    fireEvent.change(screen.getByLabelText("生成数量"), { target: { value: "1" } });
+    fireEvent.click(screen.getByRole("button", { name: "仅用文字生成" }));
 
     await waitFor(() => expect(createImageTask).toHaveBeenCalledWith(expect.objectContaining({
       preset_id: "promo",
@@ -231,8 +243,9 @@ describe("image generation specifications", () => {
       aspect_ratio: "1:1",
       size: "1024x1024",
       quality: "auto",
-      generation_count: 3,
+      generation_count: 1,
       model_version: "image2",
+      style_variant: "luxury",
     })));
     expect(screen.queryByText("获取报价")).toBeNull();
   });
@@ -248,7 +261,7 @@ describe("image generation specifications", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "使用模板" })[1]);
     fireEvent.change(screen.getByLabelText("需求描述"), { target: { value: "新品发布" } });
     const submit = await waitFor(() => {
-      const button = screen.getByRole("button", { name: "生成图片" }) as HTMLButtonElement;
+      const button = screen.getByRole("button", { name: "仅用文字生成" }) as HTMLButtonElement;
       if (button.disabled) throw new Error("generation button is still disabled");
       return button;
     });

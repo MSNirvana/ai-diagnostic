@@ -746,6 +746,21 @@ export interface ImageAssetOut {
   vision_description: string;
   vision_status: string;
   created_at: string;
+  size_bytes?: number;
+  file_url?: string;
+  asset_kind?: "reference" | "generated" | string;
+}
+
+export interface ImageAssetUsage {
+  reference_count: number;
+  reference_bytes: number;
+  reference_count_limit: number;
+  reference_bytes_limit: number;
+  generated_count: number;
+  generated_bytes: number;
+  generated_count_limit: number;
+  generated_bytes_limit: number;
+  warning: boolean;
 }
 
 export interface ImageTaskStatus {
@@ -758,6 +773,7 @@ export interface ImageTaskStatus {
   result_image_url: string | null;
   result_image_urls?: string[];
   result_asset_ids?: string[];
+  result_asset_urls?: string[];
   created_at: string;
   updated_at: string;
   // Canvas-relevant payload fields (optional; populated after job runs).
@@ -765,6 +781,8 @@ export interface ImageTaskStatus {
   template_id?: string | null;
   user_intent?: string | null;
   reference_asset_id?: string | null;
+  reference_asset_ids?: string[];
+  reference_assets?: Array<{ asset_id: string; role: string }>;
   reverse_prompt?: string | null;
   assembled_prompt?: string | null;
   generation_mode?: "text2image" | "image2image" | null;
@@ -775,6 +793,7 @@ export interface ImageTaskStatus {
   quality?: string | null;
   background?: string | null;
   generation_count?: number;
+  workspace_mode?: "basic" | "canvas" | null;
 }
 
 export interface CreateImageTaskResponse {
@@ -815,15 +834,15 @@ export interface EcommerceSkillCatalog {
   skill_id: string;
   skill_version: string;
   scenes: EcommerceScene[];
-  styles: Array<{ id: string; name: string; prompt: string }>;
-  categories: Array<{ id: string; name: string; prompt: string }>;
-  market_scopes?: Array<{ id: string; name: string; prompt: string }>;
-  conversion_drivers: Array<{ id: string; name: string; prompt: string }>;
+  styles: Array<{ id: string; name: string }>;
+  categories: Array<{ id: string; name: string }>;
+  market_scopes?: Array<{ id: string; name: string }>;
+  conversion_drivers: Array<{ id: string; name: string }>;
 }
 
 export interface ImageTemplate {
   id: string;
-  preset_id: "promo" | "ecommerce" | "template";
+  preset_id: "promo" | "ecommerce" | "template" | "content";
   name: string;
   description: string;
   recommended_ratio: string;
@@ -872,7 +891,7 @@ export interface CanvasItemMetadata {
   productFacts?: string;
   channel?: string;
   audience?: string;
-  referenceRole?: "product" | "style" | "parameter" | "layout" | "copy" | "other";
+  referenceRole?: "product" | "detail" | "style" | "scene" | "brand" | "parameter" | "layout" | "copy" | "other" | "辅助参考图";
   assetName?: string;
   uploadStatus?: "idle" | "uploading" | "uploaded" | "failed";
   prompt?: string;
@@ -894,6 +913,7 @@ export interface CanvasItemMetadata {
   taskError?: string;
   taskId?: string;
   resultAssetIds?: string[];
+  resultImageUrls?: string[];
   editPrompt?: string;
   editMode?: "full" | "masked";
   upscaleFactor?: "2x" | "4x";
@@ -1013,6 +1033,19 @@ export interface CanvasSceneResponse {
   /** 持久化快照版本，不等同于 CanvasScene.version。 */
   version: number;
   scene: CanvasScene;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CanvasExecutionResponse {
+  execution_id: string;
+  scene_id: string;
+  scene_version: number;
+  node_id: string;
+  operation: "reverse_prompt" | "generate" | "edit" | "copy" | string;
+  status: "queued" | "running" | "succeeded" | "failed" | string;
+  result: Record<string, unknown>;
+  error?: string | null;
   created_at: string;
   updated_at: string;
 }

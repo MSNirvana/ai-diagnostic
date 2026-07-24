@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { MemoryRouter } from "react-router-dom";
 import App from "../src/App";
 import { CanvasStage } from "../src/components/ImageTool/canvas/CanvasStage";
-import { getImageTask, getLatestCanvasScene, saveCanvasScene } from "../src/api/client";
+import { executeCanvasNode, getImageTask, getLatestCanvasScene, saveCanvasScene } from "../src/api/client";
 
 const authState = {
   token: "test-token" as string | null,
@@ -18,6 +18,7 @@ vi.mock("../src/auth/useAuth", () => ({
 
 vi.mock("../src/api/client", () => ({
   getImageTask: vi.fn(),
+  executeCanvasNode: vi.fn(),
   getImageModelCapabilities: vi.fn(async () => []),
   saveCanvasScene: vi.fn(),
   getLatestCanvasScene: vi.fn(),
@@ -33,6 +34,7 @@ beforeEach(() => {
   vi.mocked(getImageTask).mockReset();
   vi.mocked(saveCanvasScene).mockReset();
   vi.mocked(getLatestCanvasScene).mockReset();
+  vi.mocked(executeCanvasNode).mockReset();
 });
 
 afterEach(() => {

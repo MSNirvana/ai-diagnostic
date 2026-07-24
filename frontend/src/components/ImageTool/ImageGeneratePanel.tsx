@@ -5,45 +5,15 @@ import {
   getImageTemplateCatalog,
   getImageModelCapabilities,
   getImageTask,
+  getImageAssetPreviewUrl,
+  getImageAssetUsage,
   listImageAssets,
   uploadImageAsset,
 } from "../../api/client";
-import type { EcommerceSkillCatalog, ImageAssetOut, ImageModelCapability, ImageTaskStatus, ImageTemplateCatalog } from "../../types";
+import type { EcommerceSkillCatalog, ImageAssetOut, ImageAssetUsage, ImageModelCapability, ImageTaskStatus, ImageTemplateCatalog } from "../../types";
 import "./ImageGeneratePanel.css";
 
 const TERMINAL_STATUSES = new Set(["succeeded", "failed", "cancelled", "refunded"]);
-
-const LOCAL_IMAGE2_CAPABILITY: ImageModelCapability = {
-  model: "gpt-image-2",
-  label: "gpt-image-2",
-  sizes: [
-    { value: "1024x1024", label: "1K 方图", aspect_ratio: "1:1" },
-    { value: "1536x1024", label: "1K 横图", aspect_ratio: "3:2" },
-    { value: "1024x1536", label: "1K 竖图", aspect_ratio: "2:3" },
-    { value: "2048x2048", label: "2K 方图", aspect_ratio: "1:1" },
-    { value: "2048x1152", label: "2K 横图", aspect_ratio: "16:9" },
-    { value: "3840x2160", label: "4K 横图", aspect_ratio: "16:9" },
-    { value: "2160x3840", label: "4K 竖图", aspect_ratio: "9:16" },
-    { value: "auto", label: "自动", aspect_ratio: "auto" },
-  ],
-  aspect_ratios: [
-    { value: "1:1", label: "1:1 方形" },
-    { value: "3:2", label: "3:2 横向" },
-    { value: "2:3", label: "2:3 纵向" },
-    { value: "16:9", label: "16:9 横屏" },
-    { value: "9:16", label: "9:16 竖屏" },
-    { value: "auto", label: "自动" },
-  ],
-  qualities: [
-    { value: "low", label: "低" },
-    { value: "medium", label: "中" },
-    { value: "high", label: "高" },
-    { value: "auto", label: "自动" },
-  ],
-  backgrounds: [{ value: "opaque", label: "不透明" }],
-  generation_counts: [1],
-  max_count: 1,
-};
 
 const RATIO_PATTERNS = [
   { value: "16:9", pattern: /16\s*[:：]\s*9|横版|横屏/ },
@@ -59,26 +29,35 @@ function detectRequestedRatio(text: string): string | null {
   return RATIO_PATTERNS.find((item) => item.pattern.test(text))?.value ?? null;
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+}
+
 const STYLE_OPTIONS_BY_PRESET = {
   promo: [
-    { id: "store-event", label: "门店活动", prompt: "宣传海报视觉，活动信息醒目，适合门店引流和到店转化" },
-    { id: "seasonal-promo", label: "节日促销", prompt: "节日促销海报，氛围明确，重点突出优惠和活动时间" },
-    { id: "new-arrival", label: "产品上新", prompt: "产品上新海报，版式清晰，突出新品主体、卖点和品牌信息" },
-    { id: "editorial", label: "杂志排版", prompt: "编辑感海报排版，留白克制，文字层级清楚，适合品牌传播" },
-    { id: "cinematic", label: "电影质感", prompt: "电影感宣传海报光影，具有层次和情绪，但保持产品事实和主体准确" },
+    { id: "clean", label: "清晰商业" },
+    { id: "minimal", label: "极简留白" },
+    { id: "luxury", label: "高级质感" },
+    { id: "tech", label: "科技未来" },
   ],
   ecommerce: [
-    { id: "studio", label: "清透棚拍", prompt: "电商商品棚拍，背景干净，主体边缘清晰，适合首图展示" },
-    { id: "lifestyle", label: "生活场景", prompt: "电商生活方式场景，真实自然光影，体现商品使用氛围和生活质感" },
-    { id: "detail", label: "卖点详情", prompt: "电商详情图视觉，围绕材质、功能、尺寸组织清晰的信息层级" },
-    { id: "minimal", label: "极简留白", prompt: "电商极简构图，留白克制，商品材质细节清晰，适合高端展示" },
-    { id: "ecommerce", label: "电商清晰", prompt: "干净专业，突出商品主体，背景简洁，适合电商展示" },
+    { id: "clean", label: "清透专业" },
+    { id: "minimal", label: "极简留白" },
+    { id: "luxury", label: "高级质感" },
+    { id: "tech", label: "科技感" },
   ],
   template: [
-    { id: "brand-editorial", label: "品牌编辑感", prompt: "可复用的品牌编辑感模板，保留品牌留白、版式秩序和稳定识别" },
-    { id: "social-card", label: "社媒卡片", prompt: "适合社交媒体发布的内容卡片，信息聚焦，标题和卖点易读" },
-    { id: "minimal", label: "极简高级", prompt: "极简构图，留白克制，材质细节清晰，高级商业视觉" },
-    { id: "lifestyle", label: "生活方式", prompt: "自然生活场景，真实光影，体现产品使用氛围和生活质感" },
+    { id: "clean", label: "清晰商业" },
+    { id: "minimal", label: "极简高级" },
+    { id: "luxury", label: "品牌编辑感" },
+    { id: "tech", label: "现代社媒" },
+  ],
+  content: [
+    { id: "clean", label: "清晰易读" },
+    { id: "minimal", label: "极简留白" },
+    { id: "luxury", label: "杂志质感" },
+    { id: "tech", label: "年轻潮流" },
   ],
 } as const;
 
@@ -86,16 +65,19 @@ interface ImageGeneratePanelProps {
   presetId: string;
   templateId?: string | null;
   /** Called when the user clicks "进入高级模式" after a successful generation. */
-  onEnterCanvas?: (taskId: string) => void;
+  onEnterCanvas?: (taskId?: string | null) => void;
 }
 
 export function ImageGeneratePanel({ presetId, templateId, onEnterCanvas }: ImageGeneratePanelProps) {
   const [userIntent, setUserIntent] = useState("");
-  const [referenceAsset, setReferenceAsset] = useState<ImageAssetOut | null>(null);
+  const [referenceAssets, setReferenceAssets] = useState<ImageAssetOut[]>([]);
   const [assets, setAssets] = useState<ImageAssetOut[]>([]);
+  const [assetUsage, setAssetUsage] = useState<ImageAssetUsage | null>(null);
+  const [assetPreviewUrls, setAssetPreviewUrls] = useState<Record<string, string>>({});
+  const [resultPreviewUrls, setResultPreviewUrls] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const [reversePrompt, setReversePrompt] = useState("");
-  const [generationMode, setGenerationMode] = useState<"text2image" | "image2image">("image2image");
+  const [generationMode, setGenerationMode] = useState<"text2image" | "image2image">("text2image");
   const [skillCatalog, setSkillCatalog] = useState<EcommerceSkillCatalog | null>(null);
   const [templateCatalog, setTemplateCatalog] = useState<ImageTemplateCatalog | null>(null);
   const [sceneId, setSceneId] = useState("hero");
@@ -122,12 +104,55 @@ export function ImageGeneratePanel({ presetId, templateId, onEnterCanvas }: Imag
   useEffect(() => {
     if (!styleOptions.some((item) => item.id === styleId)) {
       setStyleId(styleOptions[0].id);
+      setStyleVariant(styleOptions[0].id);
     }
   }, [styleId, styleOptions]);
 
   useEffect(() => {
-    listImageAssets().then(setAssets).catch(() => {});
+    Promise.all([listImageAssets(), getImageAssetUsage()]).then(([items, usage]) => {
+      setAssets(items);
+      setAssetUsage(usage);
+    }).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let loadedUrls: string[] = [];
+    const loadPreviews = async () => {
+      const entries = await Promise.all(assets.map(async (asset) => {
+        try {
+          return [asset.id, await getImageAssetPreviewUrl(asset.id)] as const;
+        } catch {
+          return null;
+        }
+      }));
+      loadedUrls = entries.flatMap((entry) => entry ? [entry[1]] : []);
+      if (!cancelled) setAssetPreviewUrls(Object.fromEntries(entries.filter((entry): entry is readonly [string, string] => Boolean(entry))));
+    };
+    void loadPreviews();
+    return () => {
+      cancelled = true;
+      loadedUrls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [assets]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let loadedUrls: string[] = [];
+    const assetIds = taskStatus?.result_asset_ids ?? [];
+    if (!assetIds.length) {
+      setResultPreviewUrls([]);
+      return () => { cancelled = true; };
+    }
+    void Promise.all(assetIds.map((assetId) => getImageAssetPreviewUrl(assetId).catch(() => null))).then((urls) => {
+      loadedUrls = urls.filter((url): url is string => Boolean(url));
+      if (!cancelled) setResultPreviewUrls(loadedUrls);
+    });
+    return () => {
+      cancelled = true;
+      loadedUrls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [taskStatus?.result_asset_ids]);
 
   useEffect(() => {
     getImageTemplateCatalog().then(setTemplateCatalog).catch(() => setTemplateCatalog(null));
@@ -158,9 +183,8 @@ export function ImageGeneratePanel({ presetId, templateId, onEnterCanvas }: Imag
   useEffect(() => {
     getImageModelCapabilities()
       .then((items) => {
-        const available = items.length > 0 ? items : [LOCAL_IMAGE2_CAPABILITY];
-        setCapabilities(available);
-        const first = available[0];
+        setCapabilities(items);
+        const first = items[0];
         if (!first) return;
         setSelectedModel(first.model);
         setAspectRatio(first.aspect_ratios[0]?.value ?? "");
@@ -170,13 +194,8 @@ export function ImageGeneratePanel({ presetId, templateId, onEnterCanvas }: Imag
         setGenerationCount(first.generation_counts?.[0] ?? 1);
       })
       .catch(() => {
-        setCapabilities([LOCAL_IMAGE2_CAPABILITY]);
-        setSelectedModel(LOCAL_IMAGE2_CAPABILITY.model);
-        setAspectRatio(LOCAL_IMAGE2_CAPABILITY.aspect_ratios[0].value);
-        setSize(LOCAL_IMAGE2_CAPABILITY.sizes[0].value);
-        setQuality(LOCAL_IMAGE2_CAPABILITY.qualities[0].value);
-        setBackground(LOCAL_IMAGE2_CAPABILITY.backgrounds[0].value);
-        setGenerationCount(LOCAL_IMAGE2_CAPABILITY.generation_counts[0]);
+        setCapabilities([]);
+        setError("暂时无法读取图片模型能力，请检查后端服务连接");
       });
   }, []);
 
@@ -207,12 +226,13 @@ export function ImageGeneratePanel({ presetId, templateId, onEnterCanvas }: Imag
 
   // When the selected reference asset changes, sync the reverse-prompt editor.
   useEffect(() => {
-    if (referenceAsset?.vision_status === "parsed" && referenceAsset.vision_description) {
-      setReversePrompt(referenceAsset.vision_description);
+    const primary = referenceAssets[0];
+    if (primary?.vision_status === "parsed" && primary.vision_description) {
+      setReversePrompt(primary.vision_description);
     } else {
       setReversePrompt("");
     }
-  }, [referenceAsset]);
+  }, [referenceAssets]);
 
   useEffect(() => {
     if (!taskId) return;
@@ -224,6 +244,9 @@ export function ImageGeneratePanel({ presetId, templateId, onEnterCanvas }: Imag
         const status = await getImageTask(taskId);
         if (cancelled) return;
         setTaskStatus(status);
+        if (status.status === "succeeded") {
+          void getImageAssetUsage().then(setAssetUsage).catch(() => {});
+        }
         if (TERMINAL_STATUSES.has(status.status)) return;
         timer = setTimeout(poll, 3500);
       } catch (e) {
@@ -245,18 +268,31 @@ export function ImageGeneratePanel({ presetId, templateId, onEnterCanvas }: Imag
   }, [taskId]);
 
   const handleUpload = useCallback(async (file: File) => {
+    if (!/^image\/(png|jpeg|webp)$/.test(file.type)) {
+      setError("仅支持 PNG、JPEG 或 WebP 图片");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setError("图片不得超过 10MB");
+      return;
+    }
+    if (referenceAssets.length >= 2) {
+      setError("基础模式最多选择 2 张参考图片");
+      return;
+    }
     setUploading(true);
     setError(null);
     try {
       const asset = await uploadImageAsset(file);
       setAssets((prev) => [asset, ...prev]);
-      setReferenceAsset(asset);
+      setReferenceAssets((prev) => [...prev, asset]);
+      void getImageAssetUsage().then(setAssetUsage).catch(() => {});
     } catch (e) {
       setError(e instanceof Error ? e.message : "上传失败");
     } finally {
       setUploading(false);
     }
-  }, []);
+  }, [referenceAssets.length]);
 
   const startTask = useCallback(
     async (mode: "text2image" | "image2image") => {
@@ -272,18 +308,23 @@ export function ImageGeneratePanel({ presetId, templateId, onEnterCanvas }: Imag
       setError(null);
       setGenerationMode(mode);
       try {
-        const style = styleOptions.find((item) => item.id === styleId)?.prompt;
+        const selectedReferences = mode === "image2image" ? referenceAssets : [];
         const resp = await createImageTask({
           preset_id: presetId,
           template_id: templateId || undefined,
           user_intent: userIntent.trim(),
-          reference_asset_id: referenceAsset?.id,
-          style,
+          reference_asset_id: selectedReferences[0]?.id,
+          reference_asset_ids: selectedReferences.map((asset) => asset.id),
+          reference_assets: selectedReferences.map((asset, index) => ({
+            asset_id: asset.id,
+            role: index === 0 ? "product" : "detail",
+          })),
+          workspace_mode: "basic",
           scene_id: presetId === "ecommerce" ? sceneId : undefined,
           conversion_driver: presetId === "ecommerce" ? conversionDriver : undefined,
           product_category: presetId === "ecommerce" ? productCategory || undefined : undefined,
           market_scope: presetId === "ecommerce" ? marketScope : undefined,
-          style_variant: presetId === "ecommerce" ? styleVariant : undefined,
+          style_variant: styleVariant,
           size: size || undefined,
           model: selectedModel || undefined,
           aspect_ratio: aspectRatio || undefined,
@@ -292,7 +333,7 @@ export function ImageGeneratePanel({ presetId, templateId, onEnterCanvas }: Imag
           generation_count: generationCount,
           model_version: selectedModel || undefined,
           generation_mode: mode,
-          edited_description: reversePrompt.trim() || undefined,
+          edited_description: mode === "image2image" ? reversePrompt.trim() || undefined : undefined,
         });
         setTaskId(resp.task_id);
         setTaskStatus(null);
@@ -302,7 +343,7 @@ export function ImageGeneratePanel({ presetId, templateId, onEnterCanvas }: Imag
         setCreating(false);
       }
     },
-    [presetId, templateId, userIntent, referenceAsset, reversePrompt, styleId, styleOptions, selectedModel, aspectRatio, size, quality, background, generationCount, hasUnresolvedRatioConflict, ratioConflict, sceneId, conversionDriver, marketScope, productCategory, styleVariant]
+    [presetId, templateId, userIntent, referenceAssets, reversePrompt, selectedModel, aspectRatio, size, quality, background, generationCount, hasUnresolvedRatioConflict, ratioConflict, sceneId, conversionDriver, marketScope, productCategory, styleVariant]
   );
 
 
@@ -310,6 +351,7 @@ export function ImageGeneratePanel({ presetId, templateId, onEnterCanvas }: Imag
   const handleReset = useCallback(() => {
     setTaskId(null);
     setTaskStatus(null);
+    setResultPreviewUrls([]);
     setError(null);
   }, []);
 
@@ -328,7 +370,7 @@ export function ImageGeneratePanel({ presetId, templateId, onEnterCanvas }: Imag
               key={style.id}
               type="button"
               className={`image-generate-style ${styleId === style.id ? "selected" : ""}`}
-              onClick={() => setStyleId(style.id)}
+              onClick={() => { setStyleId(style.id); setStyleVariant(style.id); }}
               aria-pressed={styleId === style.id}
             >
               {style.label}
@@ -362,8 +404,8 @@ export function ImageGeneratePanel({ presetId, templateId, onEnterCanvas }: Imag
             <label htmlFor="ecommerce-market-scope">销售市场</label>
             <select id="ecommerce-market-scope" value={marketScope} onChange={(e) => setMarketScope(e.target.value)}>
               {(skillCatalog.market_scopes ?? [
-                { id: "domestic", name: "国内电商", prompt: "" },
-                { id: "overseas", name: "海外/跨境电商", prompt: "" },
+                { id: "domestic", name: "国内电商" },
+                { id: "overseas", name: "海外/跨境电商" },
               ]).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
             </select>
           </div>
@@ -475,20 +517,55 @@ export function ImageGeneratePanel({ presetId, templateId, onEnterCanvas }: Imag
 
       <div className="image-generate-field">
         <label>参考图片（可选）</label>
+        <div className="image-generate-storage-notice" role="status">
+          <span>素材库：已保存 {assetUsage?.reference_count ?? 0} / {assetUsage?.reference_count_limit ?? 50} 张，已占用 {formatBytes(assetUsage?.reference_bytes ?? 0)} / {formatBytes(assetUsage?.reference_bytes_limit ?? 500 * 1024 * 1024)}</span>
+          <span>单张图片不超过 10MB；生成结果也会计入素材库。取消选择只会移除本次使用，不会删除素材。</span>
+          {assetUsage?.warning && <strong>素材库已使用超过 80%，建议及时清理。</strong>}
+        </div>
         <div className="image-generate-assets">
-          {assets.map((asset) => (
-            <button
+          {assets.map((asset) => {
+            const selected = referenceAssets.some((item) => item.id === asset.id);
+            return (
+            <div
               key={asset.id}
-              type="button"
-              className={`image-generate-asset ${referenceAsset?.id === asset.id ? "selected" : ""}`}
-              onClick={() => setReferenceAsset(referenceAsset?.id === asset.id ? null : asset)}
+              className={`image-generate-asset ${selected ? "selected" : ""}`}
             >
-              <span>{asset.original_name}</span>
-              {asset.vision_status === "parsed" && <small>已识别</small>}
-              {asset.vision_status === "pending" && <small>识别中</small>}
-              {asset.vision_status === "failed" && <small>识别失败</small>}
-            </button>
-          ))}
+              <button
+                type="button"
+                className="image-generate-asset__select"
+                aria-pressed={selected}
+                aria-label={`${selected ? "取消选择" : "选择"}参考图片 ${asset.original_name}`}
+                onClick={() => setReferenceAssets((current) => {
+                  const exists = current.some((item) => item.id === asset.id);
+                  if (exists) return current.filter((item) => item.id !== asset.id);
+                  if (current.length >= 2) {
+                    setError("基础模式最多选择 2 张参考图片");
+                    return current;
+                  }
+                  return [...current, asset];
+                })}
+              >
+                {assetPreviewUrls[asset.id] && <img src={assetPreviewUrls[asset.id]} alt="" />}
+                <span>{asset.original_name}</span>
+                {selected && <small>已选择</small>}
+                {asset.vision_status === "parsed" && <small>已识别</small>}
+                {asset.vision_status === "pending" && <small>识别中</small>}
+                {asset.vision_status === "failed" && <small>识别失败</small>}
+              </button>
+              {selected && (
+                <button
+                  type="button"
+                  className="image-generate-asset__remove"
+                  aria-label={`取消选择参考图片 ${asset.original_name}`}
+                  title="取消选择"
+                  onClick={() => setReferenceAssets((current) => current.filter((item) => item.id !== asset.id))}
+                >
+                  ×
+                </button>
+              )}
+            </div>
+            );
+          })}
           <button
             type="button"
             className="image-generate-upload"
@@ -500,7 +577,7 @@ export function ImageGeneratePanel({ presetId, templateId, onEnterCanvas }: Imag
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            accept="image/png,image/jpeg,image/webp"
             hidden
             onChange={(e) => {
               const file = e.target.files?.[0];
@@ -511,18 +588,28 @@ export function ImageGeneratePanel({ presetId, templateId, onEnterCanvas }: Imag
         </div>
       </div>
 
-      {referenceAsset && (
+      {referenceAssets.length > 0 && (
         <div className="image-generate-field">
+          <label>创作方式</label>
+          <div className="image-generate-mode-options" role="group" aria-label="创作方式">
+            <button type="button" className={generationMode === "text2image" ? "selected" : ""} onClick={() => setGenerationMode("text2image")}>
+              仅用文字生成
+            </button>
+            <button type="button" className={generationMode === "image2image" ? "selected" : ""} onClick={() => setGenerationMode("image2image")}>
+              基于参考图继续创作
+            </button>
+          </div>
+          <p className="image-generate-hint">已选择 {referenceAssets.length} 张参考图；只有选择“基于参考图继续创作”时才会参与生成。</p>
           <label htmlFor="image-reverse-prompt">
-            反推提示词{referenceAsset.vision_status === "pending" ? "（识别中…）" : "（可编辑）"}
+            参考图描述{referenceAssets[0].vision_status === "pending" ? "（识别中…）" : "（可编辑）"}
           </label>
           <textarea
             id="image-reverse-prompt"
             value={reversePrompt}
             onChange={(e) => setReversePrompt(e.target.value)}
-            placeholder={referenceAsset.vision_status === "failed" ? "图片识别失败，可手动输入描述" : "基于参考图反推的提示词，可修改"}
+            placeholder={referenceAssets[0].vision_status === "failed" ? "图片识别失败，可手动输入描述" : "可补充参考图中的商品、材质和构图信息"}
             rows={3}
-            disabled={referenceAsset.vision_status === "pending"}
+            disabled={referenceAssets[0].vision_status === "pending"}
           />
         </div>
       )}
@@ -542,35 +629,14 @@ export function ImageGeneratePanel({ presetId, templateId, onEnterCanvas }: Imag
 
       {!taskId && (
         <div className="image-generate-actions-row">
-          {referenceAsset ? (
-            <>
-              <button
-                type="button"
-                className="image-generate-submit"
-                disabled={creating || !userIntent.trim() || !selectedCapability || hasUnresolvedRatioConflict}
-                onClick={() => void startTask("image2image")}
-              >
-                {creating && generationMode === "image2image" ? "创建中…" : "以原图二次创作"}
-              </button>
-              <button
-                type="button"
-                className="image-generate-submit image-generate-submit--secondary"
-                disabled={creating || !userIntent.trim() || !selectedCapability || hasUnresolvedRatioConflict}
-                onClick={() => void startTask("text2image")}
-              >
-                {creating && generationMode === "text2image" ? "创建中…" : "基于提示词生成"}
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              className="image-generate-submit"
-              disabled={creating || !userIntent.trim() || !selectedCapability || hasUnresolvedRatioConflict}
-              onClick={() => void startTask("text2image")}
-            >
-              {creating ? "创建中…" : "生成图片"}
-            </button>
-          )}
+          <button
+            type="button"
+            className="image-generate-submit"
+            disabled={creating || !userIntent.trim() || !selectedCapability || hasUnresolvedRatioConflict}
+            onClick={() => void startTask(generationMode)}
+          >
+            {creating ? "创建中…" : generationMode === "image2image" ? "基于参考图继续创作" : "仅用文字生成"}
+          </button>
         </div>
       )}
 
@@ -587,19 +653,19 @@ export function ImageGeneratePanel({ presetId, templateId, onEnterCanvas }: Imag
       {taskStatus?.status === "succeeded" && taskStatus.result_image_url && (
         <div className="image-generate-result">
           <div className="image-generate-result-grid">
-            {(taskStatus.result_image_urls?.length ? taskStatus.result_image_urls : [taskStatus.result_image_url]).map((url, index) => (
+            {(resultPreviewUrls.length ? resultPreviewUrls : (taskStatus.result_image_urls?.length ? taskStatus.result_image_urls : [taskStatus.result_image_url])).map((url, index) => (
               <img key={`${url}-${index}`} src={url} alt={`生成结果 ${index + 1}`} />
             ))}
           </div>
           <div className="image-generate-actions">
             <button type="button" onClick={handleReset}>再次生成</button>
-            {onEnterCanvas && taskId && (
+            {onEnterCanvas && (
               <button
                 type="button"
                 className="image-generate-submit--secondary"
                 onClick={() => onEnterCanvas(taskId)}
               >
-                进入高级模式
+                在高级工作台继续编辑
               </button>
             )}
           </div>

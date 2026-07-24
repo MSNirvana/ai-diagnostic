@@ -212,6 +212,17 @@ async def _ensure_sqlite_columns(conn) -> None:
         if upload_columns and col not in upload_columns:
             await conn.execute(text(f"ALTER TABLE uploadedfile ADD COLUMN {col} {col_type}"))
 
+    image_asset_result = await conn.execute(text("PRAGMA table_info(imageasset)"))
+    image_asset_columns = {row[1] for row in image_asset_result.fetchall()}
+    image_asset_extra_columns = {
+        "asset_kind": "TEXT DEFAULT 'reference'",
+        "last_used_at": "TIMESTAMP",
+        "deleted_at": "TIMESTAMP",
+    }
+    for col, col_type in image_asset_extra_columns.items():
+        if image_asset_columns and col not in image_asset_columns:
+            await conn.execute(text(f"ALTER TABLE imageasset ADD COLUMN {col} {col_type}"))
+
     # 运营后台权限位。"user" 是 SQLite 保留字，必须加引号。
     user_result = await conn.execute(text('PRAGMA table_info("user")'))
     user_columns = {row[1] for row in user_result.fetchall()}

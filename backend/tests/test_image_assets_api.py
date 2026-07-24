@@ -32,6 +32,8 @@ def test_upload_image_asset_success(db_session):
     assert data["content_type"] == "image/png"
     assert data["vision_status"] == "parsed"
     assert data["vision_description"] == "测试图片摘要"
+    assert data["size_bytes"] == len(b"fake-png")
+    assert data["file_url"] == f"/image-assets/{data['id']}/file"
 
 
 def test_upload_image_asset_rejects_non_image(db_session):
@@ -42,19 +44,26 @@ def test_upload_image_asset_rejects_non_image(db_session):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 400
-    assert "只支持图片" in resp.json()["detail"]
+    assert "仅支持" in resp.json()["detail"]
 
 
 def test_upload_image_asset_rejects_oversized(db_session):
     token = _register("asset-big@b.com")
-    big_content = b"x" * (12 * 1024 * 1024 + 1)
+    big_content = b"x" * (10 * 1024 * 1024 + 1)
     resp = client.post(
         "/image-assets/",
         files={"file": ("big.png", io.BytesIO(big_content), "image/png")},
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 400
-    assert "12MB" in resp.json()["detail"]
+    assert "10MB" in resp.json()["detail"]
+
+
+def test_upload_image_asset_rejects_empty_file(db_session):
+    token = _register("asset-empty@b.com")
+    resp = _upload_image(token, content=b"")
+    assert resp.status_code == 400
+    assert "空文件" in resp.json()["detail"]
 
 
 def test_list_image_assets_only_returns_own(db_session):
