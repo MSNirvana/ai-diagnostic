@@ -9,6 +9,8 @@ export interface ToolDefinition {
   tagline: string;
   /** 工具入口路由 */
   entryPath: string;
+  /** 跨域独立应用入口；独立应用不通过当前 React Router 接管。 */
+  external?: boolean;
   /** 工具状态；coming_soon 不在界面展示（首版不虚构不可用入口） */
   status: ToolStatus;
 }
@@ -22,16 +24,17 @@ export interface ToolDefinition {
 export const tools: ToolDefinition[] = [
   {
     id: "diagnostic",
-    name: "经营增长诊断",
-    tagline: "AI 咨询、头脑风暴、项目档案与作战室，定位经营问题并生成行动方案",
+    name: "构造视界",
+    tagline: "AI 咨询、头脑风暴与改造方案",
     entryPath: "/tools/diagnostic",
     status: "active",
   },
   {
     id: "image",
     name: "图片创作",
-    tagline: "一键生成宣传图、电商图，或从模板开始",
-    entryPath: "/tools/image",
+    tagline: "无限画布，生成并整理视觉素材",
+    entryPath: (import.meta.env.VITE_IMAGE_APP_URL ?? "https://image.ggoo.ai").replace(/\/$/, ""),
+    external: true,
     status: "active",
   },
 ];

@@ -110,10 +110,10 @@ describe("image tool registry", () => {
     expect(card).toBeTruthy();
   });
 
-  it("links the image tool card to /tools/image", async () => {
+  it("links the image tool card to the independent image service", async () => {
     renderAt("/tools");
     const link = await screen.findByRole("link", { name: /图片创作/ });
-    expect(link.getAttribute("href")).toBe("/tools/image");
+    expect(link.getAttribute("href")).toBe("https://image.ggoo.ai");
   });
 });
 

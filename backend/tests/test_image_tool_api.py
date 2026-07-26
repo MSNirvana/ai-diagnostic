@@ -480,6 +480,13 @@ def test_run_image_generation_job_forwards_all_reference_images(db_session, monk
         return image_data
 
     monkeypatch.setattr("app.imaging.jobs.GGOOImageClient.generate_image", fake_generate)
+
+    async def fake_active_key(_token: str) -> str:
+        return "sk-test"
+
+    monkeypatch.setattr(
+        "app.imaging.jobs.ggoo_client.get_or_create_active_key", fake_active_key
+    )
     asyncio.get_event_loop().run_until_complete(
         run_image_generation_job(task_id, db_session, f"Bearer {token}")
     )

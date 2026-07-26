@@ -1,10 +1,9 @@
 """GGOO image generation client.
 
-Calls the GGOO OpenAI-compatible gateway's images/generations endpoint.
-The exact API shape is not yet confirmed by GGOO, so this follows the same
-"adaptive probe + never fabricate" pattern as `GGOOClient.get_credit_balance`:
-- Default POST to `{gateway_base_url}/images/generations` with OpenAI-style body
-- Env vars override path/model/response field without code changes
+Calls the GGOO OpenAI-compatible gateway's images endpoint.
+The production gateway accepts JSON image inputs (`images[].image_url`) and
+returns either a URL or `b64_json`; keeping the conversion here means the
+background job can persist the result without exposing provider details.
 - On failure or unparseable response, raise GGOOError — never return a fake URL
 """
 from __future__ import annotations
@@ -46,11 +45,9 @@ class GGOOImageClient:
     ) -> str | list[str]:
         """Generate an image and return its URL.
 
-        When a reference image is provided, runs in image-to-image mode:
-        - Uses the edit endpoint path (env `GGOO_IMAGE_EDIT_PATH`, defaults to
-          `GGOO_IMAGE_GENERATIONS_PATH` value)
-        - Sends one image as a string, or multiple images as a list, under the
-          field named by env `GGOO_IMAGE_REFERENCE_FIELD` (default `image`).
+        When a reference image is provided, runs in image-to-image mode through
+        `/images/edits` and sends each reference as
+        `{\"image_url\": <data-url>}` in the `images` array.
 
         Raises GGOOError subclasses on failure; never returns a fake URL.
         """
@@ -58,8 +55,7 @@ class GGOOImageClient:
         if reference_image_url and reference_image_url not in reference_urls:
             reference_urls.insert(0, reference_image_url)
         if reference_urls:
-            default_path = os.environ.get("GGOO_IMAGE_GENERATIONS_PATH", "/images/generations").strip()
-            path = os.environ.get("GGOO_IMAGE_EDIT_PATH", default_path).strip()
+            path = os.environ.get("GGOO_IMAGE_EDIT_PATH", "/images/edits").strip()
         else:
             path = os.environ.get("GGOO_IMAGE_GENERATIONS_PATH", "/images/generations").strip()
         if not path.startswith("/"):
@@ -74,11 +70,15 @@ class GGOOImageClient:
             "n": n,
         }
         if reference_urls:
-            ref_field = os.environ.get("GGOO_IMAGE_REFERENCE_FIELD", "image").strip() or "image"
-            reference_format = os.environ.get("GGOO_IMAGE_REFERENCE_FORMAT", "list").strip().lower()
-            body[ref_field] = reference_urls[0] if reference_format == "single" else (
-                reference_urls[0] if len(reference_urls) == 1 else reference_urls
-            )
+            ref_field = os.environ.get("GGOO_IMAGE_REFERENCE_FIELD", "images").strip() or "images"
+            if ref_field == "images":
+                body[ref_field] = [{"image_url": url} for url in reference_urls]
+            else:
+                reference_format = os.environ.get("GGOO_IMAGE_REFERENCE_FORMAT", "single").strip().lower()
+                body[ref_field] = reference_urls[0] if reference_format == "single" else reference_urls
+        response_format = os.environ.get("GGOO_IMAGE_RESPONSE_FORMAT", "b64_json").strip()
+        if response_format:
+            body["response_format"] = response_format
         if quality:
             body["quality"] = quality
         if background:

@@ -48,22 +48,22 @@ describe("platform home", () => {
   it("renders the platform home with brand, tool cards and login CTA when logged out", () => {
     renderAt("/");
 
-    expect(screen.getByRole("heading", { name: "把 AI 模型变成上手即用的工具" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "选择你的工作方式" })).toBeTruthy();
 
     const ggooLink = screen.getByRole("link", { name: "GGOO" });
     expect(ggooLink.getAttribute("href")).toBe("https://ggoo.ai");
 
-    const toolCard = screen.getByRole("link", { name: /经营增长诊断/ });
+    const toolCard = screen.getByRole("link", { name: /构造视界/ });
     expect(toolCard.getAttribute("href")).toBe("/tools/diagnostic");
 
-    expect(screen.getByRole("button", { name: "使用 GGOO 账户开始" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "登录 / 注册" })).toBeTruthy();
     expect(listProjectsMock).not.toHaveBeenCalled();
   });
 
   it("opens the GGOO login overlay from the hero CTA when logged out", async () => {
     renderAt("/");
 
-    fireEvent.click(screen.getByRole("button", { name: "使用 GGOO 账户开始" }));
+    fireEvent.click(screen.getByRole("button", { name: "登录 / 注册" }));
 
     expect(await screen.findByRole("button", { name: "使用 GGOO 登录 / 注册" })).toBeTruthy();
   });
@@ -114,7 +114,7 @@ describe("platform home", () => {
     renderAt("/tools");
 
     expect(screen.getByRole("heading", { name: "全部工具" })).toBeTruthy();
-    const toolCard = screen.getByRole("link", { name: /经营增长诊断/ });
+    const toolCard = screen.getByRole("link", { name: /构造视界/ });
     expect(toolCard.getAttribute("href")).toBe("/tools/diagnostic");
   });
 

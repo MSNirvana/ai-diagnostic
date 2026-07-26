@@ -35,6 +35,7 @@ from app.imaging.ecommerce_skill import (
 from app.imaging.template_catalog import get_template, template_catalog
 from app.imaging.jobs import run_image_generation_job
 from app.imaging.presets import get_preset
+from app.storage import resolve_storage_path
 
 router = APIRouter(prefix="/image-tool", tags=["image-tool"])
 
@@ -419,7 +420,7 @@ async def execute_canvas_node(
         if len(asset_ids) != 1:
             raise HTTPException(status_code=400, detail="AI 反推提示词节点需要且只能需要一张参考图片")
         asset = await session.get(ImageAsset, asset_ids[0])
-        path = Path(asset.stored_path) if asset else None
+        path = resolve_storage_path(asset.stored_path) if asset else None
         if asset is None or path is None or not path.exists():
             raise HTTPException(status_code=404, detail="参考图片文件不可用")
         description = (

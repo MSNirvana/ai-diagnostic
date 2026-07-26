@@ -1,9 +1,23 @@
 import { useState } from "react";
+import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { LoginPage } from "../components/Auth/LoginPage";
 import { PlatformNav } from "./PlatformNav";
 import { listVisibleTools } from "./registry";
 import "./PlatformHomePage.css";
+
+function ToolEntry({
+  tool,
+  children,
+}: {
+  tool: ReturnType<typeof listVisibleTools>[number];
+  children: ReactNode;
+}) {
+  if (tool.external) {
+    return <a className="platform-tool-card" href={tool.entryPath}>{children}</a>;
+  }
+  return <Link className="platform-tool-card" to={tool.entryPath}>{children}</Link>;
+}
 
 /**
  * 全部工具（"/tools"）：列出注册表中可见的工具。
@@ -23,11 +37,11 @@ export function AllToolsPage() {
           </header>
           <div className="platform-tools-grid">
             {visibleTools.map((tool) => (
-              <Link key={tool.id} to={tool.entryPath} className="platform-tool-card">
+              <ToolEntry key={tool.id} tool={tool}>
                 <h3>{tool.name}</h3>
                 <p>{tool.tagline}</p>
                 <span className="platform-tool-card__go">进入工具 →</span>
-              </Link>
+              </ToolEntry>
             ))}
           </div>
         </section>

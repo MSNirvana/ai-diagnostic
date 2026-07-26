@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { listProjects } from "../api/client";
 import { useAuth } from "../auth/useAuth";
@@ -15,6 +16,27 @@ function formatUpdatedAt(iso: string) {
     month: "2-digit",
     day: "2-digit",
   });
+}
+
+function ToolEntry({
+  tool,
+  children,
+}: {
+  tool: ReturnType<typeof listVisibleTools>[number];
+  children: ReactNode;
+}) {
+  if (tool.external) {
+    return (
+      <a className="platform-tool-card" href={tool.entryPath}>
+        {children}
+      </a>
+    );
+  }
+  return (
+    <Link className="platform-tool-card" to={tool.entryPath}>
+      {children}
+    </Link>
+  );
 }
 
 /**
@@ -61,19 +83,30 @@ export function PlatformHomePage() {
       <main className="platform-home">
         <section className="platform-hero">
           <p className="platform-hero__eyebrow">GGOO Build</p>
-          <h1>把 AI 模型变成上手即用的工具</h1>
-          <p className="platform-hero__lead">
-            使用 GGOO 统一账户与积分，直接完成真实工作任务；高级工作台与 API 共享同一身份和余额。
-          </p>
-          {!isAuthenticated && (
-            <button type="button" className="platform-hero__cta" onClick={() => setLoginOpen(true)}>
-              使用 GGOO 账户开始
-            </button>
-          )}
+          <h1>选择你的工作方式</h1>
+          <p className="platform-hero__lead">同一 GGOO 账户，进入不同的 AI 工作台。</p>
+        </section>
+
+        <section className="platform-section platform-section--tools" aria-label="工具菜单">
+          <header className="platform-section__header">
+            <h2>工具</h2>
+            <Link to="/tools" className="platform-section__more">
+              全部工具
+            </Link>
+          </header>
+          <div className="platform-tools-grid">
+            {visibleTools.map((tool) => (
+              <ToolEntry key={tool.id} tool={tool}>
+                <h3>{tool.name}</h3>
+                <p>{tool.tagline}</p>
+                <span className="platform-tool-card__go">进入工具 →</span>
+              </ToolEntry>
+            ))}
+          </div>
         </section>
 
         {isAuthenticated && (
-          <section className="platform-section" aria-label="最近项目">
+          <section className="platform-section platform-section--recent" aria-label="最近项目">
             <header className="platform-section__header">
               <h2>最近项目</h2>
               <Link to="/projects" className="platform-section__more">
@@ -108,23 +141,6 @@ export function PlatformHomePage() {
           </section>
         )}
 
-        <section className="platform-section" aria-label="工具">
-          <header className="platform-section__header">
-            <h2>工具</h2>
-            <Link to="/tools" className="platform-section__more">
-              全部工具
-            </Link>
-          </header>
-          <div className="platform-tools-grid">
-            {visibleTools.map((tool) => (
-              <Link key={tool.id} to={tool.entryPath} className="platform-tool-card">
-                <h3>{tool.name}</h3>
-                <p>{tool.tagline}</p>
-                <span className="platform-tool-card__go">进入工具 →</span>
-              </Link>
-            ))}
-          </div>
-        </section>
       </main>
 
       {loginOpen && (
