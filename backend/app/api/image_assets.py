@@ -18,10 +18,11 @@ from app.db.database import get_session
 from app.db.models import ImageAsset, User
 from app.imaging.prompts import IMAGE_ANCHOR_PROMPT, IMAGE_ANCHOR_SYSTEM
 from app.llm.base import LLMClient
+from app.storage import image_asset_root, resolve_storage_path
 
 router = APIRouter(prefix="/image-assets", tags=["image-tool"])
 
-UPLOAD_ROOT = "data/image-assets"
+UPLOAD_ROOT = image_asset_root()
 MAX_IMAGE_SIZE = 10 * 1024 * 1024
 ALLOWED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp"}
 MAX_REFERENCE_ASSETS = 50
@@ -62,7 +63,11 @@ def _to_out(asset: ImageAsset) -> ImageAssetOut:
         vision_description=asset.vision_description,
         vision_status=asset.vision_status,
         created_at=asset.created_at.isoformat(),
-        size_bytes=Path(asset.stored_path).stat().st_size if asset.stored_path and Path(asset.stored_path).exists() else 0,
+        size_bytes=(
+            resolve_storage_path(asset.stored_path).stat().st_size
+            if asset.stored_path and resolve_storage_path(asset.stored_path).exists()
+            else 0
+        ),
         file_url=f"/image-assets/{asset.id}/file",
         asset_kind=asset.asset_kind,
     )
@@ -74,7 +79,8 @@ async def _usage_for_user(session: AsyncSession, user_id: str) -> ImageAssetUsag
     )
     reference_count = reference_bytes = generated_count = generated_bytes = 0
     for asset in result.scalars().all():
-        size = Path(asset.stored_path).stat().st_size if asset.stored_path and Path(asset.stored_path).exists() else 0
+        resolved_path = resolve_storage_path(asset.stored_path) if asset.stored_path else None
+        size = resolved_path.stat().st_size if resolved_path and resolved_path.exists() else 0
         if asset.asset_kind == "generated":
             generated_count += 1
             generated_bytes += size
@@ -130,7 +136,7 @@ async def upload_image_asset(
     session.add(asset)
     await session.flush()
 
-    upload_dir = Path(UPLOAD_ROOT) / user.id
+    upload_dir = UPLOAD_ROOT / user.id
     upload_dir.mkdir(parents=True, exist_ok=True)
     safe_name = f"{asset.id}_{Path(asset.original_name).name or 'unnamed'}"
     stored_path = upload_dir / safe_name
@@ -188,7 +194,7 @@ async def get_image_asset_file(
     asset = await session.get(ImageAsset, asset_id)
     if asset is None or asset.user_id != user.id or asset.deleted_at is not None:
         raise HTTPException(status_code=404, detail="素材不存在")
-    path = Path(asset.stored_path)
+    path = resolve_storage_path(asset.stored_path)
     if not path.exists():
         raise HTTPException(status_code=404, detail="素材文件已丢失")
     return FileResponse(path, media_type=asset.content_type)
@@ -203,7 +209,7 @@ async def delete_image_asset(
     asset = await session.get(ImageAsset, asset_id)
     if asset is None or asset.user_id != user.id or asset.deleted_at is not None:
         raise HTTPException(status_code=404, detail="素材不存在")
-    path = Path(asset.stored_path)
+    path = resolve_storage_path(asset.stored_path)
     if path.exists():
         os.remove(path)
     await session.delete(asset)

@@ -309,7 +309,11 @@ export default function App() {
       />
       <Route
         path="/"
-        element={<PlatformHomePage />}
+        element={
+          <ProtectedRoute>
+            <ImageToolPage />
+          </ProtectedRoute>
+        }
       />
       <Route
         path="/history"

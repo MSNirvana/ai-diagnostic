@@ -5,7 +5,6 @@ running -> succeeded/failed with billing ledger integration.
 """
 import base64
 import json
-import os
 from pathlib import Path
 
 import httpx
@@ -22,6 +21,7 @@ from app.imaging.prompts import build_generate_prompt
 from app.imaging.presets import get_preset
 from app.imaging.template_catalog import get_template
 from app.integrations.ggoo import ggoo_client
+from app.storage import image_asset_root, resolve_storage_path
 
 
 def _bearer_token(authorization: str) -> str:
@@ -32,54 +32,16 @@ def _bearer_token(authorization: str) -> str:
     return authorization.strip()
 
 
-def _provider_token(authorization: str) -> str:
-    """Use the configured test key for every local AI request.
-
-    The browser token is only a local-session credential in test mode and may
-    be stale after changing the provider key. Production requests continue to
-    use the authenticated bearer token.
-    """
-    configured = _local_setting("GGOO_SERVICE_API_KEY")
-    if configured:
-        # A local provider key is authoritative for this test environment;
-        # never let a stale browser token reach the image gateway.
-        return configured
-    return _bearer_token(authorization)
-
-
-def _local_setting(name: str) -> str:
-    """Read a local ignored setting even when the process was launched without env loading."""
-    value = os.environ.get(name, "").strip().strip('"')
-    if value:
-        return value
-    env_path = Path(__file__).resolve().parents[2] / ".env"
-    if not env_path.exists():
-        return ""
-    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if line.startswith(f"{name}="):
-            return line.split("=", 1)[1].strip().strip('"')
-    return ""
-
-
-def _build_reference_url(asset_id: str) -> str | None:
-    """Build a publicly-reachable URL for an image asset.
-
-    Uses env `IMAGE_PUBLIC_BASE_URL` as the host prefix. If unset, returns None
-    (image2image mode cannot run without a public URL — callers should fall back
-    to text2image). The path follows the `/image-assets/{id}/file` route.
-    """
-    base = os.environ.get("IMAGE_PUBLIC_BASE_URL", "").strip().rstrip("/")
-    if not base:
-        return None
-    return f"{base}/image-assets/{asset_id}/file"
-
-
 def _build_local_reference_data_url(asset: ImageAsset | None) -> str | None:
-    """Use a local asset directly for localhost image-to-image testing."""
+    """Embed the stored upload so the provider receives the actual image bytes.
+
+    Asset URLs are protected by the user's session and cannot be fetched by
+    the upstream image provider. A data URL keeps the reference private and
+    makes image-to-image behavior deterministic in production.
+    """
     if asset is None or not asset.stored_path:
         return None
-    path = Path(asset.stored_path)
+    path = resolve_storage_path(asset.stored_path)
     if not path.exists():
         return None
     try:
@@ -122,9 +84,9 @@ async def _persist_generated_asset(
         )
         generated_assets = existing_result.scalars().all()
         generated_bytes = sum(
-            Path(item.stored_path).stat().st_size
+            resolve_storage_path(item.stored_path).stat().st_size
             for item in generated_assets
-            if item.stored_path and Path(item.stored_path).exists()
+            if item.stored_path and resolve_storage_path(item.stored_path).exists()
         )
         if len(generated_assets) >= MAX_GENERATED_ASSETS or generated_bytes + len(content) > MAX_GENERATED_BYTES:
             return None
@@ -138,7 +100,7 @@ async def _persist_generated_asset(
         )
         session.add(asset)
         await session.flush()
-        upload_dir = Path("data/image-assets") / user_id
+        upload_dir = image_asset_root() / user_id
         upload_dir.mkdir(parents=True, exist_ok=True)
         path = upload_dir / f"{asset.id}_generated{suffix}"
         path.write_bytes(content)
@@ -239,18 +201,16 @@ async def run_image_generation_job(
             if mode == "image2image" and reference_asset_ids:
                 for asset_id in reference_asset_ids:
                     reference = await session.get(ImageAsset, asset_id)
-                    reference_url = _build_reference_url(asset_id)
-                    if reference_url is None:
-                        reference_url = _build_local_reference_data_url(reference)
+                    reference_url = _build_local_reference_data_url(reference)
                     if reference_url is None:
                         raise ValueError("参考图片文件不可用，无法执行图片二次创作")
                     reference_image_urls.append(reference_url)
                 if not reference_image_urls:
                     raise ValueError("参考图片文件不可用，无法执行图片二次创作")
 
-            configured_key = _local_setting("GGOO_SERVICE_API_KEY")
-            api_key = configured_key or await ggoo_client.get_or_create_active_key(_provider_token(authorization))
-            gateway_base_url = _local_setting("GGOO_GATEWAY_BASE_URL") or ggoo_client.gateway_base_url()
+            user_token = _bearer_token(authorization)
+            api_key = await ggoo_client.get_or_create_active_key(user_token)
+            gateway_base_url = ggoo_client.gateway_base_url()
             image_client = GGOOImageClient(
                 client=ggoo_client._client,
                 api_key=api_key,

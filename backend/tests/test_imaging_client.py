@@ -44,10 +44,15 @@ async def test_generate_image_returns_all_urls_for_multiple_candidates():
 
 
 @pytest.mark.asyncio
-async def test_generate_image_sends_multiple_reference_images_as_a_list():
+async def test_generate_image_sends_reference_images_in_gateway_shape():
     async def handler(request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content)
-        assert body["image"] == ["data:image/png;base64,one", "data:image/png;base64,two"]
+        assert request.url.path == "/v1/images/edits"
+        assert body["images"] == [
+            {"image_url": "data:image/png;base64,one"},
+            {"image_url": "data:image/png;base64,two"},
+        ]
+        assert body["response_format"] == "b64_json"
         return httpx.Response(200, json={"data": [{"url": "https://img.example.com/edited.png"}]})
 
     client = _make_client(handler)
